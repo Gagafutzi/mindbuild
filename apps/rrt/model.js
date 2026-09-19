@@ -22,6 +22,12 @@
    - The symbols are generated, not drawn from a set, so no symbol ever comes to
      mean anything. A task whose stimuli keep a fixed meaning automatises, and a
      task that has automatised has stopped loading what it was chosen to load.
+
+   What goes on the cards is nonetheless a choice — see "Stimulus sets" below.
+   Generated marks are the default and the honest one; a fixed pool of named
+   animals encodes in a word, which spends the beat on the order instead of on
+   the symbol, at the cost of the paragraph above. The model never looks inside
+   a stimulus, so it does not care which.
 */
 
 (function (root) {
@@ -143,6 +149,58 @@
       var s = SEGMENTS[si];
       return "M" + (s[0] % 3) + " " + ((s[0] / 3) | 0) + "L" + (s[1] % 3) + " " + ((s[1] / 3) | 0);
     }).join("");
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Stimulus sets                                                       *
+   * ------------------------------------------------------------------ */
+
+  /* What goes on the cards, and it is a real trade rather than a skin.
+
+     GENERATED MARKS are the default and the reason the task was built this way:
+     a mark that never repeats cannot come to mean anything, so nothing about it
+     can be learned instead of the order, and encoding it costs what it costs.
+
+     ANIMALS are the other end. A picture with a name is encoded in one word, so
+     almost none of the beat is spent taking the symbol in and almost all of it
+     is spent on the order — which is the point, and which is also why it is
+     easier. The pool is fixed and small, so the stimuli DO recur, and a fixed
+     set is exactly the consistent mapping that automatises: what it measures
+     drifts away from relational load and toward how good a verbal chain you can
+     build. Sessions are recorded with the set they used, because bits per
+     second is not comparable across the two.
+
+     A set is one function: the next stimulus, given what must not be confused
+     with it (what is held, plus what has only just left — a symbol that has
+     only just gone is still in the head). A generated mark is an array of
+     stroke indices; an animal is `{name, path}`, a silhouette drawn on the
+     same kind of grid and coloured the same way. Nothing in the model looks
+     inside either. The drawings live in animals.js, with their credit. */
+  var ANIMALS = (typeof module !== "undefined" && module.exports)
+    ? require("./animals.js")
+    : (root.RunningOrderAnimals || []);
+
+  /** An animal that is not one of `avoid`, uniformly among those that are left. */
+  function newAnimal(avoid, rnd) {
+    rnd = rnd || Math.random;
+    var taken = {};
+    (avoid || []).forEach(function (a) { if (a && a.name) taken[a.name] = true; });
+    var free = ANIMALS.filter(function (a) { return !taken[a.name]; });
+    var pool = free.length ? free : ANIMALS;
+    return pool[Math.floor(rnd() * pool.length)];
+  }
+
+  var SETS = {
+    glyphs: { id: "glyphs", label: "Generated marks", next: newGlyph },
+    animals: { id: "animals", label: "Animals", next: newAnimal },
+  };
+
+  /** The named set, or the generated marks for anything unrecognised — and for
+      the animals when their drawings did not load, which beats a blank card. */
+  function stimulusSet(id) {
+    var set = SETS[id];
+    if (!set || (set === SETS.animals && !ANIMALS.length)) return SETS.glyphs;
+    return set;
   }
 
   /* ------------------------------------------------------------------ *
@@ -367,8 +425,9 @@
   }
 
   var api = {
-    SEGMENTS: SEGMENTS, AXES: AXES, SIZES: SIZES,
+    SEGMENTS: SEGMENTS, AXES: AXES, SIZES: SIZES, ANIMALS: ANIMALS, SETS: SETS,
     makeGlyph: makeGlyph, newGlyph: newGlyph, glyphDistance: glyphDistance, glyphPath: glyphPath,
+    newAnimal: newAnimal, stimulusSet: stimulusSet,
     createModel: createModel, seed: seed, planCard: planCard, apply: apply, simulate: simulate,
     ladder: ladder, levelIndex: levelIndex, carriedBits: carriedBits,
     correctedAccuracy: correctedAccuracy, createController: createController, update: update,
