@@ -1045,19 +1045,45 @@ function paintAll() { painters.forEach(p => p()); paintMode(); paintLevel(); pai
 /* Called from the tail of the file: the worked example is drawn with the same
    helpers the cards use, and those are defined below. */
 
-/* ══ MODAL ══ */
-function openModal(title, body, onConfirm, confirmLabel, danger = true) {
+/* ══ MODAL ══════════════════════════════════════════════════════════════
+   A dialog raised by a keypress has to be answerable with the keyboard. This
+   page says Esc is the way out of a session, and the way out landed on a
+   dialog only a mouse could finish: a second Esc raised the same dialog again
+   and Enter did nothing at all.
+
+   `modalOpen` is also what the page's one key handler reads to know that
+   nothing behind the dialog may act on a key — which is what stopped the
+   digits typed at it being scored as answers to the card underneath it.
+
+   Backing out and going through with it are separate exits: `dismissModal`
+   runs whatever the dialog interrupted (a paused session resumes there), and
+   `closeModal` only takes the dialog off the screen, for the confirm path and
+   for a session that ended underneath it. */
+let modalOpen = false, modalOnCancel = null;
+
+function openModal(title, body, onConfirm, confirmLabel, danger = true, onCancel = null) {
   $('modalTitle').textContent = title; $('modalBody').textContent = body;
   const c = $('modalConfirm');
   c.textContent = confirmLabel;
   c.style.background = c.style.borderColor = danger ? 'var(--danger)' : 'var(--accent)';
   c.style.color = danger ? '#fff' : '#000';
   c.onclick = () => { closeModal(); onConfirm(); };
+  modalOnCancel = onCancel;
+  modalOpen = true;
   $('confirmModal').classList.add('open');
 }
-function closeModal() { $('confirmModal').classList.remove('open'); }
-$('modalCancel').addEventListener('click', closeModal);
-$('confirmModal').addEventListener('click', e => { if (e.target === $('confirmModal')) closeModal(); });
+function closeModal() {
+  modalOpen = false; modalOnCancel = null;
+  $('confirmModal').classList.remove('open');
+}
+/* Cancel, Esc and a click on the backdrop are one answer: no. */
+function dismissModal() {
+  const back = modalOnCancel;
+  closeModal();
+  if (back) back();
+}
+$('modalCancel').addEventListener('click', dismissModal);
+$('confirmModal').addEventListener('click', e => { if (e.target === $('confirmModal')) dismissModal(); });
 
 $('resetAppBtn').addEventListener('click', () => openModal(
   'Wipe Running Order data?',
@@ -1228,7 +1254,7 @@ window.addEventListener('resize', () => {
 });
 
 /* ══ SESSION ══════════════════════════════════════════════════════════ */
-let active = false, ctrl = null, model = null, cur = null, trials = [];
+let active = false, paused = false, ctrl = null, model = null, cur = null, trials = [];
 /* Which stimuli the cards are made of. Fixed when a session or the walkthrough
    starts, not read live, so a record always says what it was earned on. */
 let sessionSet = 'glyphs';
@@ -1392,15 +1418,37 @@ function aboveChance(ts) {
   return ts.length ? Math.max(0, ts.reduce((a, t) => a + R.credit(t), 0) / ts.length) : 0;
 }
 
+/* One keyboard for the page, read top down: the dialog first, because while it
+   is up nothing behind it may act on a key; then a running session; then the
+   screens whose only keyboard business is a way out of them.
+
+   It is bound once, for the life of the page, rather than for the length of a
+   session. Esc has to work on the results and in the walkthrough too, and a
+   session-scoped handler was listening on neither — which left every screen
+   that is not a running session with no keyboard way out at all. */
 function onKey(e) {
-  if (!active) return;
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    openModal('End training session?', 'This session will still be saved.', endSession, 'Exit');
+  if (modalOpen) {
+    if (e.key === 'Escape') { e.preventDefault(); dismissModal(); }
+    /* Enter goes through with it — unless the focus is already on one of the
+       dialog's own buttons, where the browser's own activation is the answer
+       and this would fire a second one over the top of it. */
+    else if (e.key === 'Enter' && !$('confirmModal').contains(document.activeElement)) {
+      e.preventDefault(); $('modalConfirm').click();
+    }
     return;
   }
-  if (/^[1-9]$/.test(e.key)) { e.preventDefault(); answer(+e.key); }
+  if (active) {
+    if (e.key === 'Escape') { e.preventDefault(); askExit(); return; }
+    if (/^[1-9]$/.test(e.key)) { e.preventDefault(); answer(+e.key); }
+    return;
+  }
+  if (e.key !== 'Escape') return;
+  /* The results are a summary of something already saved and the walkthrough
+     records nothing, so neither needs to ask before it lets you go. */
+  if ($('pageResults').classList.contains('active')) { e.preventDefault(); paintLevel(); setPage('pageHome'); }
+  else if ($('pageTutorial').classList.contains('active')) { e.preventDefault(); tutFinish(false); }
 }
+document.addEventListener('keydown', onKey);
 
 function startSession(opts) {
   practice = (opts && opts.beats) ? opts : null;
@@ -1413,7 +1461,7 @@ function startSession(opts) {
     ceil: pace || eff('isiCeil'),
     target: eff('targetAcc') / 100, adaptLevel: practice ? false : eff('adaptLevel'),
   });
-  active = true;
+  active = true; paused = false;
   sessionSet = R.stimulusSet(settings.stimset).id;
   trials = []; cur = null; model = null; needEpisode = true; streak = 0;
   peakLevel = ctrl.level;
@@ -1431,8 +1479,16 @@ function startSession(opts) {
   clearStage($('stage')); resetFeedback(); renderPad(); paintStats();
   setPage('pageTrain');
 
+  startClock();
+  beatTimer = setTimeout(beat, 900);
+}
+
+/* Its own function because a pause stops it and a resume has to start it
+   again, from wherever it had got to. */
+function startClock() {
+  clearInterval(clockTimer);
   clockTimer = setInterval(() => {
-    if (!active) return;
+    if (!active || paused) return;
     timerSec--;
     if (!practice) {
       $('timerDisplay').textContent = fmtTime(Math.max(0, timerSec));
@@ -1440,22 +1496,87 @@ function startSession(opts) {
     }
     if (timerSec <= 0) endSession();
   }, 1000);
-  document.addEventListener('keydown', onKey);
+}
+
+/* The way out, worded for what is actually being left, and with the session
+   held still while the question is on the screen. */
+function askExit() {
+  pauseSession();
+  if (practice) {
+    openModal('Leave the walkthrough?',
+      'The practice run is not recorded. You can open the walkthrough again from the home screen.',
+      quitSession, 'Leave', true, resumeSession);
+    return;
+  }
+  openModal('End training session?', 'This session will still be saved.',
+    quitSession, 'Exit', true, resumeSession);
+}
+
+/* The dialog covers the card, so the beat and the clock stop behind it: a card
+   nobody can see must not be scored as one nobody answered — it would cost the
+   accuracy and pull the pace down with it — and the seconds spent reading a
+   dialog are not seconds of training, so the clock does not charge for them.
+
+   The trial in flight is abandoned rather than missed, and the next beat opens
+   a fresh episode. The order was interrupted, and carrying a half-seen list
+   across the break is the same discontinuity a level change already starts
+   over for. Nothing from a paused stretch reaches the record, which is what
+   keeps the figure comparable with one that was never interrupted. */
+function pauseSession() {
+  if (!active || paused) return;
+  paused = true;
+  clearInterval(clockTimer); clearTimeout(beatTimer); clearStageTimers();
+  cur = null;
+  needEpisode = true;
+  clearStage($('stage')); resetFeedback(); renderPad();
+  $('cue').innerHTML = '';
+  $('trainStatus').textContent = 'Paused';
+  $('stimInstruction').textContent = 'Paused';
+}
+
+function resumeSession() {
+  if (!active || !paused) return;
+  paused = false;
+  $('trainStatus').textContent = 'Running';
+  $('stimInstruction').textContent = 'Get ready…';
+  startClock();
+  /* The same run-up a session opens with: the first card of a new episode is
+     one to be taken in, not one to be caught. */
   beatTimer = setTimeout(beat, 900);
 }
 
+/* Everything a running session owns, put down. */
+function stopSession() {
+  active = false; paused = false;
+  clearInterval(clockTimer); clearTimeout(beatTimer); clearStageTimers();
+  closeModal();
+  $('trainStatus').textContent = 'Running';
+}
+
+/* The session ran its course: the clock reached zero, or a practice run its
+   last beat. A practice run hands the walkthrough back its next step. */
 function endSession() {
   if (!active) return;
-  active = false;
-  clearInterval(clockTimer); clearTimeout(beatTimer); clearStageTimers();
-  document.removeEventListener('keydown', onKey);
-  closeModal();
+  stopSession();
   if (practice) { const done = practice.onDone; practice = null; done(); return; }
   showResults();
 }
 
+/* Asked to leave, which is not the same thing as running out. A session that
+   was played is still worth its results and that is where leaving one goes.
+   A practice run is recorded nowhere and belongs to the walkthrough, so
+   leaving it leaves the walkthrough — rather than stepping over the practice
+   into the rest of it, which is what the Exit button used to do and the reason
+   there was no way out of the walkthrough from inside a practice run. */
+function quitSession() {
+  if (!active) return;
+  stopSession();
+  if (practice) { practice = null; paintLevel(); setPage('pageHome'); return; }
+  showResults();
+}
+
 $('startBtn').addEventListener('click', startSession);
-$('stopBtn').addEventListener('click', () => openModal('End training session?', 'This session will still be saved.', endSession, 'Exit'));
+$('stopBtn').addEventListener('click', askExit);
 $('restartBtn').addEventListener('click', () => { paintLevel(); setPage('pageHome'); });
 $('restartBtn2').addEventListener('click', () => { paintLevel(); setPage('pageHome'); });
 $('backToSettingsBtn').addEventListener('click', () => { paintLevel(); setPage('pageHome'); });
