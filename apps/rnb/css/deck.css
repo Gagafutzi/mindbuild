@@ -10,7 +10,7 @@
      dropped, and the group would sit directly on the background image. */
   background: rgba(20, 24, 32, .6);
   background: color-mix(in srgb, var(--panel) 74%, transparent);
-  border: 1px solid var(--border-inner);
+  border: 1px solid var(--edge-soft);
   -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px);
   box-shadow: 0 14px 32px -22px #000;
 }
@@ -39,8 +39,8 @@
   background: linear-gradient(180deg,
     color-mix(in srgb, var(--btn-color, transparent) 26%, var(--panel)),
     color-mix(in srgb, var(--btn-color, transparent) 9%, var(--panel-2)));
-  border: 1px solid var(--btn-color, var(--border-outer));
-  border-color: color-mix(in srgb, var(--btn-color, var(--border-outer)) 62%, transparent);
+  border: 1px solid var(--btn-color, var(--edge-strong));
+  border-color: color-mix(in srgb, var(--btn-color, var(--edge-strong)) 62%, transparent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .13),
               0 2px 0 rgba(0, 0, 0, .45),
               0 7px 15px -9px #000;
@@ -55,7 +55,7 @@
 @media (hover: hover) {
   .rbtn:hover {
     filter: brightness(1.16);
-    border-color: var(--btn-color, var(--border-outer));
+    border-color: var(--btn-color, var(--edge-strong));
   }
 }
 /* Presses fire on pointerdown and cancel the default, so :active never latches on

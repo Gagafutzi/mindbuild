@@ -301,3 +301,10 @@ Delapouite, Lorc, Skoll and Caro Asercion, used under
 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). The credit is carried
 in that file, in [apps/rrt/README.md](apps/rrt/README.md), and beside the
 setting that turns them on. Everything else is the repository's own.
+
+## Where RNB started
+
+Relational N-back began as eeemind's single-page prototype, the first four
+commits of its grafted history. Nothing of that page's code is left beyond
+the idioms every page shares; the game is what it grew into here. The credit
+stays because the idea of putting relational n-back in a cube was theirs.

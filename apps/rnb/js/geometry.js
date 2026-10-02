@@ -4,17 +4,20 @@
    6. CUBE + GIZMO GEOMETRY
    ============================================================ */
 
+/* The six sides of a box, as the axis and angle that turn a plane to face out
+   through each one. Callers index the returned faces, so the order is fixed:
+   front, back, right, left, top, bottom. */
+const BOX_SIDES = [['Y', 0], ['Y', 180], ['Y', 90], ['Y', -90], ['X', 90], ['X', -90]];
+
 /* Six outward-facing planes, so content is legible from any viewing angle. */
 function addFaces(parent, size, cls, html) {
-  const rot = ['rotateY(0deg)','rotateY(180deg)','rotateY(90deg)',
-               'rotateY(-90deg)','rotateX(90deg)','rotateX(-90deg)'];
-  return rot.map(r => {
-    const f = document.createElement('div');
-    f.className = cls;
-    f.style.transform = `${r} translateZ(${size / 2}px)`;
-    if (html != null) f.innerHTML = html;
-    parent.appendChild(f);
-    return f;
+  const half = size / 2;
+  return BOX_SIDES.map(([axis, deg]) => {
+    const face = parent.appendChild(document.createElement('div'));
+    face.className = cls;
+    face.style.transform = `rotate${axis}(${deg}deg) translateZ(${half}px)`;
+    if (html != null) face.innerHTML = html;
+    return face;
   });
 }
 
@@ -177,9 +180,9 @@ function buildCube(dim) {
   document.documentElement.classList.toggle('spin-stage', solvedSpin);
   document.documentElement.classList.toggle('tumble-stage', cfg.rotation && !solvedSpin);
 
-  gridCube.innerHTML = '';
+  latticeEl.innerHTML = '';
   state.cells = [];
-  const size = gridCube.clientWidth || 240;
+  const size = latticeEl.clientWidth || 240;
   const off = (dim - 1) / 2;
 
   let step = size / dim;
@@ -237,7 +240,7 @@ function buildCube(dim) {
         cell.style.left = cell.style.top = `calc(50% - ${cellSize / 2}px)`;
         cell.style.transform =
           `translate3d(${(x-off)*step}px, ${(y-off)*step}px, ${(z-off)*step}px)`;
-        const faces = addFaces(cell, cellSize, 'cell-face', '');
+        const faces = addFaces(cell, cellSize, 'slot-face', '');
         if (layout === 'spaced') {
           /* Depth cue by brightness, not hue — the six axis colours already own the
              hue channel, and a magenta far-layer reads as the violet A axis. */
@@ -245,7 +248,7 @@ function buildCube(dim) {
           const col = `hsla(215, 30%, ${52 + t * 34}%, ${0.20 + t * 0.45})`;
           faces.forEach(f => { f.style.setProperty('--depth-edge', col); });
         }
-        gridCube.appendChild(cell);
+        latticeEl.appendChild(cell);
         state.cells.push({ el: cell, x, y, z });
       }
 
@@ -263,14 +266,8 @@ function buildCube(dim) {
 function buildCubeFrame(size) {
   const frame = document.createElement('div');
   frame.className = 'cube-frame';
-  ['rotateY(0deg)','rotateY(180deg)','rotateY(90deg)',
-   'rotateY(-90deg)','rotateX(90deg)','rotateX(-90deg)'].forEach(r => {
-    const f = document.createElement('div');
-    f.className = 'frame-face';
-    f.style.transform = `${r} translateZ(${size / 2}px)`;
-    frame.appendChild(f);
-  });
-  gridCube.appendChild(frame);
+  addFaces(frame, size, 'frame-face');
+  latticeEl.appendChild(frame);
 }
 
 /* Three rails through the active slot, one per axis, each running the full width of
@@ -299,14 +296,14 @@ function buildGuides(size) {
     });
     state.rails.push(pair);
   });
-  gridCube.appendChild(g);
+  latticeEl.appendChild(g);
 }
 
 /* ---- Move arrow ----
    The direction the sequence is currently travelling, drawn through the middle of
    the lattice after a wrong meta-relation. Built like a gizmo arm — crossed planes
    so it never vanishes edge-on, a letter badge kept upright — but it lives inside
-   gridCube rather than in the gizmo, so it turns with the lattice and reads as a
+   latticeEl rather than in the gizmo, so it turns with the lattice and reads as a
    vector THROUGH the cube instead of another label around the outside.
 
    Anchored to the cube's centre, deliberately, not to the cell that was lit. It has
@@ -348,7 +345,7 @@ function buildMoveArrow(size) {
   badge.style.top = `${-BADGE / 2}px`;
   wrap.appendChild(badge);
 
-  gridCube.appendChild(wrap);
+  latticeEl.appendChild(wrap);
   state.moveArrow = { wrap, badge, L, size };
   /* A resize rebuilds the lattice mid-trial. Put the arrow back rather than letting
      the rebuild silently swallow the one piece of feedback the player is relying on
@@ -388,7 +385,7 @@ function hideMoveArrow() {
    pivots about the slot centre rather than the cube centre. */
 function positionGuides(cellIdx) {
   if (!state.rails) return;
-  const dim = cfg.dim, size = gridCube.clientWidth || 240;
+  const dim = cfg.dim, size = latticeEl.clientWidth || 240;
   const cs = size / dim, off = (dim - 1) / 2;
   const c = state.cells[cellIdx];
   const p = [(c.x - off) * cs, (c.y - off) * cs, (c.z - off) * cs];
@@ -424,11 +421,11 @@ const CELL_VIS_HINT = {
 
 function applyCellVis() {
   CELL_VIS_MODES.forEach(v =>
-    gridCube.classList.toggle('vis-' + v, cfg.cellVis === v));
+    latticeEl.classList.toggle('vis-' + v, cfg.cellVis === v));
   /* Fill is its own axis: any of the modes above can be drawn as outlines. */
-  gridCube.classList.toggle('fill-outline', cfg.cellFill === 'outline');
+  latticeEl.classList.toggle('fill-outline', cfg.cellFill === 'outline');
   /* Only the faces toward you carry the readout — see .has-readout. */
-  gridCube.classList.toggle('has-readout',
+  latticeEl.classList.toggle('has-readout',
     !!cfg.slotReadout && cfg.slotReadout !== 'off');
   /* Sync the control here too, so cube, hint and select can never disagree. */
   const sel = $('cellVis'), h = $('cellVisHint');
@@ -451,7 +448,7 @@ const READOUT_HINT = {
 
 function buildGizmo() {
   gizmoEl.innerHTML = '';
-  const cubeSize = gridCube.clientWidth || 240;
+  const cubeSize = latticeEl.clientWidth || 240;
   const HEAD = cubeSize * 0.10, BADGE = 26;
 
   /* How far one cube unit travels on screen along each axis at the solved static

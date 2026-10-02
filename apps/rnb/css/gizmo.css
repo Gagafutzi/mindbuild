@@ -15,8 +15,8 @@
 .gizmo.intro {
   transform: scale3d(var(--gizmo-intro, 1), var(--gizmo-intro, 1), var(--gizmo-intro, 1));
 }
-:root.dir-intro .cell-face { opacity: .12; }
-.cell-face { transition: opacity .3s; }
+:root.dir-intro .slot-face { opacity: .12; }
+.slot-face { transition: opacity .3s; }
 .arm { position: absolute; transform-style: preserve-3d; }
 .shaft {
   position: absolute; height: 2px; top: -1px; left: 0;

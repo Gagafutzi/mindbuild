@@ -24,7 +24,7 @@ body.has-bg .hud, body.has-bg .glyph-legend {
   -webkit-backdrop-filter: blur(7px);
   backdrop-filter: blur(7px);
   padding: 10px 12px; border-radius: var(--radius);
-  border: 1px solid var(--border-inner);
+  border: 1px solid var(--edge-soft);
 }
 /* The dock and the deck carry their own blur; only the floating ⚙ still needs one
    added. Blurring each control button individually now double-frosts the pill they
@@ -51,7 +51,7 @@ body.flat *, body.flat *::before, body.flat *::after {
 .swatch-btn.on { border-color: var(--text); }
 input[type=color] {
   width: 100%; height: 34px; padding: 2px; background: var(--input-bg);
-  border: 1px solid var(--border-inner); border-radius: var(--radius); cursor: pointer;
+  border: 1px solid var(--edge-soft); border-radius: var(--radius); cursor: pointer;
 }
 input[type=range] { width: 100%; accent-color: var(--accent, #4d7fd6); }
 

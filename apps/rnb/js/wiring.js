@@ -11,11 +11,11 @@ function setSettingsOpen(open) {
   /* Opening settings is unambiguously "not right now" — let a block start itself
      while someone is halfway through changing what it will be is nobody's intent. */
   if (open) cancelAutoAdvance();
-  $('settingsPanel').classList.toggle('open', open);
+  $('settingsDrawer').classList.toggle('open', open);
   document.body.classList.toggle('settings-open', open);
 }
 const toggleSettings = () =>
-  setSettingsOpen(!$('settingsPanel').classList.contains('open'));
+  setSettingsOpen(!$('settingsDrawer').classList.contains('open'));
 
 $('settingsBtn').onclick = toggleSettings;
 $('settingsClose').onclick = () => setSettingsOpen(false);
@@ -243,7 +243,7 @@ $('gateOn').onchange  = e => { freeCfg.gate = +e.target.value; applyFree(); upda
 $('retroOn').onchange = e => { freeCfg.retro = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('varNBack').onchange = e => { freeCfg.varN = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 
-$('cubeDimension').onchange = e => { freeCfg.dim = +e.target.value; applyFree(); buildCube(cfg.dim); updateHUD(); saveProgress(); };
+$('latticeSize').onchange = e => { freeCfg.dim = +e.target.value; applyFree(); buildCube(cfg.dim); updateHUD(); saveProgress(); };
 /* syncSettingsUI, because rotation is what decides whether the second frame of a
    meta block asks anything of its own — and the hint that says so is in this panel. */
 $('rotationOn').onchange    = e => { freeCfg.rotation = e.target.checked; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
@@ -376,7 +376,7 @@ $('startBtn').onclick = () => {
   if (cfg.streams.glyph === 'relational') showGlyphIntro(startBlock);
   else startBlock();
 };
-$('stopBtn').onclick = () => stopBlock(false);
+$('endBlockBtn').onclick = () => stopBlock(false);
 
 /* What each shortcut actually does. The guards are the point: Start must not be able
    to restart a block that is already running, and Pause must not fire when there is
@@ -560,7 +560,7 @@ $('pauseResume').onclick = resumeFromPause;
  * correctly".
  *
  * That is the state the page booted into. `boot.js` builds the cube as soon as
- * the scripts run, when `gridCube.clientWidth` is still 0 and the `|| 240`
+ * the scripts run, when `latticeEl.clientWidth` is still 0 and the `|| 240`
  * fallback stands in for it — and 240 is only right when `--cube-scale` is
  * exactly 1. Nothing rebuilt afterwards, because the only trigger was a window
  * resize and laying out a page is not one.

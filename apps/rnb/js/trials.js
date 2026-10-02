@@ -87,7 +87,7 @@ function refreshReadout() {
   if (!cell) return;
   const cellW = parseFloat(cell.el.style.width) || 0;
   const html = readoutHTML(t.cellIdx, cellW);
-  cell.el.querySelectorAll('.cell-face').forEach(f => {
+  cell.el.querySelectorAll('.slot-face').forEach(f => {
     const old = f.querySelector('.rd');
     if (old) old.remove();
     if (html) f.insertAdjacentHTML('beforeend', html);
@@ -103,7 +103,7 @@ function renderTrial(t) {
   if (t.gate === 'compare') cell.el.classList.add('gate-closed');
   $('gateBanner').classList.toggle('show', t.gate === 'compare');
   positionGuides(t.cellIdx);
-  const faces = cell.el.querySelectorAll('.cell-face');
+  const faces = cell.el.querySelectorAll('.slot-face');
 
   const glyphChar = t.glyphSet != null ? GLYPH_SETS[GLYPH_SET_KEYS[t.glyphSet]][t.glyphIdx] : null;
 
@@ -111,7 +111,7 @@ function renderTrial(t) {
      cells small enough that the largest size plus a quantity row overflows the face.
      Scale the whole ladder rather than clamping it — clamping would collapse adjacent
      size levels into each other and make the size judgement unanswerable. */
-  const cellPx = (gridCube.clientWidth || 240) / cfg.dim;
+  const cellPx = (latticeEl.clientWidth || 240) / cfg.dim;
   const maxFont = (cellPx - 4) / (t.quantity != null ? 1.4 : 1.1);
   const sizePool = poolFor('size');
   const scale = Math.min(1, maxFont / sizePool[sizePool.length - 1]);
@@ -156,7 +156,7 @@ function renderTrial(t) {
    by a luma threshold. appearance.js's `luma` is the right tool for the accent, but it
    is unlinearised, and the palette's red lands just the wrong side of 0.5 — which gave
    white glyphs on red at a ratio of 2:1. */
-const LIT_VARS = ['--cell-active', '--cell-active-solid', '--cell-active-edge',
+const LIT_VARS = ['--slot-lit', '--slot-lit-solid', '--slot-lit-edge',
                   '--cell-glow', '--cell-ink'];
 const srgbLum = c => {
   const [r, g, b] = rgbOf(c).map(v => {
@@ -170,9 +170,9 @@ const INK_DARK = '#08131a', INK_LIGHT = '#ffffff';
 function litColour(face, hex) {
   const L = srgbLum(hex);
   const ratio = o => (Math.max(L, o) + 0.05) / (Math.min(L, o) + 0.05);
-  face.style.setProperty('--cell-active', hex);
-  face.style.setProperty('--cell-active-solid', hex);
-  face.style.setProperty('--cell-active-edge', lighten(hex, 0.45));
+  face.style.setProperty('--slot-lit', hex);
+  face.style.setProperty('--slot-lit-solid', hex);
+  face.style.setProperty('--slot-lit-edge', lighten(hex, 0.45));
   /* Weaker than the accent's 0.8: a saturated hue under a bright halo of its own
      colour washes out, and the hue is the thing being reported. */
   face.style.setProperty('--cell-glow', rgba(hex, 0.55));
@@ -200,7 +200,7 @@ function clearCells() {
   $('gateBanner').classList.remove('show');
   state.cells.forEach(c => {
     c.el.classList.remove('active', 'gate-closed');
-    c.el.querySelectorAll('.cell-face').forEach(f => {
+    c.el.querySelectorAll('.slot-face').forEach(f => {
       f.style.background = ''; f.innerHTML = '';
       LIT_VARS.forEach(k => f.style.removeProperty(k));
     });

@@ -1,4 +1,4 @@
-/* ---------- HUD ---------- */
+/* Heads-up display: level, score, timers */
 .hud {
   position: fixed; top: 14px; right: 14px; z-index: 10;
   font-size: 13px; text-align: right; min-width: 210px;

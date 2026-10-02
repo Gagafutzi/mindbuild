@@ -1045,10 +1045,10 @@ ok('fill is its own axis rather than another visibility mode',
    g5('CELL_VIS_MODES').indexOf('outline') < 0,
    'outline was folded into slot visibility, so it cannot compose with it');
 ok('and the outline takes the colour the fill would have had',
-   /\.fill-outline \.cell\.active \.cell-face[^}]*--cell-active-solid/.test(scene),
+   /\.fill-outline \.cell\.active \.slot-face[^}]*--slot-lit-solid/.test(scene),
    'with the face gone the colour stream loses its stimulus');
 ok('an outline cell draws no fill at all',
-   /\.fill-outline \.cell-face\s*\{[^}]*background:\s*none\s*!important/.test(scene),
+   /\.fill-outline \.slot-face\s*\{[^}]*background:\s*none\s*!important/.test(scene),
    'the lattice keeps its faint fills, which is most of the ink on screen');
 
 /* The readout: the slot's coordinates, printed on the slot. */

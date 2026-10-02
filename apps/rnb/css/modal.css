@@ -5,7 +5,7 @@
 }
 .modal.open { display: flex; }
 .modal-box {
-  background: var(--panel); border: 1px solid var(--border-outer);
+  background: var(--panel); border: 1px solid var(--edge-strong);
   border-radius: var(--radius); padding: 24px; max-width: 480px; width: 100%;
   max-height: 88vh; max-height: 88dvh; overflow-y: auto;
 }
@@ -21,7 +21,7 @@
 
 .glyph-map { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 8px; }
 .glyph-map .gm-cell {
-  padding: 14px 10px; border: 1px solid var(--border-inner);
+  padding: 14px 10px; border: 1px solid var(--edge-soft);
   border-radius: var(--radius); text-align: center; background: var(--panel-2);
 }
 .glyph-map .gm-cell .set { font-size: 22px; font-weight: 700; }
@@ -60,7 +60,7 @@
 .modal-box.wide { max-width: 900px; }
 .modal-box.wide h3 {
   margin: 22px 0 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--text); border-bottom: 1px solid var(--border-inner); padding-bottom: 6px;
+  color: var(--text); border-bottom: 1px solid var(--edge-soft); padding-bottom: 6px;
 }
 .modal-box.wide h3:first-of-type { margin-top: 14px; }
 .ch-sub {
@@ -74,7 +74,7 @@
 }
 .prog-summary > div {
   padding: 10px 12px; border-radius: var(--radius);
-  background: var(--panel-2); border: 1px solid var(--border-inner);
+  background: var(--panel-2); border: 1px solid var(--edge-soft);
 }
 .prog-summary .k {
   display: block; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
@@ -87,8 +87,8 @@
    available and the height stays put — which is what keeps the axis labels legible
    on a phone instead of shrinking with the box. */
 .chart { display: block; width: 100%; height: auto; overflow: visible; }
-.chart .grid  { stroke: var(--border-inner); stroke-width: 1; }
-.chart .axis  { stroke: var(--border-outer); stroke-width: 1; }
+.chart .grid  { stroke: var(--edge-soft); stroke-width: 1; }
+.chart .axis  { stroke: var(--edge-strong); stroke-width: 1; }
 .chart .rule  { stroke-width: 1; stroke-dasharray: 4 3; opacity: .8; }
 .chart .ln    { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round;
                 vector-effect: non-scaling-stroke; }
@@ -99,7 +99,7 @@
 .chart .rule-lab { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
 .chart-empty {
   padding: 22px; text-align: center; font-size: 12.5px; color: var(--muted);
-  border: 1px dashed var(--border-inner); border-radius: var(--radius);
+  border: 1px dashed var(--edge-soft); border-radius: var(--radius);
 }
 
 .ch-legend {

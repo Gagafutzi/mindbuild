@@ -2,10 +2,10 @@
   --bg: #0b0d10;
   --panel: #141820;
   --panel-2: #0f1218;
-  --border-outer: rgba(180, 200, 255, 0.45);
-  --border-inner: rgba(180, 200, 255, 0.18);
+  --edge-strong: rgba(180, 200, 255, 0.45);
+  --edge-soft: rgba(180, 200, 255, 0.18);
   --cell-fill: rgba(120, 140, 255, 0.10);
-  --cell-active: rgba(120, 200, 255, 0.62);
+  --slot-lit: rgba(120, 200, 255, 0.62);
   --text: #e6ebff;
   --muted: rgba(230, 235, 255, 0.55);
   /* Surface for text inputs, selects and key caps. Themed, so a lighter panel does

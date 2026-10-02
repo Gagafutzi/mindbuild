@@ -291,7 +291,7 @@ function syncSettingsUI() {
   $('nValue').value = freeCfg.n;
   $('intervalMs').value = freeCfg.interval;
   $('blockLengthF').value = freeCfg.blockLength;
-  $('cubeDimension').value = freeCfg.dim;
+  $('latticeSize').value = freeCfg.dim;
   $('letterVoice').value = cfg.letterVoice;
   $('letterVoiceHint').textContent = cfg.letterVoice === 'mix'
     ? 'A new speaker every trial. The letter is still the whole question, so the voice '

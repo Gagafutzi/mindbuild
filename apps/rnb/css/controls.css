@@ -14,7 +14,7 @@
   padding: 6px; border-radius: var(--radius);
   background: rgba(20, 24, 32, .6);
   background: color-mix(in srgb, var(--panel) 74%, transparent);
-  border: 1px solid var(--border-inner);
+  border: 1px solid var(--edge-soft);
   -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px);
   box-shadow: 0 14px 32px -22px #000;
 }
@@ -49,9 +49,9 @@ body.running .controls button.primary {
 body.running .controls button.primary:hover {
   color: var(--text); background: rgba(255, 255, 255, .07); filter: none;
 }
-body.running #stopBtn {
+body.running #endBlockBtn {
   color: var(--text);
   background: rgba(255, 107, 107, .16);
   border-color: rgba(255, 107, 107, .5);
 }
-body.running #stopBtn:hover { background: rgba(255, 107, 107, .26); }
+body.running #endBlockBtn:hover { background: rgba(255, 107, 107, .26); }

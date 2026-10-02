@@ -168,8 +168,8 @@ function applyAppearance() {
   r.setProperty('--text', t.text);
   r.setProperty('--muted', t.muted);
   r.setProperty('--input-bg', t.input);
-  r.setProperty('--border-outer', t.border);
-  r.setProperty('--border-inner', t.borderIn);
+  r.setProperty('--edge-strong', t.border);
+  r.setProperty('--edge-soft', t.borderIn);
   /* Cube structure follows the THEME hue: the lattice and the frame are scenery, and
      they should read as part of the room rather than competing with the signal. */
   r.setProperty('--cell-fill', rgba(t.border, 0.085));
@@ -194,9 +194,9 @@ function applyAppearance() {
      stays close to the accent. Threshold at .6, so a mid-bright accent like Ember
      takes dark ink rather than white at 2.6:1. */
   r.setProperty('--accent-ink', luma(acc) > 0.6 ? '#0a0f14' : '#ffffff');
-  r.setProperty('--cell-active', rgba(acc, 0.72));
-  r.setProperty('--cell-active-solid', acc);
-  r.setProperty('--cell-active-edge', lighten(acc, 0.65));
+  r.setProperty('--slot-lit', rgba(acc, 0.72));
+  r.setProperty('--slot-lit-solid', acc);
+  r.setProperty('--slot-lit-edge', lighten(acc, 0.65));
   r.setProperty('--cell-glow', rgba(acc, 0.8));
   r.setProperty('--cell-ink', luma(acc) > 0.5 ? '#08131a' : '#ffffff');
   r.setProperty('--bg-dim', (appearance.dim / 100).toFixed(2));

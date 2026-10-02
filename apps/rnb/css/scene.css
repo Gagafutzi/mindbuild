@@ -1,4 +1,4 @@
-/* ---------- SCENE ---------- */
+/* The 3D lattice and everything drawn inside it */
 /* Centred by auto margins on the children rather than justify-content: a centred
    flex column that overflows pushes its FIRST child above scroll position 0, where
    no amount of scrolling brings it back. On a phone that silently cropped the top
@@ -83,26 +83,26 @@
   to   { transform: rotateX(330deg)  rotateY(360deg); }
 }
 
-.grid-cube { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+.lattice { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
 
 .cell { position: absolute; transform-style: preserve-3d; }
-.cell-face {
+.slot-face {
   position: absolute; width: 100%; height: 100%;
-  background: var(--cell-fill); border: 1px solid var(--border-inner);
+  background: var(--cell-fill); border: 1px solid var(--edge-soft);
   /* Depth cue for the spaced layout, as a custom property rather than an inline
      style: inline would outrank the lit cell's own edge colour below, and the
      highlight would keep the depth tint instead of the slot's colour. */
-  border-color: var(--depth-edge, var(--border-inner));
+  border-color: var(--depth-edge, var(--edge-soft));
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 1px; line-height: 1; color: var(--text); user-select: none;
 }
-.cell-face .g { font-size: 26px; line-height: 1; }
-.cell-face .q { font-size: 9px; letter-spacing: 1px; line-height: 1; opacity: .95; }
-.cell.active .cell-face { background: var(--cell-active); }
+.slot-face .g { font-size: 26px; line-height: 1; }
+.slot-face .q { font-size: 9px; letter-spacing: 1px; line-height: 1; opacity: .95; }
+.cell.active .slot-face { background: var(--slot-lit); }
 
 /* Gate-closed (compare-only) trial. Border STYLE is the only channel no stimulus
    dimension uses — colour, size and glyph are all taken. */
-.cell.gate-closed .cell-face {
+.cell.gate-closed .slot-face {
   border: 2px dashed #ff922b !important;
   box-shadow: 0 0 14px 2px rgba(255, 146, 43, .6) !important;
 }
@@ -146,16 +146,16 @@
    Inline styles from the colour stream deliberately beat these rules, so an active
    cell shows its colour when that stream is on and the highlight fill when it isn't.
    The glow and the text colour are class-only, so they apply either way. */
-.vis-contrast .cell-face, .vis-guides .cell-face {
+.vis-contrast .slot-face, .vis-guides .slot-face {
   background: var(--cell-fill-dim, rgba(120, 140, 255, .025));
   border-color: var(--cell-edge-dim, rgba(180, 200, 255, .085));
 }
-.vis-contrast .cell.active .cell-face,
-.vis-guides   .cell.active .cell-face,
-.vis-rails    .cell.active .cell-face,
-.vis-solo     .cell.active .cell-face {
-  background: var(--cell-active-solid, #7ad7ff);
-  border-color: var(--cell-active-edge, #f2fbff);
+.vis-contrast .cell.active .slot-face,
+.vis-guides   .cell.active .slot-face,
+.vis-rails    .cell.active .slot-face,
+.vis-solo     .cell.active .slot-face {
+  background: var(--slot-lit-solid, #7ad7ff);
+  border-color: var(--slot-lit-edge, #f2fbff);
   box-shadow: 0 0 16px 2px var(--cell-glow, rgba(122, 215, 255, .85));
   color: var(--cell-ink, #06202e);
 }
@@ -173,25 +173,25 @@
    lit slot becomes the only bright thing on screen rather than the brightest of
    many.
 
-   The lit slot's edge takes --cell-active-solid rather than the lighter edge
+   The lit slot's edge takes --slot-lit-solid rather than the lighter edge
    colour, because that variable is what the colour stream repaints: with the fill
    gone, the outline has to be what carries the hue, or the colour judgement
    silently loses its stimulus. */
-.fill-outline .cell-face { background: none !important; }
-.fill-outline .cell.active .cell-face {
+.fill-outline .slot-face { background: none !important; }
+.fill-outline .cell.active .slot-face {
   border-width: 2px;
-  border-color: var(--cell-active-solid, #7ad7ff);
+  border-color: var(--slot-lit-solid, #7ad7ff);
   /* Kept, and small: with no fill the slot has to be findable in one glance, and
      a halo is the cheapest thing on screen that does that. */
   box-shadow: 0 0 10px 1px var(--cell-glow, rgba(122, 215, 255, .6));
-  color: var(--cell-active-edge, #f2fbff);
+  color: var(--slot-lit-edge, #f2fbff);
 }
 
 /* ---------- SLOT READOUT ----------
    The slot's own coordinates, printed on its faces. Sized inline from the cell
    the lattice was actually built at — a fixed size is either unreadable on a
    spaced 4-cube or spilling out of it. */
-.cell-face .rd {
+.slot-face .rd {
   font-variant-numeric: tabular-nums;
   letter-spacing: .06em; line-height: 1.15; white-space: nowrap;
   font-weight: 700;
@@ -204,7 +204,7 @@
      about the slot, the streams are about the stimulus inside it. */
   margin-top: 1px;
 }
-.cell-face .rd.pips { letter-spacing: .01em; line-height: 1.05; }
+.slot-face .rd.pips { letter-spacing: .01em; line-height: 1.05; }
 
 /* A cell is six outward-facing planes, so a label written on it is written six
    times — and the three on the far side arrive mirrored, through a cell that an
@@ -214,7 +214,7 @@
 
    Only while a readout is on. Without one there is nothing to read off the far
    side, and the stacked translucent faces are how the lattice has always looked. */
-.has-readout .cell-face { backface-visibility: hidden; }
+.has-readout .slot-face { backface-visibility: hidden; }
 
 .cube-frame {
   position: absolute; inset: 0; transform-style: preserve-3d;

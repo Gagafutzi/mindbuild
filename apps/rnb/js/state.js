@@ -257,7 +257,7 @@ let progress = null;
    ============================================================ */
 
 const $ = id => document.getElementById(id);
-const gridCube = $('gridCube'), cubeWrapper = $('cubeWrapper'), gizmoEl = $('gizmo');
+const latticeEl = $('lattice'), cubeWrapper = $('cubeWrapper'), gizmoEl = $('gizmo');
 const deckEl = $('deck'), modalEl = $('modal'), modalBox = $('modalBox');
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
