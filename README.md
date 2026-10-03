@@ -300,15 +300,19 @@ adapter is what moves it up into `TRAINERS` in `shell/js/shell.js`.
   but prophantasia is one skill on the way rather than the goal: the page is
   about inducing visual hallucinations and steering them top-down. It opens
   with a primer — seeing as the brain's best guess, top-down prediction held
-  in check by the bottom-up signal — and orders eight exercises by how much
-  the screen still supplies: Afterimage (keep it, steer it), Fading (Troxler),
+  in check by the bottom-up signal — and orders nine exercises by how much
+  the screen still supplies: Afterimage (keep it, steer it, or the fire-kasina way with eyes closed), Fading (Troxler),
   Gaps (a faint object at the edge of vision that comes and goes — slow soft
   fades under once a second, or held steady while the user blinks fast — to
   be kept through every gap), Two readings (a Necker cube and a turning ball of dots), Noise (a seed
   faded out of static, or a word only), Flash (the original's Access and
-  Projection, and Compose), Ganzfeld (an even field with pink noise and a
+  Projection, and Compose), Real or imagined (Perky's 1910 experiment run as
+  a measure: imagine on a grey field while a faint real image sometimes
+  comes and goes, then say which it was), Ganzfeld (an even field with pink noise and a
   journal) and Generate (an image from words alone). Each carries notes on
-  what it induces, why, what you control and what to notice. Trial exercises
+  what it induces, why, what you control and what to notice, and field
+  notes from where the practice comes from — kasina meditation, Perky,
+  tulpamancy imposition guides, Galton — with sources. Trial exercises
   are self-rated and keep a quiet difficulty whose ambiguity tiers (Loose,
   Defined, Exact) tighten slowly; Two readings measures control objectively,
   as dominance durations held on purpose against those watched passively.
@@ -319,6 +323,16 @@ adapter is what moves it up into `TRAINERS` in `shell/js/shell.js`.
 GOATED n-Back, Adaptive Posner, Speed Memory × Schulte and Relational
 Integration used to sit beside it and are retired. None had an adapter, so no
 record anywhere reads their storage and nothing is lost from the archive.
+
+## Research
+
+`research/` holds notes that are not code. `emotional-control.md` is the
+groundwork for a companion to Controlled Hallucination: emotion treated as
+the same kind of controlled hallucination, of the body; what top-down
+control of feeling can and cannot do; the practices that went furthest
+(tummo, open presence and the startle reflex, method acting's sense memory,
+directed facial action, metta's ordering); and an eight-rung exercise ladder
+that mirrors the visual one, with its measures and the safety it needs.
 
 ## Third-party art
 

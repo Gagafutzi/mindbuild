@@ -60,6 +60,9 @@ th { color: var(--dim); font-weight: normal; }
 dl.explain { margin: .2rem 0 0; }
 dl.explain dt { margin-top: .8rem; font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
 dl.explain dd { margin: .2rem 0 0; }
+ul.notes { margin: .3rem 0 0; padding-left: 1.1rem; }
+ul.notes li { margin: .35rem 0; }
+ul.notes a { color: var(--accent); }
 
 /* ---- the exercises ---- */
 #stage { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; cursor: none; overflow: hidden; touch-action: none; }
@@ -381,6 +384,13 @@ const FIELDS = { FFFFFF: "White", "000000": "Black", rainbow: "Rainbow" };
 /* Trial variants: each has its own quiet level. look and hold are the end
    points the level moves between. */
 const TRIALS = {
+  /* Eyes closed: the fire-kasina way. A long stare, a tone to close the
+     eyes, the afterimage held on the dark, a tone to open them. */
+  kasina:     { label: "Eyes closed", kind: "kasina", look: [45000, 15000], hold: [10000, 40000], field: "000000", lengths: [3, 5, 8], trials: 5 },
+  /* Real or imagined: look is the time to read the description, hold the
+     time spent imagining on the field, during which a faint real one may
+     come and go. Its faintness has a staircase of its own. */
+  perky:      { label: "Real or imagined", kind: "perky", look: [3500, 3000], hold: [6000, 9000], field: "808080", lengths: [20, 40], trials: 20 },
   afterimage: { label: "Keep it", kind: "after", look: [20000, 4000], hold: [5000, 15000], field: "808080", fields: GREY, lengths: [6, 10, 15], trials: 10 },
   steer:      { label: "Steer it", kind: "steer", look: [15000, 4000], hold: [6000, 15000], field: "808080", fields: GREY, lengths: [6, 10, 15], trials: 10 },
   /* Gaps: look is how long the object is fully up in each cycle and hold
@@ -398,8 +408,12 @@ const TRIALS = {
 
 const EXERCISES = [
   {
-    id: "afterimage", name: "Afterimage", variants: ["afterimage", "steer"],
+    id: "afterimage", name: "Afterimage", variants: ["afterimage", "steer", "kasina"],
     supply: "The screen supplies the whole image. Your eye keeps a copy after it is gone.",
+    notes: [
+      ["Kasina meditation, described in the 5th-century Visuddhimagga, is this exercise in its oldest form: gaze at a coloured disc or a candle flame, close the eyes, and work with what is left. The first image is the “learning sign” (uggaha nimitta), a copy of the object; with practice comes the “counterpart sign” (patibhāga nimitta), brighter, steadier and no longer tied to the original. Modern fire-kasina retreats use exactly a candle afterimage. The Eyes closed version follows that method.", "https://www.mctb.org/mctb2/table-of-contents/part-vi-my-spiritual-quest/69-bhavana-society-2001-retreat/fire-kasina-practice/"],
+      ["Fire-kasina practitioners report the afterimage cycling through colours and shapes before it settles, and treat the shifting as normal rather than as failure: attention stays on it without chasing it.", "https://theartofmeditation.org/burgs-blog/fire-kasina-and-the-grounds-for-samadhi"],
+    ],
     explain: [
       ["What it induces", "A negative afterimage: the symbol, in its opposite colour, floating on the grey after the real one disappears."],
       ["Why it happens", "Staring tires the cones and colour-opponent cells that were signalling the symbol's colour. When it goes, those cells under-report and their opponents win, so the grey looks tinted with the complementary colour in exactly the symbol's shape. It is made in the eye and early visual system, which is why it moves wherever your eyes move."],
@@ -411,6 +425,9 @@ const EXERCISES = [
   {
     id: "troxler", name: "Fading", timed: true,
     supply: "The screen supplies faint, blurred discs. Your visual system stops reporting them.",
+    notes: [
+      ["Ignaz Troxler described the effect in 1804. It is why a still gaze on a speckled wall can make whole regions of it go uniform, and part of why long fixation on anything starts to make it waver.", null],
+    ],
     explain: [
       ["What it induces", "Troxler fading: soft discs in the corner of your vision disappear while you hold your gaze still, replaced by the grey around them as if they had never been there."],
       ["Why it happens", "Neurons stop responding to input that does not change. The eye normally refreshes the picture with tiny movements, but blurred, low-contrast edges in the periphery barely change when the eye moves, so their signal adapts away and the brain fills the gap with the surrounding grey. You are seeing the fill, not the disc."],
@@ -422,6 +439,10 @@ const EXERCISES = [
   {
     id: "gaps", name: "Gaps", variants: ["gaps", "blink"],
     supply: "The screen supplies the object some of the time, faint, at the edge of vision. The gaps are yours to fill.",
+    notes: [
+      ["Tulpamancy guides to “visual imposition” — deliberately seeing an imagined figure in the room — give a test for when an image has moved from the mind's eye into the world: it is locked in place. It stands on the floor, and tilting your head does not move it. Use the same test here: in a gap, tilt your head slightly; your symbol should stay where the real one was, not move with you.", "https://tulpanomicon.guide/mal-imposition.html"],
+      ["The same guides build imposition by going back and forth: close the eyes and build the image, open them and place it, one detail at a time. The returns of the real symbol here do that job for you.", "https://community.tulpa.info/topic/5807-jds-guide-to-visual-imposition-image-heavy/"],
+    ],
     explain: [
       ["What it induces", "An object you go on seeing while it is not there: through gaps the screen makes, or gaps you make by blinking."],
       ["Why it happens", "The visual system is built to bridge gaps. You blink fifteen or twenty times a minute and never see the world go dark: the brain suppresses the blackout and carries the last image across it. At the edge of vision, where detail and colour are poor, it bridges even more freely, because the signal there is too weak to contradict it. A faint object, far out, coming and going slowly, leaves you genuinely unsure what is on the screen at any moment, and that uncertainty is where top-down filling takes over."],
@@ -433,6 +454,9 @@ const EXERCISES = [
   {
     id: "bistable", name: "Two readings", timed: true,
     supply: "The screen supplies a complete image. Which image it is, it leaves to you.",
+    notes: [
+      ["Pearson, Clifford and Tong, 2008: imagining one of two patterns makes that pattern more likely to win a brief rivalry display that follows. The size of that push is now used as an objective measure of how strong someone's imagery is, including in aphantasia research. It needs red-green glasses to run properly, which is why this page measures control by dominance durations instead.", "https://www.cell.com/current-biology/fulltext/S0960-9822(08)00719-7"],
+    ],
     explain: [
       ["What it induces", "Bistable perception: a figure that can be seen two ways — a cube seen from above or from below, a ball of dots turning left or right — and flips between them on its own while nothing on the screen changes."],
       ["Why it happens", "The input fits two interpretations equally well, so the bottom-up stream cannot decide, and the brain alternates between its two best guesses. Each flip is a top-down change of the whole percept with the input held perfectly still."],
@@ -444,6 +468,9 @@ const EXERCISES = [
   {
     id: "noise", name: "Noise", variants: ["noise", "noisecue"],
     supply: "The screen supplies random static, and at first a faint image in it. Then only the static.",
+    notes: [
+      ["The classic experiment in the notes above is Gosselin and Schyns, 2003, “Superstitious perceptions”: people shown pure noise and told a letter S might be in it said yes on a share of trials, and averaging the noise on those trials drew an S. Their expectation was visible in the data.", null],
+    ],
     explain: [
       ["What it induces", "Pareidolia on purpose: seeing a definite shape in noise that contains none."],
       ["Why it happens", "Perception is always a best guess, and in noise the guess has almost nothing to answer to, so expectation shapes what is seen. In a classic experiment people told that a letter was hidden in pure static reported seeing it, and when their responses were averaged, the letter they had expected appeared in the average. The noise was empty; the letter was theirs."],
@@ -455,6 +482,9 @@ const EXERCISES = [
   {
     id: "flash", name: "Flash", variants: ["access", "projection", "compose"],
     supply: "The screen supplies an image for a moment. The rest you hold.",
+    notes: [
+      ["Francis Galton's 1880 “breakfast table” questionnaire was the first to show how much the vividness of imagery varies from person to person; some of his respondents, scientists among them, said they saw nothing at all. The near-absence of imagery was named aphantasia in 2015. If Access feels impossible, that range is why, and practice moves people along it.", null],
+    ],
     explain: [
       ["What it induces", "A held image after a brief flash: in the mind's eye (Access), out on the blank field where the symbol was (Projection), or two at once in two places (Compose). This is the exercise of the Prophantasia Trainer this page grew out of."],
       ["Why it happens", "For a fraction of a second after an image goes, the visual system keeps a fading trace of it, iconic memory. Left alone it is gone within about half a second. Holding means catching that trace and handing it over to imagery before it decays."],
@@ -464,8 +494,26 @@ const EXERCISES = [
     ],
   },
   {
+    id: "perky", name: "Real or imagined", variants: ["perky"],
+    supply: "The screen supplies a barely visible image, or nothing. You supply the image either way, and say which it was.",
+    explain: [
+      ["What it induces", "The point where imagining and seeing can no longer be told apart."],
+      ["Why it happens", "Imagery runs on much of the machinery of seeing, and the brain decides whether something was seen or imagined largely by how strong and detailed it is. A vivid image and a faint percept land in the same place, so they get confused — in both directions. Imagining something also makes a faint real one harder to detect, because the image occupies the same channels."],
+      ["What you control", "The strength of your image. Unlike the rated exercises, nothing here depends on judging your own vividness honestly: the screen knows whether it showed something, so this is a second objective measure, beside Two readings."],
+      ["How", "Follow the steps below; they are shown again before the first trial."],
+      ["What to notice", "What the false alarms looked like. An image you took for a real one is exactly what the other exercises are aiming at; this is where you catch it happening."],
+    ],
+    notes: [
+      ["Cheves Perky, 1910: people in a dim room were asked to imagine a banana, a tomato or a leaf on a blank screen while, unknown to them, a faint image of it was projected from behind. They took the real projection for their own imagination — all reported imagining an upright banana when an upright one was shown. This exercise is that experiment, run as a measure.", "https://plato.stanford.edu/archives/spr2014/entries/mental-imagery/perky-experiment.html"],
+      ["Sydney Segal and colleagues, from 1969, found the reverse side: imagining something makes faint real signals in the same sense harder to detect. Expect your detection to drop as your imagery gets stronger; that is the overlap, not a failure.", "https://doi.org/10.2466/pms.1969.28.3.791"],
+    ],
+  },
+  {
     id: "ganzfeld", name: "Ganzfeld", timed: true,
     supply: "The screen supplies nothing but an even field of colour.",
+    notes: [
+      ["“Prisoner's cinema”: people held in dark cells, and pilots and drivers staring into featureless fog or snow, report spontaneous light shows. It is the same unchecked guessing a Ganzfeld invites. The halved ping-pong balls over the eyes go back to Gestalt psychology in the 1930s.", null],
+    ],
     explain: [
       ["What it induces", "With nothing to look at for several minutes, many people find the field greys out or seems to vanish (a blank-out), and then images come on their own: colours, textures, scenes, faces."],
       ["Why it happens", "A visual system given no edges and no change has nothing to correct its guesses against, so it starts producing them unchecked. Even noise in the ears does the same for hearing. It is the visual system at idle, showing what it makes when the input says nothing."],
@@ -477,6 +525,10 @@ const EXERCISES = [
   {
     id: "generate", name: "Generate", variants: ["generate"],
     supply: "The screen supplies words. The image is all yours.",
+    notes: [
+      ["Tulpamancy imposition guides describe a three-step progression that matches this page's: first the image only in the mind's eye, then the daydreamed image seen with the eyes open, then seeing it as if physically there.", "https://tulpanomicon.guide/mal-imposition.html"],
+      ["Nikola Tesla wrote in My Inventions (1919) that he built and ran machines entirely in imagery, checking them for wear before building them. Whatever the exaggeration, it is the clearest description of Generate as a working tool rather than a trick.", null],
+    ],
     explain: [
       ["What it induces", "A visual image made entirely top-down, from a description, and seen out on the field."],
       ["Why it happens", "Imagery runs on much of the same visual machinery as seeing, driven from the other end. Every exercise above was practice at letting it take over; here it starts with nothing to take over from."],
@@ -488,9 +540,24 @@ const EXERCISES = [
 ];
 const byId = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 
-/* Exact instructions for the two Gaps versions: on the detail panel and
-   again on the sheet before the first trial. */
-const GAP_STEPS = {
+/* Exact step-by-step instructions, for the versions that need them: on the
+   detail panel and again on the sheet before the first trial. */
+const STEPS = {
+  kasina: [
+    "Make the room as dark as you can and sit about an arm's length from the screen. This is the fire-kasina setup, with the screen as the flame.",
+    "Rest your gaze softly on the dot in the middle of the symbol and keep your eyes still. Do not stare hard or fight blinking: blink softly when you need to.",
+    "At the low tone, close your eyes — gently, without squeezing — and cup your palms over them if any light gets through.",
+    "The afterimage appears on the dark, often in the opposite colour first, shifting as it goes. Keep your attention on it without chasing it: if it drifts, let your attention rest where it is rather than moving your eyes after it.",
+    "When it fades, keep it: the same shape in the same place. In kasina terms you are moving from the eye's copy, the learning sign, towards an image that is yours, the counterpart sign.",
+    "At the high tone, open your eyes and rate how it held with your eyes closed.",
+  ],
+  perky: [
+    "Dim the room and sit about an arm's length from the screen.",
+    "A description comes first. Read it, and when the grey field appears, imagine exactly that on it — large, in the middle — as clearly as you can, for the whole time the field is up.",
+    "On some trials a real, very faint version of the same thing is put on the screen too, fading in and out somewhere in that time. On the others there is nothing.",
+    "After each trial, say whether anything was really there: Y for really there, N for only yours. Answer what you saw, not what you guess the odds are.",
+    "The real one gets fainter each time you spot it and stronger each time you miss it, so it stays right at the edge of visibility, where your image and a real one are hardest to tell apart.",
+  ],
   gaps: [
     "Sit about an arm's length from the screen, with it at eye height, and dim the room. Sitting closer — half an arm's length — puts the symbol further out in your vision; do that once the exercise feels easy.",
     "Keep your eyes on the cross the whole time. The cross sits off to one side and the symbol appears far out on the other, as close to the edge of your vision as the screen allows: never look at it. Vision out there is blurred and washed out, so you cannot be sure what is there — that uncertainty is what you are working with.",
@@ -508,7 +575,9 @@ const GAP_STEPS = {
     "Rest your eyes between trials. If they sting, water or feel dry, stop. Skip this version with dry eyes or contact lenses that are bothering you.",
   ],
 };
-const GAP_WARN = {
+const STEP_WARN = {
+  kasina: "A bright symbol on black for up to 45 seconds. Look away whenever it is uncomfortable.",
+  perky: "",
   gaps: "The symbol fades in and out slowly — under once a second, with soft edges, on an even background — which is far slower than the flicker known to trigger seizures. If you have photosensitive epilepsy, check with your doctor before using it.",
   blink: "Nothing on the screen flickers in this version: the gaps are made by your eyelids.",
 };
@@ -593,7 +662,8 @@ function choiceRow(label, entries, current, onPick) {
 
 function lookName(t) {
   return { after: "stare", steer: "stare", flash: "flash", compose: "each flash", generate: "read",
-           noise: "seed fades over", noisecue: "read", gaps: "on", blink: "fades over" }[t.kind];
+           noise: "seed fades over", noisecue: "read", gaps: "on", blink: "fades over",
+           kasina: "stare", perky: "read" }[t.kind];
 }
 const timing = (v, level) => ({ look: geo(TRIALS[v].look, level), hold: geo(TRIALS[v].hold, level) });
 
@@ -612,7 +682,9 @@ function renderMenu() {
   const e = ex(), v = variant(), T = settings.timed;
   $("d-name").textContent = e.name;
   $("d-supply").textContent = e.supply;
-  $("d-explain").innerHTML = e.explain.map(([k, t]) => `<dt>${esc(k)}</dt><dd>${esc(t)}</dd>`).join("");
+  $("d-explain").innerHTML = e.explain.map(([k, t]) => `<dt>${esc(k)}</dt><dd>${esc(t)}</dd>`).join("")
+    + (e.notes ? `<dt>Field notes</dt><dd><ul class="notes">${e.notes.map(([t, url]) =>
+        `<li>${esc(t)}${url ? ` <a href="${esc(url)}" target="_blank" rel="noopener">source ↗</a>` : ""}</li>`).join("")}</ul></dd>` : "");
 
   const box = $("d-settings");
   box.textContent = "";
@@ -638,13 +710,15 @@ function renderMenu() {
     box.appendChild(row);
     const note = document.createElement("p");
     note.className = "dim small";
-    note.textContent = "Difficulty follows your ratings on its own: clear holds raise it slowly, faint ones lower it. Set it by hand if you would rather.";
+    note.textContent = t.kind === "perky"
+      ? "Difficulty here sets which symbols appear and how long you imagine. The faintness of the real one adjusts itself to your answers."
+      : "Difficulty follows your ratings on its own: clear holds raise it slowly, faint ones lower it. Set it by hand if you would rather.";
     box.appendChild(note);
-    $("d-keys").textContent = "Keys: 1–5 to rate, Esc to stop.";
-    if (GAP_STEPS[v]) {
+    $("d-keys").textContent = t.kind === "perky" ? "Keys: Y / N to answer, Esc to stop." : "Keys: 1–5 to rate, Esc to stop.";
+    if (STEPS[v]) {
       const ol = document.createElement("ol");
       ol.className = "steps small";
-      ol.innerHTML = GAP_STEPS[v].map((t) => `<li>${esc(t)}</li>`).join("");
+      ol.innerHTML = STEPS[v].map((t) => `<li>${esc(t)}</li>`).join("");
       box.prepend(ol);
       const h = document.createElement("p");
       h.className = "dim small";
@@ -666,7 +740,7 @@ function renderMenu() {
     box.appendChild(choiceRow("Minutes", [5, 10, 15, 20].map((n) => [n, String(n)]), T.gzMin, setT("gzMin")));
     $("d-keys").textContent = "Keys: Space to mark a blank-out or an image, Esc to stop.";
   }
-  $("d-warn").textContent = e.id === "gaps" ? GAP_WARN[v]
+  $("d-warn").textContent = v && STEP_WARN[v] !== undefined ? STEP_WARN[v]
     : e.id === "flash"
     ? "Flashing colour: each trial opens with a full-screen flash of saturated colour. If you have photosensitive epilepsy, or flashing light has ever made you unwell, skip this one."
     : e.id === "noise"
@@ -800,6 +874,7 @@ function startTrials(v) {
     field: t.field ? fieldOf(v) : "000000", level, startLevel: level, peakLevel: level, points: 0,
     total: settings.trials[v], trials: [], startedAt: Date.now(), current: null, phase: "idle",
   };
+  if (t.kind === "kasina") toneReady();
   enter(" ");
   nextTrial();
 }
@@ -824,7 +899,7 @@ function nextTrial() {
   run.phase = "fixation";
   ({ after: afterimageTrial, steer: steerTrial, flash: flashTrial, compose: composeTrial,
      generate: generateTrial, noise: noiseTrial, noisecue: noiseTrial,
-     gaps: gapsTrial, blink: blinkTrial })[run.kind](stim, tm, tier);
+     gaps: gapsTrial, blink: blinkTrial, kasina: kasinaTrial, perky: perkyTrial })[run.kind](stim, tm, tier);
 }
 
 /* Stare, then the afterimage: the symbol as saturated as it goes, on black;
@@ -1009,6 +1084,150 @@ function blinkTrial(stim, tm) {
   }, BLINK_CUE_MS);
 }
 
+/* Tones for the eyes-closed version, from a context opened on the click that
+   started the session — one opened later, from a timer, may stay muted. */
+let toneCtx = null;
+function toneReady() {
+  try {
+    if (!toneCtx) toneCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (toneCtx.state === "suspended") toneCtx.resume();
+  } catch (e) { toneCtx = null; }
+}
+function tone(freq, secs) {
+  if (!toneCtx) return;
+  try {
+    const o = toneCtx.createOscillator(), g = toneCtx.createGain(), t = toneCtx.currentTime;
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.15, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + secs);
+    o.connect(g); g.connect(toneCtx.destination);
+    o.start(t); o.stop(t + secs + 0.05);
+  } catch (e) {}
+}
+
+/* The fire-kasina way: a long stare at a bright symbol on black, a low tone
+   to close the eyes, the afterimage held on the dark, a high tone to open
+   them. The screen goes black at the first tone, so nothing changes for
+   eyes that are slow to close. */
+function kasinaTrial(stim, tm) {
+  later(() => {
+    run.phase = "look";
+    paint("000000");
+    sym.style.color = `hsl(${stim.hue}, 100%, 55%)`;
+    sym.textContent = stim.symbol;
+    fix.hidden = false;
+    const on = performance.now();
+    later(() => {
+      run.current.shownMs = Math.round(performance.now() - on);
+      sym.textContent = "";
+      fix.hidden = true;
+      tone(330, 0.6);
+      run.phase = "hold";
+      later(() => { tone(660, 0.35); askRating(); }, tm.hold);
+    }, tm.look);
+  }, FIX_MS);
+}
+
+/* Perky's experiment as a measure. A description, then the grey field to
+   imagine it on; on half the trials a faint real version fades in and out
+   at a random moment inside that time. Afterwards: was anything there? */
+const PERKY_STEP = 1.15, PERKY_MIN = 0.01, PERKY_MAX = 0.6;
+if (!(settings.perkyContrast > 0)) settings.perkyContrast = 0.15;
+
+function perkyTrial(stim, tm) {
+  const present = Math.random() < 0.5, c = settings.perkyContrast;
+  const desc = `A ${hueName(stim.hue)} ${stim.name}, large, in the middle.`;
+  Object.assign(run.current, { present, contrast: present ? +c.toFixed(3) : 0, description: desc, shownMs: tm.look });
+  fix.hidden = true;
+  run.phase = "look";
+  cue.textContent = `Imagine it on the grey: ${desc.charAt(0).toLowerCase()}${desc.slice(1)}`;
+  later(() => {
+    cue.textContent = "";
+    run.phase = "hold";
+    sym.style.color = `hsl(${stim.hue}, 100%, 50%)`;
+    sym.style.opacity = "0";
+    sym.textContent = present ? stim.symbol : "";
+    if (present) {
+      const t0 = performance.now(), onset = tm.hold * (0.15 + Math.random() * 0.3), ramp = tm.hold * 0.25;
+      const tick = (now) => {
+        const e = now - t0;
+        const o = e < onset ? 0 : e < onset + ramp ? (e - onset) / ramp : e < onset + 2 * ramp ? 1 - (e - onset - ramp) / ramp : 0;
+        sym.style.opacity = (o * c).toFixed(3);
+        if (e < tm.hold) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }
+    later(() => { sym.textContent = ""; askPerky(); }, tm.hold);
+  }, tm.look);
+}
+
+function askPerky() {
+  run.phase = "rating";
+  $("rate-q").textContent = "Was anything really on the screen, or only your image?";
+  $("rate-what").textContent = `“${run.current.description}” Answer what you saw, not what you guess the odds are.`;
+  $("scale").style.gridTemplateColumns = "1fr 1fr";
+  $("scale").innerHTML = `<button type="button" data-a="1"><b>Y</b><span>Really there</span></button>`
+    + `<button type="button" data-a="0"><b>N</b><span>Only mine</span></button>`;
+  show($("rate"), true);
+}
+
+function answerPerky(yes) {
+  if (!run || run.kind !== "perky" || run.phase !== "rating") return;
+  const c = run.current;
+  c.answer = yes;
+  c.correct = yes === c.present;
+  /* One up, one down on the trials that had something: it holds the real
+     image near where it is caught half the time. */
+  if (c.present) {
+    settings.perkyContrast = Math.max(PERKY_MIN, Math.min(PERKY_MAX,
+      yes ? settings.perkyContrast / PERKY_STEP : settings.perkyContrast * PERKY_STEP));
+    save("settings", settings);
+  }
+  run.trials.push(c);
+  nextTrial();
+}
+
+/* Inverse of the standard normal CDF (Acklam's approximation), for d′. */
+function zOf(p) {
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const q = Math.min(p, 1 - p);
+  let x;
+  if (q < 0.02425) {
+    const r = Math.sqrt(-2 * Math.log(q));
+    x = (((((c[0] * r + c[1]) * r + c[2]) * r + c[3]) * r + c[4]) * r + c[5]) / ((((d[0] * r + d[1]) * r + d[2]) * r + d[3]) * r + 1);
+  } else {
+    const r = q - 0.5, t = r * r;
+    x = (((((a[0] * t + a[1]) * t + a[2]) * t + a[3]) * t + a[4]) * t + a[5]) * r / (((((b[0] * t + b[1]) * t + b[2]) * t + b[3]) * t + b[4]) * t + 1);
+  }
+  return p > 0.5 ? -x : x;
+}
+
+function finishPerky(r) {
+  const tr = r.trials, real = tr.filter((t) => t.present), none = tr.filter((t) => !t.present);
+  const hits = real.filter((t) => t.answer).length, fas = none.filter((t) => t.answer).length;
+  /* Log-linear correction, so a perfect score does not give infinity. */
+  const dp = zOf((hits + 0.5) / (real.length + 1)) - zOf((fas + 0.5) / (none.length + 1));
+  record({
+    id: `hallucination-${r.startedAt}`, date: new Date(r.startedAt).toISOString(), durationMs: Date.now() - r.startedAt,
+    exercise: r.exercise, variant: r.variant, hits, present: real.length, falseAlarms: fas, absent: none.length,
+    dPrime: dp, endContrast: settings.perkyContrast, trials: tr,
+    line: `${tr.length} trials · caught ${hits}/${real.length} real · ${fas}/${none.length} imagined taken for real · d′ ${dp.toFixed(2)}`,
+  });
+  showLast([
+    ["Real ones caught", `${hits} / ${real.length}`],
+    ["Yours taken for real", `${fas} / ${none.length}`],
+    ["Telling them apart (d′)", dp.toFixed(2)],
+    ["Faintness reached", `${(settings.perkyContrast * 100).toFixed(1)}%`],
+  ], "The middle number is the Perky effect from your side: trials with nothing on the screen where your image passed for a real one. "
+    + "d′ near 0 means you could not tell real from imagined at that faintness; higher means you could. "
+    + "As your imagery gets stronger, expect more of yours to pass for real and d′ to fall — that is the overlap the other exercises are building.");
+  renderMenu();
+}
+
 /* Static on a coarse grid, redrawn about twelve times a second at an even
    mean brightness. In Seeded the symbol is added to it, brighter, at a
    strength that falls linearly to nothing over the look time; the hold that
@@ -1095,6 +1314,7 @@ function noiseTrial(stim, tm, tier) {
 
 function askRating() {
   run.phase = "rating";
+  $("scale").style.gridTemplateColumns = "";
   const c = run.current, tier = tierOf(c.level), kind = run.kind;
   const steer = kind === "steer";
   $("rate-q").textContent = steer ? "Did it do what you asked?"
@@ -1104,6 +1324,7 @@ function askRating() {
     : kind === "noisecue" ? "How clearly did you see it in the static?"
     : kind === "gaps" ? "How continuously did you keep it through the gaps?"
     : kind === "blink" ? "How well did it stay through the blinks, and after it was gone?"
+    : kind === "kasina" ? "With your eyes closed, how did the afterimage hold?"
     : "How clearly did you see it?";
   const what = steer ? `“${c.instruction}”`
     : c.description ? `“${c.description}”`
@@ -1138,6 +1359,7 @@ function finishTrials() {
   /* Stopped before the first rating there is nothing to keep; stopped part
      way, what was rated is kept. Either way the difficulty carries. */
   if (!r.trials.length) return;
+  if (r.kind === "perky") return finishPerky(r);
   const tr = r.trials, clear = tr.filter((t) => t.rating >= 4);
   const mean = tr.reduce((s, t) => s + t.rating, 0) / tr.length;
   record({
@@ -1477,11 +1699,11 @@ $("start").onclick = () => {
   if (e.id === "troxler") startTroxler();
   else if (e.id === "bistable") startBistable();
   else if (e.id === "ganzfeld") startGanzfeld();
-  else if (e.id === "gaps") {
+  else if (STEPS[variant()]) {
     const v = variant();
     brief(TRIALS[v].label, "", [], () => startTrials(v),
-      `<ol class="steps">${GAP_STEPS[v].map((t) => `<li>${esc(t)}</li>`).join("")}</ol>`
-      + `<p class="small steps-warn">${esc(GAP_WARN[v])}</p>`);
+      `<ol class="steps">${STEPS[v].map((t) => `<li>${esc(t)}</li>`).join("")}</ol>`
+      + (STEP_WARN[v] ? `<p class="small steps-warn">${esc(STEP_WARN[v])}</p>` : ""));
   }
   else startTrials(variant());
 };
@@ -1499,12 +1721,18 @@ $("exit").onclick = stop;
 $("scale").onclick = (e) => {
   const b = e.target.closest("button[data-r]");
   if (b) rate(Number(b.dataset.r));
+  const a = e.target.closest("button[data-a]");
+  if (a) answerPerky(a.dataset.a === "1");
 };
 
 document.addEventListener("keydown", (e) => {
   if (!run || run.phase === "journal") return;
   if (e.key === "Escape") { e.preventDefault(); stop(); return; }
-  if (run.type === "trials" && /^[1-5]$/.test(e.key)) { e.preventDefault(); rate(Number(e.key)); }
+  if (run.type === "trials" && run.kind === "perky") {
+    if (/^[yY]$/.test(e.key)) { e.preventDefault(); answerPerky(true); }
+    else if (/^[nN]$/.test(e.key)) { e.preventDefault(); answerPerky(false); }
+  }
+  else if (run.type === "trials" && /^[1-5]$/.test(e.key)) { e.preventDefault(); rate(Number(e.key)); }
   else if (run.type === "troxler" && e.key === " ") { e.preventDefault(); if (!e.repeat) troxKey(true); }
   else if (run.type === "bistable" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); bistKey(e.key === "ArrowLeft" ? "L" : "R"); }
   else if (run.type === "ganzfeld" && e.key === " ") { e.preventDefault(); if (!e.repeat) ganzMark(); }
