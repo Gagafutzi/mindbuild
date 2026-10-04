@@ -124,6 +124,19 @@ anyway, is added as a candidate. The cost is that the answer comes from fewer
 slots than the board is wide, which is part of why a capped session keeps its
 own best.
 
+In **two dimensions and up** the board has `s^d` cells and only a handful hold
+anything, so landing on a forgotten symbol's own cell kept every new symbol in
+the few cells the opening board happened to use: the symbols did nothing but
+replace one another. There a forgotten symbol leaves the board as soon as it is
+forgotten, and a new symbol lands on any cell no held symbol is in, at random
+among them — nothing is displaced, and the held symbols spread over the whole
+board. Two symbols can then share a row or a column, so a step of zero on an
+axis is a real step, and a relation conclusion is only ever asked about two
+symbols that are some step apart. If the open cells ever all share one rank on
+the asked axis, the oldest held symbols are added as candidates, as above.
+Without a horizon nothing is forgotten, so a card still replaces the symbol in
+its slot.
+
 A capped session keeps its own best, one per cap, since the cap removes most of
 what makes a long episode hard.
 

@@ -575,7 +575,8 @@
           <p class="hint">A cap on how far back you are asked to remember. Once this many newer
             symbols have arrived, a symbol is forgotten: no card is placed against it and no
             conclusion asks about it, and its slot is free — new symbols land on forgotten
-            slots, so a symbol you are still holding is never overwritten. Off,
+            slots, so a symbol you are still holding is never overwritten. In 2D and up a
+            forgotten symbol leaves the board, and a new one lands on any empty cell. Off,
             a symbol stays in play for as long as nobody lands on its slot — on a board of
             five that is twenty cards about one time in a hundred. A capped session keeps
             its own best score, one per cap.</p>
@@ -1612,7 +1613,7 @@ function drawCard(el, glyph, refGlyph, dist, d) {
   });
   const ref = { stim: refGlyph, cls: 'ref', c: place(1, base) };
   const now = { stim: glyph, cls: 'new', c: place(0, d >= 4 ? base * sizeFactor(dist[3]) : base) };
-  if (d >= 4) now.tag = (dist[3] < 0 ? '+' : '−') + Math.abs(dist[3]);
+  if (d >= 4) now.tag = dist[3] === 0 ? '±0' : (dist[3] < 0 ? '+' : '−') + Math.abs(dist[3]);
   el.replaceChildren(...boxScene([ref, now], boxLattice(nu, nv, nw)));
 }
 
@@ -2076,9 +2077,11 @@ function beat() {
   const refGlyph = plan.ref.glyph;
   const glyph = nextStim(model.items.map(it => it.glyph).concat(recentlyGone));
   const res = R.apply(model, plan, glyph);
-  recentlyGone.push(res.removed.glyph);
-  if (recentlyGone.length > 3) recentlyGone.shift();
-  const k = model.items.length;
+  res.gone.forEach(it => recentlyGone.push(it.glyph));
+  while (recentlyGone.length > 3) recentlyGone.shift();
+  /* The board's width, not how many symbols are on it: in two dimensions and
+     up with a horizon only the held ones are. */
+  const k = lvl.s;
   cur = {
     k, d: lvl.d, s: lvl.s, level: ctrl.level, axis: plan.axis, dist: plan.dist,
     answer: res.answer, given: null, ok: false, interval, full: true,

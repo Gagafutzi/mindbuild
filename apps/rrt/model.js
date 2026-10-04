@@ -265,9 +265,10 @@
    * Without a horizon a symbol stays usable for as long as nobody lands on its
    * slot, and on a board of five that is twenty cards about one time in a
    * hundred — long after anyone could say where it was put. With one, a symbol
-   * is forgotten once `memory` newer symbols have arrived: it keeps its slot,
-   * so a card can still land there and replace it, but it is never again the
-   * reference of a card or one side of a conclusion. Forgetting it is then the
+   * is forgotten once `memory` newer symbols have arrived: it is never again
+   * the reference of a card or one side of a conclusion. In one dimension it
+   * keeps its slot until a card lands there and replaces it; in two and up it
+   * leaves the board (see `apply`). Forgetting it is then the
    * right move rather than a lapse.
    *
    * The opening board is one moment, so its symbols age together.
@@ -332,6 +333,16 @@
    * about a coin flip (a little more on a board of three, where the full-width
    * rule can rule a candidate out). While nothing is forgotten — the opening
    * board — that is the whole board, as with no horizon.
+   *
+   * In two dimensions and up a board of `s` per axis has `s^d` cells and only a
+   * handful are ever filled, so landing on a forgotten symbol's own cell kept
+   * every new symbol in the cells the opening board happened to use, and the
+   * symbols seemed to do nothing but replace one another. With a horizon there
+   * the new symbol lands on any cell no held symbol is in, uniformly among
+   * them: the forgotten symbols simply go (see `apply`), and nothing has to be
+   * evicted to make room. The target is then a bare cell, `{ranks}`, rather
+   * than a symbol. Should the open cells all share one rank on the asked axis,
+   * the oldest held symbols make up the numbers as above.
    */
   function planCard(model, rnd) {
     rnd = rnd || Math.random;
@@ -345,6 +356,7 @@
     };
     var usable = function (it) { return refsFor(it).length > 0; };
     if (!model.memory) return finish(pick(model.items.filter(usable)));
+    if (model.d > 1) return finish(pick(openCells(model, pool, axis, usable, rnd)));
     var targets = model.items.filter(function (it) { return pool.indexOf(it) < 0 && usable(it); });
     if (targets.length < 2) {
       /* Oldest first; symbols born together are shuffled so none is favoured. */
@@ -365,6 +377,52 @@
       for (var a = 0; a < model.d; a++) dist.push(target.ranks[a] - ref.ranks[a]);
       return { ref: ref, target: target, dist: dist, axis: axis };
     }
+  }
+
+  /* Every cell of the board as ranks, first axis slowest. */
+  function cells(d, s) {
+    var out = [[]];
+    for (var a = 0; a < d; a++) {
+      var next = [];
+      out.forEach(function (c) { for (var r = 0; r < s; r++) next.push(c.concat([r])); });
+      out = next;
+    }
+    return out;
+  }
+
+  /**
+   * Where a new symbol may land on a board of two or more dimensions with a
+   * horizon: every cell no held symbol is in and that has a usable reference.
+   * A forgotten symbol still on the board is the target in its own cell, so it
+   * is the one that leaves; an empty cell is a bare `{ranks}`.
+   *
+   * At least two ranks on the asked axis among them, or the answer would be
+   * known without the card; short of that the oldest held symbols, the next
+   * to be forgotten anyway, are added oldest first (a cohort in shuffled
+   * order) until there are.
+   */
+  function openCells(model, pool, axis, usable, rnd) {
+    var key = function (r) { return r.join(","); };
+    var at = {};
+    model.items.forEach(function (it) { at[key(it.ranks)] = it; });
+    var out = [];
+    cells(model.d, model.s).forEach(function (ranks) {
+      var it = at[key(ranks)];
+      if (it && pool.indexOf(it) >= 0) return;
+      var target = it || { ranks: ranks };
+      if (usable(target)) out.push(target);
+    });
+    var spread = function () {
+      for (var i = 1; i < out.length; i++) if (out[i].ranks[axis] !== out[0].ranks[axis]) return true;
+      return false;
+    };
+    if (!spread()) {
+      var held = pool.filter(usable);
+      var order = shuffled(held.length, rnd).map(function (i) { return held[i]; })
+        .sort(function (x, y) { return x.born - y.born; });
+      for (var h = 0; h < order.length && !spread(); h++) out.push(order[h]);
+    }
+    return out;
   }
 
   /**
@@ -388,11 +446,21 @@
     var items = remembered(model);
     if (items.length < 2) return null;
     var axis = model.d > 1 ? Math.floor(rnd() * model.d) : 0;
-    var i = Math.floor(rnd() * items.length);
-    var j = Math.floor(rnd() * (items.length - 1));
-    if (j >= i) j++;
-    var a = items[i], b = items[j];
-    var real = b.ranks[axis] - a.ranks[axis];
+    /* Two symbols on one rank of the axis — which a board of two or more
+       dimensions with a horizon allows — are no step apart, and a claim of
+       none is never made, so such a pair would give a true claim away. Drawn
+       again until the pair is a real step apart; a board where every symbol
+       is in one row has nothing to ask. */
+    var spread = items.some(function (it) { return it.ranks[axis] !== items[0].ranks[axis]; });
+    if (!spread) return null;
+    var a, b, real;
+    do {
+      var i = Math.floor(rnd() * items.length);
+      var j = Math.floor(rnd() * (items.length - 1));
+      if (j >= i) j++;
+      a = items[i]; b = items[j];
+      real = b.ranks[axis] - a.ranks[axis];
+    } while (real === 0);
     var truth = rnd() < 0.5;
     var claim = real;
     if (!truth) {
@@ -454,14 +522,27 @@
     return null;
   }
 
-  /** The card's symbol takes the target's slot; the target leaves. Nothing
-      else moves. */
+  /**
+   * The card's symbol takes the target's slot; the target leaves. Nothing
+   * else moves.
+   *
+   * On a board of two or more dimensions with a horizon the target may be an
+   * empty cell, and then nothing is displaced. There the forgotten symbols
+   * leave the board as they are forgotten — no card will land on them, and a
+   * board that kept them would fill every cell. `removed` is the symbol that
+   * was in the cell, or null; `gone` is everything that left this beat.
+   */
   function apply(model, plan, glyph) {
     var i = model.items.indexOf(plan.target);
+    var gone = i >= 0 ? model.items.splice(i, 1) : [];
     var x = { id: model.nextId++, glyph: glyph, ranks: plan.target.ranks.slice(), born: ++model.clock };
-    model.items.splice(i, 1);
     model.items.push(x);
-    return { item: x, removed: plan.target, answer: x.ranks[plan.axis] + 1 };
+    if (model.memory && model.d > 1) {
+      var kept = remembered(model);
+      model.items.forEach(function (it) { if (kept.indexOf(it) < 0) gone.push(it); });
+      model.items = kept;
+    }
+    return { item: x, removed: i >= 0 ? plan.target : null, gone: gone, answer: x.ranks[plan.axis] + 1 };
   }
 
   /* ------------------------------------------------------------------ *

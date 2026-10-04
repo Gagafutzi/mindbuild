@@ -430,9 +430,19 @@ function forgetRun(d, s, memory, beats, seed, probes) {
     const plan = R.planCard(m, rnd);
     out.push({ kind: "card", ages: [age(plan.ref)] });
     R.apply(m, plan, R.newGlyph(m.items.map(it => it.glyph), rnd));
-    assertPermutations(m);
+    if (d === 1) assertPermutations(m);
+    else assertOpenBoard(m);
   }
   return out;
+}
+
+/* Two dimensions and up with a horizon: the board is the held symbols only,
+   one to a cell, wherever they landed. */
+function assertOpenBoard(m) {
+  const keys = m.items.map(it => it.ranks.join(","));
+  assert.strictEqual(new Set(keys).size, keys.length, "two symbols in one cell: " + keys);
+  assert.strictEqual(R.remembered(m).length, m.items.length, "a forgotten symbol is still on the board");
+  m.items.forEach(it => it.ranks.forEach(r => assert.ok(r >= 0 && r < m.s, "rank " + r)));
 }
 
 test("with a horizon, no card is placed against a forgotten symbol", () => {
@@ -511,6 +521,96 @@ test("with a horizon, the landing slot is never the only one it could have been"
       R.apply(m2, plan, R.newGlyph(m2.items.map(it => it.glyph), rnd2));
     }
     if (n > 100) assert.ok(forced / n < 0.67, `${s}/${mem}: lone free slot taken ${(forced / n * 100).toFixed(0)}%`);
+  }
+});
+
+test("2D and up with a horizon: new symbols open cells the opening board never used", () => {
+  for (const [d, s, mem] of [[2, 3, 2], [2, 5, 4], [3, 4, 3], [4, 3, 2]]) {
+    const rnd = lcg(21);
+    const m = R.createModel(d, s, mem);
+    R.fill(m, stims(R.stimulusSet("glyphs"), s, rnd), rnd);
+    const opening = new Set(m.items.map(it => it.ranks.join(",")));
+    const seen = new Set();
+    let fresh = 0;
+    for (let i = 0; i < 4000; i++) {
+      const res = R.apply(m, R.planCard(m, rnd), R.newGlyph(m.items.map(it => it.glyph), rnd));
+      const key = res.item.ranks.join(",");
+      seen.add(key);
+      if (!opening.has(key)) fresh++;
+    }
+    assert.strictEqual(seen.size, Math.pow(s, d), `${d}D·${s}: only ${seen.size} of ${Math.pow(s, d)} cells ever used`);
+    assert.ok(fresh > 4000 * 0.5, `${d}D·${s}: ${fresh} of 4000 landed off the opening cells`);
+  }
+});
+
+test("2D and up with a horizon: a held symbol is never replaced while an open cell will do", () => {
+  for (const [d, s, mem] of [[2, 3, 2], [2, 4, 3], [2, 5, 6], [3, 3, 4], [4, 3, 5]]) {
+    for (let seed = 1; seed <= 20; seed++) {
+      const rnd = lcg(seed);
+      const m = R.createModel(d, s, mem);
+      R.fill(m, stims(R.stimulusSet("glyphs"), s, rnd), rnd);
+      for (let i = 0; i < 200; i++) {
+        const before = m.items.length;
+        const res = R.apply(m, R.planCard(m, rnd), R.newGlyph(m.items.map(it => it.glyph), rnd));
+        assert.strictEqual(res.removed, null, `${d}D·${s} forget ${mem}: replaced a held symbol`);
+        assert.ok(m.items.length <= Math.max(before + 1, mem), "board grew past the horizon");
+        assertOpenBoard(m);
+      }
+    }
+  }
+});
+
+test("2D and up with a horizon: a full board still gives two ranks to land on", () => {
+  /* Forget after 12 on 2D·3: every one of the nine cells ends up held. */
+  const rnd = lcg(4);
+  const m = R.createModel(2, 3, 12);
+  R.fill(m, stims(R.stimulusSet("glyphs"), 3, rnd), rnd);
+  for (let i = 0; i < 500; i++) {
+    const plan = R.planCard(m, rnd);
+    assert.ok(plan.ref !== plan.target && R.remembered(m).indexOf(plan.ref) >= 0);
+    R.apply(m, plan, R.newGlyph(m.items.map(it => it.glyph), rnd));
+    assertOpenBoard(m);
+  }
+});
+
+test("2D and up with a horizon: the answers spread evenly over the ranks", () => {
+  for (const [d, s, mem] of [[2, 5, 4], [3, 4, 3]]) {
+    const rnd = lcg(8);
+    const m = R.createModel(d, s, mem);
+    R.fill(m, stims(R.stimulusSet("glyphs"), s, rnd), rnd);
+    const counts = Array(s).fill(0), n = 6000;
+    for (let i = 0; i < n; i++) {
+      const res = R.apply(m, R.planCard(m, rnd), R.newGlyph(m.items.map(it => it.glyph), rnd));
+      counts[res.answer - 1]++;
+    }
+    counts.forEach(c => assert.ok(c > n / s * 0.8 && c < n / s * 1.2, `${d}D·${s} counts ` + counts));
+  }
+});
+
+test("2D and up with a horizon: a relation is never claimed between symbols on one rank", () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    const rnd = lcg(seed);
+    const m = R.createModel(2, 4, 4);
+    R.fill(m, stims(R.stimulusSet("glyphs"), 4, rnd), rnd);
+    for (let i = 0; i < 100; i++) {
+      const q = R.planRelation(m, rnd);
+      if (q) {
+        assert.notStrictEqual(q.claim, 0);
+        assert.notStrictEqual(q.pair[1].ranks[q.axis] - q.pair[0].ranks[q.axis], 0);
+      }
+      R.apply(m, R.planCard(m, rnd), R.newGlyph(m.items.map(it => it.glyph), rnd));
+    }
+  }
+});
+
+test("2D and up without a horizon, a card still replaces a symbol in its own slot", () => {
+  const rnd = lcg(3);
+  const m = R.createModel(2, 4);
+  R.fill(m, stims(R.stimulusSet("glyphs"), 4, rnd), rnd);
+  for (let i = 0; i < 200; i++) {
+    const res = R.apply(m, R.planCard(m, rnd), R.newGlyph(m.items.map(it => it.glyph), rnd));
+    assert.ok(res.removed && res.gone.length === 1);
+    assertPermutations(m);
   }
 });
 
