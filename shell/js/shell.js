@@ -51,7 +51,7 @@
        format, which the archive reads by key pattern, so the meter counts them
        with no adapter of their own. */
     { id: "relations", name: "Relation Algebra", path: "relations/", colour: "#d2a8ff",
-      what: "Nested relations in space, numbers, notes, days, headings and orientations" },
+      what: "Nested relations in space, numbers, notes, days, headings, orientations and poses; routes on a cube" },
     { id: "listening", name: "Listening Integration", path: "listening/", colour: "#7ee787",
       what: "Relations between spoken numbers, places and pitches, by ear, no input" },
   ];

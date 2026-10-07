@@ -253,6 +253,12 @@ in the catalogue fits.
 
 ### 5. Routes on a curved surface — holonomy
 
+**Built:** Relation Algebra's *Routes on a cube* task (`apps/relations/routes.js`,
+tested in `apps/relations/test/routes.test.js`), with all three tasks below.
+The walks there use the trainer's poses code, where `<` and `>` are steps to
+the side and `q Q` the turns, so the walks below read `^Q^Q^` and `^^q^^^q^`
+in it.
+
 Poses on the **surface of a cube**. A walker carries its facing over each
 edge onto the next face. Three facts, *checked by simulating the walker*:
 
@@ -537,7 +543,7 @@ Ranked by what each adds against what it costs.
 | 8 | Parity (7) | medium: three-object premises | the only proposal where nothing short of the whole shows anything |
 | 9 | Relatedness (10) | medium: pedigree material, path sums | real science, an exact lure |
 | 10 | Network of lenses (11) | large: several materials at once | one-way integration |
-| 11 | Curved surface (5) | large: relations become paths, a cube drawing | the most original item here |
+| 11 | Curved surface (5) | built | the most original item here |
 | 12 | Beliefs (12) | unknown | phrasing unsolved |
 
 ---

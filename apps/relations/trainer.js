@@ -11,8 +11,11 @@
  * record, marked as not completed. */
 
 (function () {
-  var A = window.Algebra;
+  var A = window.Algebra, R = window.Routes;
   var G_ORDER = ["space", "numbers", "notes", "days", "compass", "square", "pose"];
+  /* Routes on a cube are their own task in their own material: in the rotation they are
+     one round in every eight. */
+  var MATS = G_ORDER.concat(["cube"]);
   var T_ORDER = ["question", "possible", "howfar", "nback"];
   var COLOURS = { Red: "#e5534b", Blue: "#539bf5", Green: "#57ab5a", Gold: "#d4af37", Violet: "#b083f0", White: "#e6edf3" };
   var LETTER_COLOURS = { R: "Red", B: "Blue", G: "Green", O: "Gold", V: "Violet", W: "White" };
@@ -24,12 +27,14 @@
     diagonal: ["flipped on a diagonal", "⤡"], reverse: ["reversed", "−"], conjugate: ["seen in a mirror", "m·m"],
     noTurn: ["the turn left out", "∅q"], turnFirst: ["turned before stepping", "q→"],
     inverse: ["undone instead of done", "⁻¹"], swap: ["two objects swapped", "⇆"], plain: ["a new arrangement", "≠"],
+    flat: ["the cube read as a flat grid", "▭"], turn: ["a turn the wrong way", "q⇄Q"], turned: ["back, but turned", "↻⌂"],
+    surprise: ["home on the cube, though not on a grid", "⌂▭"],
   };
   var LEVEL_KEY = "chimera.relations.level.v1";
   var CHECKPOINT_KEY = "chimera.relations.checkpoint.v1";
   var RECORD_KEY = "chimera.relations.record.v1";
   var ROTATION_KEY = "chimera.relations.rotation";
-  var VERSION = "1.3.0";
+  var VERSION = "1.4.0";
 
   function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
@@ -56,9 +61,10 @@
   function paint(s) {
     return esc(s).replace(/\b(Red|Blue|Green|Gold|Violet|White)\b/g, function (n) { return '<b style="color:' + COLOURS[n] + '">' + n + "</b>"; });
   }
-  /* In code, colour the object letters (a letter at the start of a term). */
+  /* In code, colour the object letters (a letter at the start of a term). Nothing else in
+     the code can stand there: marks, moves and digits never use these six letters. */
   function paintCode(s) {
-    return esc(s).replace(/(^|=|\||−)([RBGOVW])(?![a-z\d]*=?[a-z])/g, function (m, pre, l) {
+    return esc(s).replace(/(^|=|\||−)([RBGOVW])/g, function (m, pre, l) {
       return pre + '<b style="color:' + COLOURS[LETTER_COLOURS[l]] + '">' + l + "</b>";
     });
   }
@@ -173,6 +179,51 @@
     }).join("") + "</div>";
   }
 
+  /* Routes: the cube unfolded into a cross (north above the top, west and east beside it,
+     south and then the bottom below), each walk drawn on it. A walk over an edge the cross
+     cuts leaves one face and comes back on another; both ends of the jump carry the same
+     number. Red's start is a filled disc with a pointer for its facing; a walk's end is a
+     ring. */
+  var FACE_TAG = { top: "top", north: "N", south: "S", bottom: "bottom", east: "E", west: "W" };
+  function cubeNet(s0, paths, marks, cell) {
+    var N = s0.N, M = 2 * N, c = cell || (N === 2 ? 16 : 11), W = 3 * M * c, H = 4 * M * c;
+    var pad = Math.ceil(c * 0.8) + 2, out = '<svg class="ra-draw ra-net" viewBox="' + -pad + " " + -pad + " " + (W + 2 * pad) + " " + (H + 2 * pad) + '" width="' + (W + 2 * pad) + '">';
+    R.netFaces(N).forEach(function (f) {
+      var x = f.u * c, y = f.v * c, size = M * c;
+      out += '<rect x="' + x + '" y="' + y + '" width="' + size + '" height="' + size + '" class="ra-face' + (f.id === "top" ? " ra-top" : "") + '"/>';
+      for (var k = 2; k < M; k += 2) {
+        out += '<line x1="' + (x + k * c) + '" y1="' + y + '" x2="' + (x + k * c) + '" y2="' + (y + size) + '" class="ra-grid"/>'
+          + '<line x1="' + x + '" y1="' + (y + k * c) + '" x2="' + (x + size) + '" y2="' + (y + k * c) + '" class="ra-grid"/>';
+      }
+      if (c >= 8) out += '<text x="' + (x + 2) + '" y="' + (y + 8) + '" class="ra-n">' + FACE_TAG[f.id] + "</text>";
+    });
+    function mark(st, col, filled, label) {
+      var np = R.netPose(st), x = np.at[0] * c, y = np.at[1] * c, r = Math.max(3, c * 0.62);
+      var o2 = '<line x1="' + x + '" y1="' + y + '" x2="' + (x + np.dir[0] * c * 1.5) + '" y2="' + (y + np.dir[1] * c * 1.5) + '" stroke="' + col + '" stroke-width="2.5"/>';
+      o2 += filled ? '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + col + '"/>' : '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="2"/>';
+      if (label && c >= 8) o2 += '<text x="' + x + '" y="' + (y + 3) + '" class="ra-lbl">' + label + "</text>";
+      return o2;
+    }
+    var jumpNo = 0;
+    paths.forEach(function (p) {
+      var tr = R.trace(p.from || s0, p.w), col = p.colour || COLOURS.Red;
+      tr.segs.forEach(function (sg) {
+        out += '<line x1="' + sg[0][0] * c + '" y1="' + sg[0][1] * c + '" x2="' + sg[1][0] * c + '" y2="' + sg[1][1] * c + '" class="ra-path" stroke="' + col + '"/>';
+      });
+      tr.jumps.forEach(function (j) {
+        jumpNo++;
+        j.forEach(function (pt) {
+          out += '<circle cx="' + pt[0] * c + '" cy="' + pt[1] * c + '" r="' + Math.max(3, c * 0.5) + '" class="ra-jump" stroke="' + col + '"/>';
+          if (c >= 8) out += '<text x="' + pt[0] * c + '" y="' + (pt[1] * c + 2.5) + '" class="ra-jlbl" fill="' + col + '">' + jumpNo + "</text>";
+        });
+      });
+      out += mark(tr.end, col, false);
+    });
+    (marks || []).forEach(function (m) { out += mark(m.pose, m.colour, true, m.label); });
+    out += mark(s0, COLOURS.Red, true, tag("Red"));
+    return out + "</svg>";
+  }
+
   var NOTATION_GUIDE =
     "<h3>Compact notation</h3>"
     + "<p>Every premise is an equation. <b>Objects</b> are letters: R Red, B Blue, G Green, <b>O Gold</b>, V Violet, W White. "
@@ -186,10 +237,17 @@
     + "<code>R=B^^&lt;q</code>: start at Blue, two steps ahead, one left, turn a quarter right: that is Red. Every turn changes what “ahead” means for the steps after it.</p>"
     + "<p><b>Either/or</b> (levels 21 to 30): <code>R=B(6|9)</code>: Red is one east or one north-east of Blue, and only one of them is true. Another route through the premises can settle which.</p>"
     + "<p><b>Marks</b> are names for places: <code>P=R6</code> then <code>B=P88</code>. Mark letters are P S T U X Y Z A C E F J K L N, doubled after the fifteenth (PP…).</p>"
+    + "<p><b>Routes on a cube</b>: poses walked on the surface of a cube, two or three squares to a side (the first line says which: <code>cube 2</code>). "
+    + "<code>R=⊤9@6</code>: Red stands on top, in square 9 (the keypad, north up), facing 6 (east). Walks are the poses code without mirrors: ^ v &lt; &gt; steps, q Q h turns. "
+    + "A step off an edge carries on down the next face, and the facing tips over the edge with the walker. <code>B=R^^q^</code>: Blue is where Red ends after the walk, facing the way Red then faces. "
+    + "Round a corner a walk comes back turned, because three squares meet there where four would on a flat grid: <code>^Q^Q^</code> ends where it began, a quarter turn right. "
+    + "<code>R⌂?</code>: select every walk (1–4, then Space) that brings Red back to its square facing the way it began. "
+    + "<code>∃?</code>: possible only if walking the whole loop from Red comes back to Red exactly. <code>G=R^^q?</code>: is Gold where that walk takes Red?</p>"
     + "<p><b>Questions</b>: <code>R=B6?</code> (answer <b>=</b> it must be, <b>≠</b> it can’t be, or <b>?</b> not settled: nothing links them, or it depends on how an either/or is read); <code>∃?</code> (can all of it be true?: ∃ yes, ∅ no); "
     + "<code>|R−B|₁?</code> steps along the grid, <code>|R−B|∞?</code> king's moves; <code>≡3?</code> the same arrangement as 3 back (≡ same, ≢ different), <code>≅3?</code> the same up to rotation. "
     + "While building the first n of an n-back round: <code>⊢k/n</code>, go on with ».</p>"
-    + "<p><b>Traps</b> in explanations: ∅n nesting ignored, −L / −R one side's offsets dropped, ± wrong sign, ⇄ wrong order, @8 perspective read facing north, ±1 one step off, ↻ ↺ turned, ⇋ ⇅ mirrored, ⤡ diagonal, ⁻¹ undone (in poses: seen from the other side), ∅q the turn left out, q→ turned before stepping, ⇆ two swapped.</p>";
+    + "<p><b>Traps</b> in explanations: ∅n nesting ignored, −L / −R one side's offsets dropped, ± wrong sign, ⇄ wrong order, @8 perspective read facing north, ±1 one step off, ↻ ↺ turned, ⇋ ⇅ mirrored, ⤡ diagonal, ⁻¹ undone (in poses: seen from the other side), ∅q the turn left out, q→ turned before stepping, ⇆ two swapped; "
+    + "on the cube, ▭ the cube read as a flat grid, ↻⌂ back but turned, q⇄Q a turn the wrong way.</p>";
 
   var EAR_GUIDE =
     "<h3>Eyes closed</h3>"
@@ -207,6 +265,8 @@
     + "<li><b>Orientations</b>: q <i>clock</i>, Q <i>counter</i>, h <i>half</i>, m <i>mirror</i>, M <i>flip</i>, d <i>rise</i>, D <i>fall</i>.</li>"
     + "<li><b>Poses</b>: the walk word for word: <i>front, back, left, right</i> for steps, the orientation words for turns. <code>R=B^^&lt;q</code>: “Red is Blue double front left clock”.</li>"
     + "<li><b>Either/or</b>: <code>R=B(6|9)</code>: “Red is Blue either six or nine”.</li>"
+    + "<li><b>Routes</b>: <code>cube 2</code> “cube two”; <code>R=⊤9@6</code> “Red is top nine, face six”; walks as in poses. "
+    + "By ear a home trial is one walk, “Red front counter front counter front. Home?”, and the pad is left, middle, right: home, back but turned, away.</li>"
     + "<li><b>Marks</b> P S T U X Y Z A C E F J K L N are Fox, Jar, Key, Lamp, Moon, Nest, Oak, Pond, Rope, Sun, Tent, Cup, Drum, Hat, Kite; a doubled letter is “big”: PP is “big Fox”.</li>"
     + "<li><b>Questions</b>: “Is Red Blue six?”; “Possible?”; “Red to Blue, grid?” or “king?”, then the choices, smallest first; “Same as 2 back?” (“, any turn” up to rotation); “Hold, 1 of 2”.</li></ul>"
     + "<p><b>Speech rate</b> and <b>Silence between premises</b> set the pace. The voice is the most natural one the device has.</p>";
@@ -215,7 +275,7 @@
     id: "relations",
     name: "Relation Algebra",
     version: VERSION,
-    what: "Nested relations in space, numbers, notes, days, headings and orientations",
+    what: "Nested relations in space, numbers, notes, days, headings, orientations and poses; routes on a cube",
     unit: "level",
     level: { start: 1, min: 1, max: 30 },
 
@@ -223,11 +283,12 @@
       "<p>Each trial describes some objects by how they relate: places on a grid, numbers, notes, days, headings, or a tile’s orientation. Combine the relations to answer.</p>"
       + "<p>A session is a run of <b>rounds</b>. A round is a set number of trials of one task in one material; the task and the material can change from round to round, and the level moves after every round. A session runs for the length you choose, 10 minutes to 5 hours; a long one is saved as it goes.</p>"
       + "<p><b>Tasks</b>: questions (true, false, or can’t tell when nothing links the two), possible (can every premise be true at once?), how far (steps apart), and structure n-back (the same arrangement as n back, however it is written).</p>"
+      + "<p><b>Routes on a cube</b> are poses walked on a cube's surface, where going round a corner turns you. Which walks come home, can a loop of walks close, and does a walk reach where another object stands? They are one round in every eight when the task and material both rotate.</p>"
       + "<p><b>Traps</b>: the wrong answers on offer are the answers of particular mistakes, and the explanation after a mistake names which.</p>"
       + NOTATION_GUIDE
       + EAR_GUIDE
       + "<h3>Words</h3><p>With the notation set to Words, the same premises are written out: “The place one step east of Red is two steps west and two steps north of Blue.”</p>"
-      + "<p>Keys: <b>F</b> yes / same / possible, <b>J</b> no / different / impossible, <b>K</b> can’t tell, <b>1–4</b> distances, <b>Space</b> go on, <b>Escape</b> pause.</p>",
+      + "<p>Keys: <b>F</b> yes / same / possible, <b>J</b> no / different / impossible, <b>K</b> can’t tell, <b>1–4</b> distances (in routes, select the walks, then <b>Space</b> to hand them in), <b>Space</b> go on, <b>Escape</b> pause.</p>",
 
     settings: [
       { key: "notation", label: "Text", type: "select", default: "compact", options: [
@@ -243,11 +304,13 @@
       { key: "task", label: "Task", type: "select", default: "rotate", options: [
         { value: "rotate", label: "A different task each round" }, { value: "question", label: "Questions" }, { value: "possible", label: "Possible?" },
         { value: "howfar", label: "How far? (space and numbers)" }, { value: "nback", label: "Structure n-back" },
-        { value: "mixed", label: "Questions, possible and how far, mixed in each round" }] },
+        { value: "mixed", label: "Questions, possible and how far, mixed in each round" },
+        { value: "routes", label: "Routes on a cube (only)" }] },
       { key: "material", label: "Material", type: "select", default: "rotate", options: [
         { value: "rotate", label: "A different material each round" }, { value: "space", label: "Space (grid)" }, { value: "numbers", label: "Numbers" },
         { value: "notes", label: "Notes (mod 12)" }, { value: "days", label: "Days (mod 7)" }, { value: "compass", label: "Headings (mod 8)" },
-        { value: "square", label: "Orientations (order matters)" }, { value: "pose", label: "Poses (place, facing and side together)" }] },
+        { value: "square", label: "Orientations (order matters)" }, { value: "pose", label: "Poses (place, facing and side together)" },
+        { value: "cube", label: "A cube's surface (routes)" }] },
       { key: "phrasing", label: "Nested places", type: "select", default: "mixed", options: [
         { value: "inline", label: "Inline" }, { value: "marks", label: "Marks" }, { value: "mixed", label: "Both, mixed" }] },
       { key: "perspective", label: "Perspective premises (space)", type: "boolean", default: true },
@@ -373,8 +436,139 @@
          whoever sets the phone up). */
       function lbl(sym, word) { return compact && !ears ? sym : word; }
 
+      /* ---- routes on a cube ---- */
+      /* A round takes home, loop and meet in turn. Home on screen is a selection: the
+         options are toggled with 1–4 and handed in with Space. By ear it is one walk and
+         three answers, so the pad stays left, middle, right. */
+      var ROUTE_KINDS = ["home", "loop", "meet"];
+      var GRID_WORDS = { home: "home", turned: "back, but turned", away: "away" };
+      function routeSym(c) { return c.cube === "home" ? "⌂" : c.cube === "turned" ? "↻" : "→"; }
+      function routeWords(c) { return c.cube === "home" ? "home" : c.cube === "turned" ? "back, " + R.TURN_WORDS[c.turn] : "ends " + R.where(c.end); }
+      function walkCode(w) { return compact ? "<code>" + esc(w) + "</code>" : esc(R.walkWords(w)); }
+      function gridNote(says) { return " · " + (compact ? "▭ " : "on a flat grid: ") + esc(says); }
+      function routeExplain(trial) {
+        var h = "", trap = function (k) { return k ? "<p>" + (compact ? "" : "Trap: ") + esc(trapText(k)) + "</p>" : ""; };
+        if (trial.kind === "home") {
+          h += "<p><b>" + (trial.answer.length ? (compact ? "⌂ " : "Home: ") + trial.answer.map(function (i) { return i + 1; }).join(compact ? " " : ", ")
+            : (compact ? "⌂ ∅" : "None of them comes home.")) + "</b></p>";
+          h += '<ul class="ra-routes">' + trial.options.map(function (c, i) {
+            return "<li>" + (i + 1) + (compact ? " " + walkCode(c.w) : "") + " · " + routeSym(c) + " " + esc(routeWords(c)) + (c.grid !== c.cube ? gridNote(GRID_WORDS[c.grid]) : "") + "</li>";
+          }).join("") + "</ul>";
+          return h + '<div class="ra-nets">' + trial.options.map(function (c, i) {
+            return "<div><small>" + (i + 1) + "</small>" + cubeNet(trial.start, [{ w: c.w }], [], trial.start.N === 2 ? 10 : 7) + "</div>";
+          }).join("") + "</div>";
+        }
+        if (trial.kind === "homeOne") {
+          var c = trial.option;
+          return "<p><b>" + routeSym(c) + " " + esc(routeWords(c)) + "</b>" + (c.grid !== c.cube ? gridNote(GRID_WORDS[c.grid]) : "") + "</p>"
+            + trap(trial.lure) + cubeNet(trial.start, [{ w: c.w }], []);
+        }
+        if (trial.kind === "loop") {
+          h += "<p><b>" + (trial.answer === "possible" ? (compact ? "∃" : "Possible") : (compact ? "∅" : "Impossible")) + "</b> · "
+            + (trial.answer === "possible" ? "walked round from Red, the loop comes back to Red exactly"
+              : "walked round from Red, the loop ends " + esc(R.where(trial.end)) + "; Red stands " + esc(R.where(trial.start)))
+            + (trial.gridAnswer !== trial.answer ? gridNote(trial.gridAnswer) : "") + "</p>";
+          return h + trap(trial.lure !== "flat" ? trial.lure : null) + "<p>" + (compact ? "⇒ " : "The loop from Red: ") + walkCode(trial.loop) + "</p>"
+            + cubeNet(trial.start, [{ w: trial.loop }], []);
+        }
+        var ans = { yes: compact ? "=" : "Yes", no: compact ? "≠" : "No", cant: compact ? "?" : "Can't tell" }[trial.answer];
+        if (trial.answer === "cant") return "<p><b>" + ans + "</b> · " + (compact ? "∅ R…" + esc(A.LETTER[trial.X]) : "Nothing links " + paint(trial.X) + " to Red.") + "</p>";
+        var end = R.walk(trial.start, trial.asked).end;
+        h += "<p><b>" + ans + "</b> · " + paint(trial.X) + " stands " + esc(R.where(trial.target))
+          + (trial.answer === "yes" ? "" : "; Red walked " + walkCode(trial.asked) + " ends " + esc(R.where(end)))
+          + (trial.gridAnswer !== trial.answer ? gridNote(trial.gridAnswer === "yes" ? (compact ? "=" : "yes") : (compact ? "≠" : "no")) : "") + "</p>";
+        if (trial.answer === "no") h += "<p>" + (compact ? "⇒ " : "A walk that gets there: ") + walkCode(trial.truth) + "</p>";
+        return h + trap(trial.lure !== "flat" ? trial.lure : null)
+          + cubeNet(trial.start, [{ w: trial.asked }], [{ pose: trial.target, colour: COLOURS[trial.X], label: tag(trial.X) }]);
+      }
+      function routeHeard(trial) {
+        if (trial.kind === "homeOne" || trial.kind === "home") {
+          var c = trial.option || trial.options[0];
+          return [routeWords(c).replace(/^./, function (x) { return x.toUpperCase(); }) + "."]
+            .concat(c.grid !== c.cube ? ["On a flat grid it would be " + GRID_WORDS[c.grid] + "."] : []);
+        }
+        if (trial.kind === "loop") {
+          return [trial.answer === "possible" ? "Possible: the loop comes back to Red." : "Impossible: the loop ends " + R.where(trial.end) + "."]
+            .concat(trial.gridAnswer !== trial.answer ? ["On a flat grid it would be " + trial.gridAnswer + "."] : []);
+        }
+        if (trial.answer === "cant") return ["Can't tell: nothing links " + trial.X + " to Red."];
+        return [{ yes: "Yes.", no: "No." }[trial.answer], trial.X + " stands " + R.where(trial.target) + "."]
+          .concat(trial.gridAnswer !== trial.answer ? ["On a flat grid it would be " + trial.gridAnswer + "."] : []);
+      }
+      function seen(kind, caught) {
+        lureStats[kind] = lureStats[kind] || { shown: 0, caught: 0 };
+        lureStats[kind].shown++;
+        if (caught) lureStats[kind].caught++;
+      }
+      async function routesRound() {
+        var o = R.difficulty(level), done = 0, right = 0, n = set.perRound;
+        for (var t = 0; t < n && s.now() < endMs; t++) {
+          var kind = ROUTE_KINDS[t % ROUTE_KINDS.length], rng = A.Rng(), trial;
+          if (kind === "home") trial = ears ? R.homeOneTrial(rng, o) : R.homeTrial(rng, o);
+          else trial = kind === "loop" ? R.loopTrial(rng, o) : R.meetTrial(rng, o);
+          if (!trial) continue;
+          var c = R.card(trial, compact), given = null, rtMs = null, good;
+          if (trial.kind === "home") {
+            var picked = [];
+            var mark = function () {
+              for (var j = 0; j < 4; j++) {
+                var b = pad && pad.querySelector('.h-key[data-id="o' + j + '"]');
+                if (b) b.classList.toggle("ra-on", picked.indexOf(j) >= 0);
+              }
+            };
+            buttons([0, 1, 2, 3].map(function (j) { return { id: "o" + j, label: String(j + 1), key: String(j + 1) }; })
+              .concat([{ id: "done", label: lbl("»", "Done"), key: " " }]));
+            await present(c.lines, c.question);
+            var t0 = s.now(), resp;
+            for (;;) {
+              resp = await s.respond({ timeoutMs: limit ? Math.max(1, limit - (s.now() - t0)) : null });
+              if (!resp || resp.id === "done") break;
+              var j = +resp.id.slice(1), at = picked.indexOf(j);
+              if (at >= 0) picked.splice(at, 1); else picked.push(j);
+              mark();
+            }
+            if (resp) { given = picked.slice().sort(); rtMs = Math.round(s.now() - t0); }
+            good = !!given && given.join() === trial.answer.join();
+          } else {
+            var bs;
+            if (trial.kind === "homeOne") bs = [{ id: "home", label: lbl("⌂", "Home"), key: "f" }, { id: "turned", label: lbl("↻", "Turned"), key: "k" }, { id: "away", label: lbl("→", "Away"), key: "j" }];
+            else if (trial.kind === "loop") bs = [{ id: "possible", label: lbl("∃", "Possible"), key: "f" }, { id: "impossible", label: lbl("∅", "Impossible"), key: "j" }];
+            else {
+              var yes = { id: "yes", label: lbl("=", "Yes"), key: "f" }, no = { id: "no", label: lbl("≠", "No"), key: "j" }, cant = { id: "cant", label: lbl("?", "Can't tell"), key: "k" };
+              bs = ears ? [yes, cant, no] : [yes, no, cant];
+            }
+            buttons(bs);
+            await present(c.lines, c.question);
+            var r1 = await s.respond({ timeoutMs: limit });
+            given = r1 ? r1.id : null; rtMs = r1 ? r1.rtMs : null;
+            good = given === trial.answer;
+          }
+          done++; if (good) right++;
+          tone(good);
+          /* Traps: per option in a home selection (seen through when that option was
+             judged right), and per trial otherwise. */
+          if (trial.kind === "home") {
+            trial.options.forEach(function (oc, i) {
+              if (oc.kind === "flat" || oc.kind === "turned" || oc.kind === "surprise") seen(oc.kind, !!given && (given.indexOf(i) >= 0) === (oc.cube === "home"));
+            });
+          } else if (trial.lure) seen(trial.lure, good);
+          log({
+            target: trial.kind === "loop" ? trial.answer === "possible" : trial.kind === "meet" ? trial.answer === "yes" : undefined,
+            response: trial.kind === "loop" ? (given === "possible" ? "possible" : null) : trial.kind === "meet" ? (given === "yes" ? "yes" : null) : (given ? String(given) : null),
+            correct: good, rtMs: rtMs,
+            extra: { task: "routes", material: "cube", kind: trial.kind, answer: Array.isArray(trial.answer) ? trial.answer.join() : trial.answer,
+              said: Array.isArray(given) ? given.join() : given, lure: trial.lure || null, level: level, cube: o.N,
+              premises: trial.premises ? trial.premises.length : null, grid: trial.gridAnswer || null },
+          });
+          s.feedback(good);
+          await explain(good, routeExplain(trial), routeHeard(trial));
+        }
+        return { done: done, right: right };
+      }
+
       /* ---- one round ---- */
       async function round(task, G) {
+        if (task === "routes") return routesRound();
         var o = A.difficulty(level, task);
         if (!set.perspective) o.perspectiveShare = 0;
         var done = 0, right = 0, n = set.perRound;
@@ -483,15 +677,23 @@
        * through the materials, so all 28 pairings come up within 28 rounds.
        * How far needs a distance, so in a material without one it becomes
        * questions. */
+      /* Routes are a task and a material at once, so choosing either chooses both. With
+         the material rotating, the cube is the eighth material and its round is routes;
+         a fixed task other than routes rotates through the seven groups only. With both
+         rotating, every one of the 28 pairings comes up within 32 rounds, and routes once
+         in every eight. */
       function plan(r) {
-        var i = rot + r, len = G_ORDER.length;
-        var material = set.material === "rotate" ? G_ORDER[i % len] : set.material;
+        if (set.task === "routes" || set.material === "cube") return { task: "routes", material: "cube" };
+        var i = rot + r, mats = set.task === "rotate" || set.task === "mixed" ? MATS : G_ORDER, len = mats.length;
+        var material = set.material === "rotate" ? mats[i % len] : set.material;
+        if (material === "cube") return { task: "routes", material: "cube" };
         var task = set.task === "rotate" ? T_ORDER[(set.material === "rotate" ? i % len + Math.floor(i / len) : i) % T_ORDER.length] : set.task;
         if (task === "howfar" && !A.GROUPS[material].metric) task = "question";
         return { task: task, material: material };
       }
-      var TASK_WORDS = { question: "questions", possible: "possible", howfar: "how far", nback: "n-back", mixed: "mixed" };
-      var MATERIAL_WORDS = { space: "space", numbers: "numbers", notes: "notes", days: "days", compass: "headings", square: "tiles", pose: "poses" };
+      var TASK_WORDS = { question: "questions", possible: "possible", howfar: "how far", nback: "n-back", mixed: "mixed", routes: "routes" };
+      var MATERIAL_WORDS = { space: "space", numbers: "numbers", notes: "notes", days: "days", compass: "headings", square: "tiles", pose: "poses", cube: "cube" };
+      function materialLabel(m) { return m === "cube" ? "Cube" : A.GROUPS[m].label; }
       try {
         var r = 0, empty = 0;
         while (s.now() < endMs) {
@@ -523,7 +725,7 @@
           buttons([{ id: "next", label: compact ? "»" : "Next round", key: " " }]);
           s.show('<div class="ra-card ra-round' + (compact ? " ra-code" : "") + '"><p class="ra-q">' + (compact
             ? "#" + r + " · " + Math.round(acc * 100) + "% · L" + from + "→" + level + " · → " + nextTask + "/" + nextMaterial + " · " + left + "m"
-            : "Round " + r + ": " + Math.round(acc * 100) + "% · level " + from + " → " + level + ". Next: " + nextTask + ", " + A.GROUPS[nextMaterial].label + ". " + left + " min left.") + "</p></div>");
+            : "Round " + r + ": " + Math.round(acc * 100) + "% · level " + from + " → " + level + ". Next: " + nextTask + ", " + materialLabel(nextMaterial) + ". " + left + " min left.") + "</p></div>");
           await s.respond({ accept: ["next"], timeoutMs: 8000 });
         }
         if (ears) await say("Session over. Level " + level + ".");

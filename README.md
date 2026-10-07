@@ -61,6 +61,11 @@ record format** under `chimera.<app>.record.v1`; the archive's
 and the gate's Firefox reader all find those keys by pattern, so they count
 with no adapter of their own.
 
+One change to Relation Algebra was made here first and is not in Chimera Hub
+yet: **routes on a cube** (`apps/relations/routes.js`), poses walked on a
+cube's surface, where going round a corner turns you. It is proposal 5 in
+[`research/relation-algebra.md`](research/relation-algebra.md), built.
+
 Listening Integration's spoken numbers are Dark's recordings from Relational
 Integration Training, shipped in Chimera Hub with Dark's permission and with
 the licence still to be confirmed — see `apps/listening/AUDIO-LICENSE`.
@@ -154,6 +159,8 @@ not enough for the Play Store.
 ```bash
 node test/run.js                 # the shell's meter
 node apps/archive/test/run.js    # the archive's merge
+node apps/relations/test/algebra.test.js   # Relation Algebra's engine
+node apps/relations/test/routes.test.js    # and its routes on a cube
 python3 gate/test_gate.py        # the gate's decisions, with no display
 ```
 

@@ -3,7 +3,9 @@
 Nested relations, combined in your head. The same task works in seven
 materials: places on a grid, numbers, notes, days of the week, compass
 headings, a tile's orientation, and poses (place, facing and handedness
-together). From level 21, premises can be either/or. Inspired by IMAGI-WORLD, a structure
+together). From level 21, premises can be either/or. Routes on a cube walk
+the poses over a cube's surface, where going round a corner turns you.
+Inspired by IMAGI-WORLD, a structure
 n-back of spoken spatial premises; rebuilt so the answer depends on what a
 sentence means, never on its wording.
 
@@ -29,6 +31,9 @@ into one model, and reading answers off it. Each trial describes objects
 - **Structure n-back:** is this the same arrangement as the one n
   descriptions back? It usually comes back worded quite differently, and
   optionally turned (up to rotation).
+- **Routes on a cube:** poses walked on the surface of a cube, where a walk
+  is no longer a fixed relation (below). Which walks bring Red home? Can a
+  loop of walks close? Does a walk take Red to where another object stands?
 
 ## Sessions and rounds
 
@@ -37,8 +42,10 @@ A session is a run of **rounds** and lasts as long as you set: 10, 15, 20,
 trials (4 to 100, 12 by default) of one task in one material.
 
 - **Task** and **Material** can each be fixed or set to change every round.
-  With both changing, all 28 pairings come up within 28 rounds. A session
-  picks up the rotation where the last one stopped.
+  With both changing, one round in eight is routes on a cube, and all 28
+  other pairings come up within 32 rounds. Choosing routes as the task, or
+  the cube as the material, chooses both. A session picks up the rotation
+  where the last one stopped.
 - **The level moves after every round**, not just at the end of the session.
 - **Long sessions are saved as they go.** Every trial is checkpointed. If
   the tab is closed or crashes, the next time the page opens the unfinished
@@ -121,6 +128,31 @@ every loop close.
 the fifteenth they double (PP, SS, …). A mark never contains a digit or a
 lower-case letter, so it can't be mistaken for a move.
 
+**Routes on a cube** are poses walked over the surface of a cube of two or
+three squares a side; the first line says which, `cube 2`. One object is
+placed: `R=⊤9@6` is Red on top (`⊤`), in square 9 (the keypad, north up; on a
+cube of two the squares are 7 9 above 1 3), facing 6 (east). Walks are the
+poses code without mirrors, `^ v < >` steps and `q Q h` turns, and a premise
+reads as it does in poses: `B=R^^q^` is where Red ends after the walk, facing
+the way Red then faces.
+
+- A step off an edge carries on down the next face, and the facing tips over
+  the edge with the walker: walking east off the top, you face down the east
+  side.
+- Three squares meet at each corner where four would on a flat grid, so a
+  walk round a corner comes back turned. `^Q^Q^` from the north-east square
+  facing east ends on the same square facing south. Eight steps straight
+  round the middle come back facing the same way.
+- So a walk is not a fixed relation: what `^^q` does depends on where it
+  starts, and the premises have to be walked.
+
+| Code | Asks | Answers |
+| --- | --- | --- |
+| `R⌂?`, after four walks `1 …` to `4 …` | Which walks bring Red back to its square, facing the way it began? | select every one (1–4), then `»` |
+| `R^Q^Q^⌂?` (eyes closed) | Does this walk bring Red home? | `⌂` home, `↻` back but turned, `→` away |
+| `∃?` | Can this loop of walks close? | `∃` possible, `∅` impossible |
+| `G=R^^q?` | Is Gold where this walk takes Red, facing Gold's way? | `=`, `≠`, `?` |
+
 **Questions and answers:**
 
 | Code | Asks | Answers |
@@ -154,6 +186,9 @@ belongs to is a symbol:
 | `∅q` | (poses) the turn left out |
 | `q→` | (poses) turned before stepping instead of after |
 | `≠` | a new arrangement (n-back) |
+| `▭` | (cube) the cube read as a flat grid |
+| `↻⌂` | (cube) back on the square, but turned |
+| `q⇄Q` | (cube) a turn the wrong way |
 
 The round summary reads `#3 · 75% · L4→5 · → nback/days · 41m`: round 3,
 75% right, level 4 to 5, next round structure n-back in days, 41 minutes
@@ -179,12 +214,27 @@ decidable.
 The questions always ask about the two objects joined by the longest chain of
 premises, so higher levels mean combining more of them.
 
+Routes on a cube read the same level their own way:
+
+- the cube has two squares a side below level 16, and three from 16;
+- the moves are `^ q Q` from level 1, then `h v` from 5 and `< >` from 9;
+- a home walk is 4 to 8 moves at level 1, growing to 7 to 15 at level 30, and
+  each premise's walk 2 to 3 moves, growing to 6;
+- a loop holds 3 objects to level 8, 4 to level 18 and 5 above it; a chain
+  in "does it reach?" has one premise fewer.
+
+Eight moves is the floor for home walks because the smallest loop that closes
+on a flat grid, `^Q^Q^Q^Q`, is eight moves; below it there is no flat trap to
+offer. Before back steps arrive, a premise stated the other way round undoes
+its walk by turning round, walking it backwards and turning round again.
+
 ## Controls
 
 - **F:** Yes / Same / Possible (`=`, `≡`, `∃`).
 - **J:** No / Different / Impossible (`≠`, `≢`, `∅`).
 - **K:** Can't tell (`?`).
-- **1–4:** the options in How far?
+- **1–4:** the options in How far?; in routes' home trials, select or
+  unselect a walk, then Space to hand the selection in.
 - **Space:** go on (`»`).
 - **Escape:** pause.
 
@@ -220,6 +270,8 @@ whole screen under the bar becomes the answer pad:
 - Two soft rising notes mean the question comes next. The answer is timed
   from the end of the question.
 - How far? says its choices after the question, smallest first, in pad order.
+- Routes' home trials are one walk by ear, with three answers: left home,
+  middle back but turned, right away.
 - Each round opens with its number, task and material ("Round 3. n-back,
   days, 2 back."). It closes with the score, the level and the minutes left,
   then goes straight on.
@@ -262,6 +314,9 @@ each one back.
 | `\|R−B\|₁?`, `\|R−B\|∞?` | Red to Blue, grid? / king? (numbers: "Red to Blue?") |
 | `≡2?`, `≅2?` | Same as 2 back? / Same as 2 back, any turn? |
 | `⊢1/2` | Hold, 1 of 2 |
+| `cube 2` | cube two |
+| `R=⊤9@6` | Red is top nine, face six |
+| `R^Q^Q^⌂?` | Red front counter front counter front. Home? |
 
 Examples:
 
@@ -313,6 +368,17 @@ Examples:
   seen from the other object, so every premise is a change of frame. The
   lures are the mistakes particular to it: the walk seen from the wrong end,
   left and right swapped, the turn left out, the turn taken before the steps.
+- **Curvature and holonomy (routes on a cube).** On a flat grid the poses
+  are a group, so a walk is the same relation wherever it starts, and a loop
+  that closes on paper closes anywhere. A cube's surface is flat everywhere
+  but its eight corners, where a quarter turn of angle is missing (three
+  right angles meet where a plane has four). A walk carried round a corner
+  comes back turned by that quarter, round two corners by a half, and round
+  four by a whole turn, which is no turn at all. The eight missing quarters
+  total two full turns: Descartes' theorem, the discrete Gauss–Bonnet. So on
+  the cube a walk is a path, not a group element, and premises can only be
+  combined by walking them. The lure in every routes trial is the flat-grid
+  answer, the one the algebra gives.
 - **Sets of readings (either/or).** An either/or premise is two equations,
   one of them true. The engine tries every combination, keeps those whose
   loops all close (Kirchhoff again), and asks what all of them agree on. A
@@ -354,5 +420,24 @@ Examples:
   - every spoken line reads back to its written line;
   - the poses walk the right way (step then turn is not turn then step);
   - every either/or answer, checked by brute force over every reading.
+- `routes.js`: routes on a cube. The walker (a step over an edge carries
+  the facing with it), walks as strings (undone, normalised, read on a flat
+  grid), shortest walks, the three trials, their code, words and spoken lines,
+  and the cube's net for drawings; no page code.
+- `test/routes.test.js`: `node apps/relations/test/routes.test.js`. About
+  218,000 checks:
+  - the walker stays on the cube, on squares' centres, facing along the face;
+  - every walk undone comes back, and normalising a walk changes nothing;
+  - the facts the mode rests on: round a corner a quarter turn; round an
+    edge with two right turns, and round the middle with none, no turn;
+  - turning or mirroring the whole cube turns or mirrors every walk (all 24
+    rotations, and left for right);
+  - on one face the cube is the flat grid, and the flat grid is the
+    trainer's own pose group;
+  - every trial at every level, read back from the code it shows by a reader
+    that knows nothing of how it was made, has the trial's answer; every flat
+    trap is one the flat-grid reading gets wrong; and no walk uses a move the
+    level has not reached.
 - `trainer.js`: the page, on the hub's harness: rounds, checkpoints,
-  explanations and drawings.
+  explanations and drawings (for routes, the cube unfolded with each walk on
+  it).

@@ -1,7 +1,7 @@
 {
   "id": "relations",
   "name": "Relation Algebra",
-  "what": "Nested relations in space, numbers, notes, days, headings and orientations",
+  "what": "Nested relations in space, numbers, notes, days, headings, orientations and poses; routes on a cube",
   "categories": ["rrt", "spatial"],
   "unit": "level",
   "license": "MIT",
