@@ -1,747 +1,588 @@
 # Relations beyond the seven groups — research notes for Relation Algebra
 
-Notes towards extending `apps/relations`. The trainer does one thing
-thoroughly: objects hold elements of a group, premises fix the differences
-between them, and the player composes those differences along paths and
-round loops. This collects what mathematics, physics, music theory,
-anthropology, biology, computer science and cognitive science know about
-relations that could be built on that, sorted by how much of the engine each
-would have to change.
+Notes towards extending `apps/relations`, the Relation Algebra trainer.
+Concepts about relations from mathematics, physics, music theory,
+anthropology, biology, computer science and cognitive science, with one
+rule for what gets in.
 
-The name says *relation algebra*, but the engine is not Tarski's relation
-algebra (that is in [3.11](#311-tarskis-relation-algebra-for-the-record)),
-and most of the useful ideas come from elsewhere. Relation Algebra's source
-lives upstream in Chimera Hub, so anything here that is built belongs there
-first (see the README).
+**The floor is Syllogimous's hardest modes.** Every proposal here has to
+be at least as hard as the top band of that app, in the same sense that
+those modes are hard, and each says which mode it is measured against and
+what it adds. A new group for the same old task does not clear that bar:
+Relation Algebra at level 30 in a new material is exactly as hard as in an
+old one. So new materials appear only at the end, as
+[substrates](#substrates-materials-the-proposals-run-on) the proposals run
+on, with a list of what was [considered and left out](#considered-and-left-below-the-floor).
 
-Claims worked out for these notes rather than quoted from a source are
-checked by brute force in `research/relation-algebra-checks.js`:
+Relation Algebra's source lives upstream in Chimera Hub, so anything here
+that is built belongs there first (see the README). Claims worked out for
+these notes, rather than quoted from a source, are checked by brute force:
 
 ```bash
-node research/relation-algebra-checks.js
+node research/relation-algebra-checks.js     # 29 claims, about five seconds
 ```
+
+## The floor
+
+Syllogimous prices every mode on one scale (`MODE_SCALE` in
+`utils/calibration.utils.ts`: the weight is how many plain linear premises
+one premise is worth; the ceiling is the highest level at which the mode
+still tells you anything) and opens modes by row (`TIERS_MATRIX` in
+`constants/game.constants.ts`). Its top band, by ceiling and weight:
+
+| Mode | Weight | Ceiling | Opens at row | What has to be held | The general problem |
+| --- | --- | --- | --- | --- | --- |
+| Common Subsystem | 2.8 | 28 | 14 | the largest structure two systems share, with nothing pointing at it | maximum common induced subgraph: NP-hard |
+| Cross Analogy | 2.5 | 28 | 15 | a dictionary between two vocabularies, then an analogy across it | a search over signed permutations of the axes |
+| Context Shifts | 2.7 | 27 | 14 | a relation as a value, carried through operations that do not commute | composition in the hyperoctahedral group, with projections |
+| Partial Isomorphism | 2.6 | 27 | 12 | two systems alike but for one entity each | isomorphism after a deletion on each side |
+| Second-Order | 2.6 | 27 | 13 | an operation found from one example, then applied | induction over a catalogue |
+| Structure Match | 3.0 | 26 | 9 | the same structure renamed, against a decoy one arrow off | graph isomorphism (quasi-polynomial, Babai 2016) |
+| Concave Regions | 2.8 | 26 | 13 | which of 32 region relations survive, each by a proof | qualitative spatial calculi: NP-complete in general (Renz & Nebel 1999, for RCC8) |
+| Motif Search | 2.5 | 26 | 10 | a pattern hidden in a larger system | induced subgraph isomorphism: NP-complete |
+| Pivot Transforms | 2.5 | 26 | 12 | a model updated mid-read, so early premises stop holding | non-monotonic: nothing read earlier can be kept as is |
+| Betweenness | 2.3 | 26 | 15 | who must lie between, over every arrangement and its mirror | betweenness: NP-complete (Opatrny 1979) |
+| Interval Algebra | 2.4 | 26 | 8 | every Allen relation still possible | Allen satisfiability: NP-complete (Vilain & Kautz 1986) |
+
+Five properties make these hard, and together they define the floor:
+
+1. **Held whole.** Nothing follows from one premise and nothing accumulates
+   along a chain (Syllogimous's own words for its isomorphism family). The
+   whole item has to be held at once.
+2. **No efficient general method.** In general form most are NP-hard. At
+   card size the only way through is search.
+3. **Answers that are sets or constructions**, with guess floors as low as
+   one subset in 2ⁿ, not a verdict out of three.
+4. **Two levels at once.** Induce a law, a dictionary or an operation, then
+   use it.
+5. **Exactness checked, not arranged.** Every alternative is tried, so "the
+   only" and "the largest" are true.
+
+A proposal clears the floor when it has properties 1 and 2 and at least one
+of 3 and 4, and builds 5 into its generator.
+
+## Where Relation Algebra stands against it
+
+At level 30 Relation Algebra gives six objects, nesting three deep on each
+side, three-step moves and four either/or premises with two settling loops,
+in any of seven materials, the hardest being poses (`ℤ² ⋊ D₄`). It has property 2: either/or premises put the honest
+algorithm at 2ᵏ readings. It also has a strength none of the floor modes
+have: **integration through nesting in a non-abelian group**. Syllogimous's
+arrows are stated; Relation Algebra's relations have to be computed.
+
+It lacks property 1 (the path between the asked pair is still everything
+that matters), property 3 (answers are `=`, `≠`, `?`) and property 4. So
+most proposals below **stack**: Relation Algebra's integration underneath,
+the floor's whole-structure search on top. That combination exists in
+neither app.
 
 ## What the engine already is
 
-The same structure has a name in at least six fields. Each name points to a
-different family of extensions, which is the reason to list them.
+The engine's structure has a name in at least six fields. The names are
+worth knowing because several proposals below come from reading the engine
+in one of these languages.
 
-| Field | Its name for the engine | What the engine's parts are called there |
+| Field | Its name for the engine | What the parts are called there |
 | --- | --- | --- |
-| Algebra | a **torsor** (principal homogeneous space) | objects are points with no origin; only `rel(X, Y) = X·Y⁻¹` means anything; sliding every object by one element changes nothing (the n-back's "slid" match) |
-| Music theory | a **Generalized Interval System** (David Lewin, *Generalized Musical Intervals and Transformations*, 1987) | a set, a group of intervals, and `int(r, s)·int(s, t) = int(r, t)`, with exactly one `t` at each interval from each `s`. All seven materials are GISes; Lewin built the definition for notes |
-| Graph theory | a **gain graph** (voltage graph) | premises are edges labelled with group elements, the reverse direction with the inverse; *Possible?* asks whether the graph is **balanced** (Harary 1953 for signs; Zaslavsky's biased graphs, 1989, for any group) |
-| Topology | a **1-cochain** and its **cohomology** | for an abelian group the premises are possible exactly when they are a coboundary: the differences of some placement of the objects. The obstruction lives in H¹ of the premise graph, with one independent loop per premise beyond a spanning tree (m − n + c of them) |
-| Physics | a **flat lattice gauge field** | labels are a connection; "every loop closes" is zero curvature (trivial Wilson loops); a pose's own frame is a choice of gauge |
-| Computer science | a **unique game**, solved exactly | constraints `x_u − x_v = c (mod q)` are linear unique games. With every premise true, propagation solves them, which is what `solve()` does. Finding an assignment that satisfies *most* of them is Khot's Unique Games problem (2002); Khot, Kindler, Mossel and O'Donnell (2007) show it hard to approximate under his conjecture |
+| Algebra | a **torsor** | objects are points with no origin; only `rel(X, Y) = X·Y⁻¹` means anything |
+| Music theory | a **Generalized Interval System** (Lewin 1987) | a group of intervals with `int(r, s)·int(s, t) = int(r, t)`; all seven materials are one |
+| Graph theory | a **gain graph** | premises are group-labelled edges; *Possible?* asks whether the graph is **balanced** (Harary 1953; Zaslavsky 1989) |
+| Topology | a **1-cochain** | an impossible description is a non-zero class in H¹ of the premise graph, one dimension per independent loop |
+| Physics | a **lattice gauge field** | "every loop closes" is zero curvature; a pose's own frame is a choice of gauge |
+| Computer science | a **unique game** | `x_u − x_v = c (mod q)`; with every premise true, propagation solves it (`solve()`); with some false, finding the best assignment is Khot's Unique Games problem |
 
-Two consequences shape everything below.
+Two consequences shape the proposals:
 
 - **Exact premises between pairs are easy; either/or premises are not.** A
-  premise `X = g·Y` is a coset of the diagonal, closed under the Mal'tsev
-  operation `x·y⁻¹·z`, and constraint languages with a Mal'tsev polymorphism
-  are tractable (Bulatov & Dalmau 2006; the same algebraic theory settled
-  the general CSP dichotomy, Bulatov and Zhuk, 2017). A union of two cosets, an either/or, generally
-  is not, so the 2ᵏ enumeration in `readings()` is the honest algorithm, not a
-  shortcut waiting to be found. Levels 21–30 ask humans to do something with
-  no efficient general method.
-- **Abelian and non-abelian materials split once premises link three or more
-  objects.** Systems of equations over a finite non-abelian group are
-  NP-complete to solve (Goldmann & Russell 2002), while over abelian groups
-  they are linear algebra. Anything in Part 3 that adds many-object premises
-  should stay with the abelian materials.
-
-## How the menu is sorted
-
-1. **New materials:** a new group object. The engine, the tasks and the lures
-   run unchanged, and the test battery (`test/algebra.test.js` loops over
-   `GROUPS`: group laws, every task at all thirty levels, parsed-back code)
-   covers it for free. The compact and spoken codes are written per material
-   in `codeTok` and `ear`, so each needs its notation added there.
-2. **New tasks:** a new generator over the same solver.
-3. **Generalising the solver:** relations that are not group elements.
-
-Each item says what it is, what it would train that the trainer does not
-already, how it fits the engine, and the mistakes it invites (lures).
+  premise `X = g·Y` is closed under the Mal'tsev operation `x·y⁻¹·z`, which
+  makes it tractable (Bulatov & Dalmau 2006). A union of two such premises
+  generally is not.
+- **Premises over three or more objects split the materials.** Over abelian
+  groups they are linear algebra. Over non-abelian groups, solving systems
+  of equations is NP-complete (Goldmann & Russell 2002). Proposals with
+  many-object premises (7) stay abelian for that reason.
 
 ---
 
-## Part 1 — New materials (a new group)
-
-### 1.1 Allies and rivals — ℤ₂ and structural balance
-
-Fritz Heider's balance theory (1946), made exact by Cartwright and Harary
-(1956): in a network of "with" and "against", the network is *balanced*
-exactly when every loop has an even number of "against"s, which is when
-everyone splits into two camps. "The enemy of my enemy is my friend" is the
-composition law of ℤ₂.
-
-- **Why here:** the most familiar relational structure there is, and it has
-  a documented bias to train against. De Soto (1960) found people learn
-  balanced social structures faster and misremember unbalanced ones as
-  balanced, so the natural lure is the balanced completion.
-- **In the engine:** `cyclic("teams", "Teams", 2, …)` with "on Blue's side"
-  / "against Blue" phrasing. *Possible?* becomes "Is this group of people
-  possible?"
-- **Watch out:** ℤ₂ has one non-identity element, so an either/or premise
-  ("Red is either with or against Blue") says nothing, and `eitherOf` will
-  find no decoy. Leave Teams out of levels 21–30, or use ℤ₂ × ℤ₂ (two
-  independent splits: team and shift), where either/or still carries
-  information. The sign and order lures vanish, since every element is its
-  own inverse.
-
-### 1.2 Hexagonal space
-
-Grid cells in the entorhinal cortex fire on a hexagonal lattice (Hafting et
-al. 2005), and Constantinescu, O'Reilly and Behrens (2016) found the same
-six-fold signal while people navigated an abstract two-dimensional space of
-bird shapes. Hexagons are the brain's own grid; squares are ours.
-
-- **Why here:** a new 2-D metric with no "diagonal" escape. Three axes, all
-  equal, so the square-grid habit of splitting a move into north and east
-  fails.
-- **In the engine:** axial coordinates `(q, r)`, six unit steps, the twelve
-  symmetries of the hexagon (D₆) as n-back lures, distance
-  `(|dq| + |dr| + |dq + dr|) / 2`. Code by clock hours (12, 2, 4, 6, 8, 10)
-  rather than the keypad. Hex poses are `ℤ² ⋊ D₆`: a frame turns in 60°
-  steps.
-- **Lures:** the move read on a square grid; a 60° turn taken as 90°.
-
-### 1.3 Wrapping space — the torus ℤₘ × ℤₙ
-
-A board where walking off one edge comes back on the opposite one. Still an
-abelian group, so nothing else changes, but two routes can now differ by a
-whole lap: on a board five wide, three east *is* two west.
-
-- **Why here:** the smallest step from flat space into topology. Notes, days
-  and headings are already one-dimensional tori; this is the
-  two-dimensional one.
-- **In the engine:** `space` with `op` taken mod m and n, and the metric
-  taken as the shorter way round.
-- **Lures:** the answer as on the open plane (the wrap forgotten).
-- A **Klein-bottle board** (off the top, back on the bottom mirrored) is not
-  a group on places. It belongs with curved spaces in
-  [3.8](#38-curved-and-twisted-spaces--holonomy).
-
-### 1.4 Card stacks — the symmetric group S₃
-
-Each object holds an order of three cards. A relation is a shuffle: "swap
-the top two", "move the top card to the bottom". S₃ is the smallest
-non-abelian group (six elements, the same as the triangle's symmetries).
-
-- **Why here:** Orientations is non-abelian because of mirrors; this one is
-  non-abelian because of what shuffling *is*. It also brings in an
-  invariant you can check without computing anything: a shuffle is odd or
-  even, every swap flips that, and no odd number of swaps equals an even
-  number. That kills whole classes of options at a glance, as the parity
-  argument for the 15-puzzle does (Johnson & Story 1879).
-- **In the engine:** permutations as arrays, `op` = composition. Code in
-  lower case (`s` swap, `c` cut), avoiding the mark letters.
-- **Lures:** the same shuffle in the other order; the inverse (cutting
-  back); the same swap at the wrong position (a conjugate).
-- S₄ (24 elements) is the next rung. It is also the rotation group of the
-  cube in 1.6.
-
-### 1.5 Chords — the T/I and PLR groups
-
-Notes are ℤ₁₂: transposition only. Music theory has two richer groups, each
-dihedral of order 24, and each the exact commuting partner of the other.
-
-- **T/I:** transpose (`x ↦ x + n`) and invert (`x ↦ n − x`). Inversion
-  turns a major chord into a minor one; C major becomes F minor under
-  inversion about C.
-- **PLR** (neo-Riemannian theory, after Hugo Riemann; Cohn 1998): on the 24
-  major and minor triads, **P**arallel (C major ↔ C minor), **L**eading-tone
-  exchange (C major ↔ E minor), **R**elative (C major ↔ A minor). Each is
-  its own inverse; together they generate a dihedral group of order 24. PL
-  cycles through six triads (the hexatonic cycle), PR through eight (the
-  octatonic), LR through all 24.
-- **Duality:** every T/I element commutes with every PLR element. Each group
-  is the other's centralizer in the permutations of the triads (Crans, Fiore
-  & Satyendra 2009). *Checked.*
-- **Why here:** a non-abelian material that can be *heard*. The hub already
-  plays audio, and a chord-relations round with eyes closed would be
-  relational reasoning by ear on real musical objects.
-- **In the engine:** triads as `[root, major]`, the three generators as
-  permutations. Code `p l r` in lower case (upper-case L and P are mark
-  letters, R is Red). Spoken: *parallel, leading, relative*.
-- **Lures:** the order swapped (LR is not RL); a T/I move confused with its
-  PLR twin (I about C and P both turn C major minor, but to different
-  chords).
-
-### 1.6 Turning in three dimensions — the cube's rotation group
-
-Rotations in a plane commute; rotations in space do not, even without
-mirrors. A die's orientation is an element of the cube's rotation group
-(order 24, isomorphic to S₄; 48 with mirrors). *Checked.* Mental rotation of
-3-D shapes is the most studied spatial task in psychology (Shepard & Metzler
-1971).
-
-- **Intrinsic or extrinsic:** the concept this material exists for. Turning
-  about the *die's own* axes, one after another, gives the same result as
-  turning about *fixed* world axes in the reverse order: right
-  multiplication against left. An aircraft's yaw, pitch and roll are about
-  its own axes; many robotics and graphics conventions turn about fixed
-  ones. The engine already marks this distinction with `leftNesting`.
-- **In the engine:** 3×3 signed permutation matrices, or a lookup table.
-  Code `x y z` for quarter turns about each axis (Rubik's R U F clash with
-  Red and the marks).
-- **Lures:** right turns in the wrong frame (order reversed); a quarter turn
-  the wrong way; a mirror image.
-- **3-D poses** (`ℤ³ ⋊ O`, a drone or a diver: "two ahead, pitch up, one
-  ahead") would be the hardest material here, and need a drawing the page
-  does not yet have.
-- *Further out:* unit quaternions, which pilots' software and game engines
-  use for orientation, form the double cover SU(2): a full turn is not the
-  identity there, only two are (Dirac's belt trick). A material where that
-  matters exists, the binary octahedral group, but it is a curiosity.
-
-### 1.7 Ratios — exchange rates, gears and just intervals
-
-Positive fractions under multiplication form a free abelian group, one
-coordinate per prime. Restricted to 2, 3 and 5, it is ℤ³: "a Red is worth
-three Blues; two Blues buy a Green" is space with multiplicative words.
-
-- **Why here:** multiplicative reasoning is a different skill from additive,
-  and proportional-reasoning research has long documented the *additive
-  error*: answering "three more" for "three times".
-- **Possible?** becomes **arbitrage**: a loop of exchanges that returns more
-  than it started with is exactly a loop whose product is not 1 (in
-  logarithms, a negative cycle, which Bellman–Ford finds).
-- **Lures:** additive for multiplicative; divided instead of multiplied.
-- **The musical version is the best example in this whole document of a map
-  losing information.** In just intonation an interval is a ratio (a fifth
-  is 3/2, a major third 5/4), and Euler's *Tonnetz* is this lattice with
-  octaves set aside. Twelve-
-  tone equal temperament maps it onto ℤ₁₂: 2 ↦ 12 ≡ 0, 3 ↦ 19 ≡ 7,
-  5 ↦ 28 ≡ 4 semitones (regular temperament theory calls such a map a
-  *val*). The **syntonic comma** 81/80, the **Pythagorean comma**
-  3¹²/2¹⁹ and the **diesis** 128/125 all go to 0. *Checked.* So a chain of
-  intervals can close on a piano and fail to close in tune: the comma is
-  the loop's holonomy. See [2.6](#26-through-a-lens--homomorphisms-between-materials).
-
-### 1.8 Units — dimensional analysis
-
-Physical dimensions form a free abelian group: length^a mass^b time^c, and
-so on. Velocity is length per time, force is mass times length per time
-squared. A formula is dimensionally possible exactly when both sides are the
-same element.
-
-- **Why here:** the same group as space (ℤ³ or ℤ⁴), with real semantics and
-  multiplicative phrasing. It is a *transfer* test: a player fluent in ℤ²
-  moves meets ℤ³ in a domain that does not look like a grid.
-- **Buckingham's π theorem** (1914) is the rank argument in the README in
-  physics' clothing: the number of independent dimensionless combinations
-  is the number of quantities minus the rank of their dimension matrix.
-- **Lures:** "per" read as "times"; an exponent one off.
-
-### 1.9 Kinship sections — the Klein group and D₄
-
-André Weil's appendix to Lévi-Strauss's *Elementary Structures of Kinship*
-(1949) and Harrison White's *An Anatomy of Kinship* (1963) modelled
-Australian section systems as groups. Everyone belongs to a section. "The
-section of a man's children" and "the section of a woman's children" are
-permutations of the sections, and they generate a group.
-
-- Worked out for these notes: Kariera's four sections give the **Klein
-  four-group** (ℤ₂ × ℤ₂). The standard eight-subsection (Aranda-type) model
-  gives a non-abelian group of order 8 with five involutions, which is
-  **D₄**, the group of the Orientations material. In that model every
-  man's spouse is his mother's mother's brother's daughter's daughter, the
-  Aranda rule. *Checked.*
-- **Why here:** a non-abelian group that real marriage rules are built
-  on, answering questions like "what section is my mother's mother's
-  brother's daughter's daughter in?" The same group as tile orientations,
-  with completely different content, is a clean transfer probe.
-- **Care:** these are living systems, they vary (McConvell 2017 maps the
-  variation), and subsection names belong to the people who use them. Use
-  abstract section labels and say where the structure comes from.
-
-### 1.10 Cycles that run together — the Chinese remainder theorem
-
-The Chinese sexagenary calendar pairs ten heavenly stems with twelve earthly
-branches. Because 10 and 12 share a factor of 2, only 60 of the 120 pairs
-ever occur. *Checked.* The Maya calendar round ran a 260-day count against
-a 365-day year and repeated every 18,980 days (52 years).
-
-- **In the engine:** ℤ₆₀ phrased as two components ("three stems and five
-  branches later"). Premises that give only one component need the solver
-  to accept a set of answers (a coset); see [3.1](#31-linear-premises--analogies-midpoints-and-parity).
-- **Lures:** a pair that never occurs (the parity constraint missed); the
-  answer worked in one cycle only.
-
-### 1.11 Laps — the heading that counts its turns
-
-Compass headings are ℤ₈. Count total turning instead, in eighths, and the
-group is ℤ: "three full turns right and a quarter". This is the circle's
-universal cover, and it is a real engineering problem. A camera on a
-turntable has to unwind its cable, so it needs the lap count, not just where
-it points.
-
-- **Why here:** the smallest example of a covering space, and the pair
-  (laps, compass) is the smallest example of a map that forgets something.
-- **Lures:** full turns dropped.
-
-### 1.12 Hidden groups — a new law every round
-
-Not one material but a generator of them. Each round draws a small group
-the player has never been told about (ℤ₂ × ℤ₂, ℤ₆, S₃, D₅, the quaternion
-group Q₈, ℤ₃ ⋊ ℤ₄ …). It is given only by its defining laws, in invented
-words: "blick twice is nothing; blick, frob, blick is frob backwards."
-
-- **Why here:** this is the cheapest way to *test* the README's hope. If
-  "one engine, seven groups" trains something general, performance in a
-  group never seen before should show it. Q₈ is the instructive outlier:
-  non-abelian, yet every element but ±1 has order 4 and every subgroup is
-  normal.
-- **In the engine:** a Cayley table and `op` as a lookup. Tables come from
-  Todd–Coxeter enumeration of the presentation, or are written out by hand
-  for a short catalogue.
-- Syllogimous's Hidden Algebra has the player infer a relation's
-  *properties*. This would hand over the full law and ask the player to
-  reason in it.
-
----
-
-## Part 2 — New tasks on the same engine
-
-### 2.1 Which premise is false?
-
-*Possible?* asks whether the premises fit together. The next question is
-which one doesn't, and the theory behind it is exact.
-
-- A false premise shows on every loop through it. It can be pinned down
-  from consistency alone **exactly when the two objects it links are still
-  joined by two routes sharing no premise once it is removed**, which is
-  Menger's theorem in this setting. *Checked by brute force on every
-  connected arrangement of four and five objects: 4,284 cases.* When that
-  holds for every premise, the premise graph is 3-edge-connected, so it
-  needs at least 3n/2 premises: all six pairs for four objects.
-- In coding terms, the loops that fail are the **syndrome**, and the premise
-  graph's cycle space is the code. Robot mapping does the same thing when it
-  throws out a false loop closure.
-- With more than one false premise, finding the largest set that fits is the
-  Unique Games problem again: hard in general, easy at trainer sizes by
-  enumeration.
-- **In the engine:** `possibleTrial` already alters one premise and records
-  which (`altered`). A new generator adds loops until the altered premise
-  passes the condition above, then asks which premise it was. A second
-  question can follow: what should it have said?
-- **Lures:** a premise on the same loop that a second loop clears; the right
-  premise with the wrong correction.
-
-### 2.2 What must the missing premise say?
-
-The question is given as a fact, one premise is blank, and the player
-supplies it. That is backward chaining (abduction) rather than forward. In a
-group the blank has exactly one value, the remaining path's composite undone
-against the goal. In Tarski's relation algebra this is **residuation**: the
-largest S with R;S ⊆ T, written R\T.
-
-- **Lures:** the forward answer (the goal itself); the blank's inverse;
-  nesting dropped on one side.
-- Syllogimous's Missing Premise picks a premise from a list. Here the answer
-  is a relation, which is a harder thing to supply.
-
-### 2.3 Shortest code
-
-"Write `Bmqmqh` in fewest letters." Every group has a **Cayley
-graph**: the elements, with an edge for each sayable single move. The
-shortest code is a shortest path in it (the *word metric*). For ℤ² the
-keypad rule the code already uses (diagonals first) is that path.
-
-- **Why here:** the explanation line `⇒` already reduces each premise to a
-  single move. This makes that reduction the task, which is chunking.
-- **In the engine:** breadth-first search over the group once, at load.
-- **Lures:** letters cancelled that do not commute (`mq` is not `qm`); a
-  quarter turn left read as right.
-
-### 2.4 Does the order matter here?
-
-For the non-abelian materials, ask whether two moves give the same result in
-either order. The **commutator** `aba⁻¹b⁻¹` measures how far they don't. In
-D₄ it is always either nothing or a half turn, so swapping any two moves
-changes the result by a half turn at most. *Checked.* That is a learnable
-fact which turns a computation into a recognition.
-
-**Conjugation**, `g·h·g⁻¹`, is the same move described from another frame:
-a quarter turn right, seen in a mirror, is a quarter turn left. A task
-asking "Blue's move, as Green would describe it" makes explicit the change
-of frame that poses do silently.
-
-### 2.5 n-back up to renaming
-
-The current n-back asks whether this is the same arrangement, exactly or
-turned. Next: the same *shape* with the colours permuted. That is structure
-without identity, Gentner's (1983) structure-mapping account of analogy,
-where relations are mapped and objects ignored.
-
-- **In the engine:** `same()` tries every bijection of names as well as
-  every rotation. With three or four objects that is at most 24 × 4 checks.
-- **Lures:** the mirror image when mirrors don't count; a shape with the
-  same set of distances but different connections.
-- **Watch out:** a symmetric arrangement matches itself in several ways.
-  That is harmless for a yes/no task, but it matters if the round asks
-  *which* object corresponds to which.
-
-### 2.6 Through a lens — homomorphisms between materials
-
-Premises in one material, the question in another, joined by a map that
-forgets something:
-
-| Map | What it forgets | Everyday version |
-| --- | --- | --- |
-| pose → heading | place | "Where is Red facing?" from walks |
-| laps → compass | whole turns | the turntable's cable |
-| just intervals → piano notes | the commas | why a choir drifts in pitch |
-| shuffles → parity | everything but odd/even | the 15-puzzle |
-| dates → weekdays (ℤ → ℤ₇) | the week number | "if the 3rd is a Monday, what is the 24th?" |
-| units → "is it a speed?" | the other dimensions | checking a formula |
-
-The answer is the image of the relation. Going the other way, from the
-poorer material back to the richer, gives *Can't tell* unless the map loses
-nothing (its **kernel**). That is the first isomorphism theorem as a task.
-Syllogimous's Projection asks who coincides once some directions are
-ignored, which is the same idea inside one space. This version crosses
-materials.
-
-### 2.7 Analogies between pairs
-
-"Red is to Blue as Green is to …?" In an abelian group this is the
-parallelogram, `X = G·(R·B⁻¹)`: Rumelhart and Abrahamson's (1973) model of
-analogy, and the arithmetic behind word vectors' king − man + woman ≈
-queen (Mikolov et al. 2013).
-
-With poses **"as" has two readings, and they disagree**. The engine's
-relation `R·B⁻¹` is Red as Blue sees it, in Blue's own frame ("two ahead,
-one left"), so the trainer's analogy is `G·O⁻¹ = R·B⁻¹`: Green stands to
-Gold as each sees its partner. A player can equally read it on the map: the
-same compass offset between the places, which is the Space relation. When
-Blue and Gold face different ways the two answers differ, and the map
-reading is a precise, nameable lure. (Algebraically, a non-abelian group
-acts on itself from the left and from the right, so "the same relation"
-always needs a side; the README's poses already pick one.) As a question
-this needs no new solver. As a premise it needs 3.1.
-
----
-
-## Part 3 — Generalising the solver
-
-### 3.1 Linear premises — analogies, midpoints and parity
-
-Today every premise links two objects. Allow any linear equation over an
-abelian material:
-
-- **Midpoints:** "Gold is halfway between Red and Blue." In an affine space
-  you cannot add points, but you can take combinations whose weights sum to
-  1, so this keeps the typing discipline the README describes.
-- **Analogies as premises:** `R − B = G − O`, one premise about four
-  objects.
-- **Parity constraints** over ℤ₂, which lead to the Mermin–Peres square in
-  [3.9](#39-locally-fine-globally-impossible--contextuality-and-impossible-figures).
-
-**Solver:** Gaussian elimination over the rationals for space and numbers;
-Hermite or Smith normal form for ℤ and ℤₙ (ℤ₁₂ is not a field, so plain
-elimination fails). *Can't tell* becomes exactly the README's rank argument:
-the asked combination is not in the span of the premises. This is also what
-lets premises give a *set* of answers (a coset), as 1.10 needs. Keep it to
-abelian materials (Goldmann & Russell, above).
-
-**The dual task: flows.** Potentials (where things are) and flows (how much
-moves along each link, conserved at every junction: Kirchhoff's current law)
-are dual. Potentials live on the cycle space and flows on the cut space, a
-duality Tutte made central to graph theory. "Three litres a minute go from
-Red to Blue…; how much from Gold to White?" A flow is settled exactly when
-no loop of unknown links passes through it. One material can carry both
-tasks.
-
-### 3.2 Bounds instead of values — simple temporal networks
-
-"Red is two to five more than Blue." A set of difference bounds
-`x − y ≤ c` is a weighted graph (Dechter, Meiri & Pearl 1991). It is
-consistent exactly when no loop has negative total. The tightest bound on
-`X − Y` is a shortest path. Everything is polynomial (Floyd–Warshall).
-
-- **Why here:** the trainer's three answers already fit exactly. **Must**
-  when the asked value is the only one left, **can't** when it lies outside
-  the interval, **not settled** when it is inside but not alone. *How far?*
-  becomes "at least … at most". Scheduling, project planning (the critical
-  path) and timetables are the everyday version.
-- **In two dimensions:** per axis for grid moves; *octagons* (Miné 2006)
-  for diagonal bounds.
-- **Lures:** interval subtraction done naïvely (`[a, b] − [c, d]` is
-  `[a − d, b − c]`, not `[a − c, b − d]`); bounds intersected where they
-  should be added.
-
-### 3.3 Path algebras — one solver, many questions
-
-Replace "compose along a path, compare for equality" with a **semiring**: ⊗
-along a path, ⊕ across alternative paths (Carré 1971; Gondran & Minoux
-2008; Mohri 2002).
-
-| ⊕, ⊗ | Question | Example |
-| --- | --- | --- |
-| min, + | fastest route | "Red to Blue is three hours…; how soon can Gold reach White?" |
-| max, min | widest route | the heaviest lorry that can make the trip |
-| +, × | **coefficient of relationship** | Sewall Wright (1922): sum (½)^L over every path through a common ancestor. Siblings ½, half-siblings ¼, first cousins ⅛ (two paths of four) |
-| or, and | reachability | Syllogimous's ordering and hierarchy modes |
-
-Wright's coefficient is the strongest candidate: a real scientific quantity,
-computed by exactly this algebra, and the lure is precise. People take one
-path to a common ancestor and forget the second, so they halve the answer.
-Cousin marriage adds loops, and loops add paths.
-
-### 3.4 Tree distances — ultrametrics
-
-"Red and Blue share a grandparent; Blue and Green only a great-grandparent."
-The depth of the most recent common ancestor is an **ultrametric**:
-`d(X, Z) ≤ max(d(X, Y), d(Y, Z))`, and every triangle is isosceles with its
-two longest sides equal.
-
-- **Why here:** composition is exact when the two distances differ (the
-  answer is the larger) and leaves a range when they are equal (anything up
-  to that value). One rule decides whether the answer is settled at all,
-  which is a cleaner version of the *Can't tell* lesson than any in the
-  trainer today.
-- Distances with branch lengths (additive tree metrics) satisfy Buneman's
-  four-point condition (1971), the basis of phylogenetic reconstruction.
-- **Material:** family trees, or a taxonomy of animals.
-
-### 3.5 One-way relations — monoids
-
-Groups make every premise reversible. Many real relations are not: "Red is
-Blue's shadow at noon"; "Red is Blue rounded down to the hour"; a lift that
-stops at the top floor. From `X = m·Y` you cannot get Y back, so information
-flows one way, and *Can't tell* appears where a group would answer.
-
-- **Material:** saturating arithmetic (the lift), or the 27 maps of three
-  positions to themselves (the full transformation monoid T₃: "copy the top
-  card onto the second").
-- Green's relations in semigroup theory classify which elements can reach
-  which: the monoid version of "linked". Inverse semigroups (partial
-  bijections) cover "the place east of X, *if* it is on the board".
-
-### 3.6 Mixed materials — groupoids and sheaves
-
-Today one trial uses one group. A trial where Red is a pose and Blue is a
-note needs arrows only between compatible kinds (a **groupoid**). Most
-generally it needs a **cellular sheaf**: a space of values at each object, a
-map on each premise, and the possible worlds as its global sections (Hansen
-& Ghrist 2019; Robinson 2014). The current engine is the special case where
-every object holds the same group and every map is a translation.
-
-Sheaves also say *how* inconsistent a description is, not just whether: the
-sheaf Laplacian's energy, or Robinson's consistency radius. That suggests a
-graded "how far from possible is this?" task.
-
-### 3.7 Noise — synchronisation
-
-"Red is about five steps north of Blue." **Group synchronisation** (Singer
-2011) recovers each object's element from noisy pairwise relations. Cryo-EM
-uses it to align images of molecules, and robot mapping (pose-graph SLAM)
-uses it to stitch odometry and loop closures into one map. For a trainer,
-bounded noise is 3.2 and occasional outright errors are 2.1. Together they
-are the realistic case.
-
-### 3.8 Curved and twisted spaces — holonomy
-
-The deepest generalisation of "every loop closes": spaces where it fails
-even when every premise is true.
-
-- **The surface of a cube.** Walk across the faces, carrying your facing
-  over each edge. A small loop round a corner returns you turned a quarter:
-  three right angles meet there, so a quarter turn is missing (the angle
-  deficit). The eight corners' deficits total two full turns (Descartes'
-  theorem, the discrete Gauss–Bonnet). Relations become **path-dependent**:
-  "two ahead of Blue" says how to walk, and two routes to the same square
-  can disagree about which way you end up facing. A natural rung after
-  poses (`ℤ² ⋊ D₄`) for players who have mastered them.
-- **Möbius and Klein-bottle boards.** Walk off an edge and come back
-  mirrored, so a loop flips handedness. Poses already carry handedness.
-- **The sphere.** The bear riddle (ten km south, ten east, ten north, and
-  back where you started) is the classic loop that closes on a sphere and
-  not on a plane.
-
-In physics this is parallel transport, the geometric (Berry) phase and the
-Foucault pendulum.
-
-### 3.9 Locally fine, globally impossible — contextuality and impossible figures
-
-Penrose's impossible triangle is a sound drawing at every corner and
-impossible as a whole. Roger Penrose (1992) described it as a non-zero
-class in first cohomology, the same obstruction *Possible?* asks about.
-Abramsky and Brandenburger (2011) showed that quantum contextuality has the
-same shape (every local view consistent, no global assignment), and
-Abramsky et al. (2015) treat Liar-type paradox cycles the same way.
-
-A concrete item: the **Mermin–Peres magic square**. Fill nine cells with +1
-or −1 so that every row multiplies to +1 and the columns to +1, +1, −1. It
-is impossible (the product of all nine cells would have to be both +1 and
-−1), but drop any one of the six constraints and it can be done. *Checked.*
-No local check finds the fault, which makes it the hardest kind of
-*Possible?* item there is. It needs three-object premises (3.1).
-
-### 3.10 Qualitative calculi
-
-Relations taken from a fixed vocabulary, composed by table, answered as
-sets. Allen's thirteen interval relations (1983) and RCC8 are already
-Syllogimous modes. Two fit this trainer's materials:
-
-- **OPRAₘ** (Moratz 2006): relations between *oriented points* at
-  granularity m, the qualitative cousin of poses ("ahead-left of me, facing
-  roughly towards me").
-- **The double-cross calculus** (Freksa 1992): a three-place relation, where
-  C is relative to the line from A to B. That is Levinson's (2003)
-  "relative frame of reference" (viewer, figure, ground), the frame the
-  trainer's perspective premises use.
-
-The solver is path consistency. For Allen's relations it is incomplete in
-general, because the full problem is NP-complete (Vilain & Kautz 1986), but
-it is complete on the ORD-Horn subclass (Nebel & Bürckert 1995). A
-"qualitative poses" task would bridge Syllogimous's set-valued modes and
-this trainer's exact ones.
-
-### 3.11 Tarski's relation algebra, for the record
-
-The namesake, from De Morgan, Peirce and Schröder, axiomatised by Tarski
-(1941): binary relations under union, intersection, complement, composition
-(;), converse (˘) and identity. The engine already obeys two of its laws:
-`(R;S)˘ = S˘;R˘` (undoing a composite reverses its order, the `order` lure)
-and `R˘˘ = R`. The Schröder equivalences,
-`(R;S) ∩ T = ∅ ⟺ (R˘;T) ∩ S = ∅ ⟺ (T;S˘) ∩ R = ∅`, are three ways of
-stating one relational syllogism. They only become tasks when relations are
-sets of pairs ("parent ; child" contains "sibling"), which is Syllogimous's
-territory. Codd's relational algebra for databases (1970) descends from
-it: a join is a composition and a projection is 2.6. Its value here is
-vocabulary, not a material.
-
-### 3.12 Beliefs — perspectives inside perspectives
+## The proposals
+
+Each says what it is and the theory behind it; **against the floor**, which
+mode it is measured against and why it clears it; how it fits the engine;
+and the mistakes it invites (lures). *Checked* marks a claim settled by
+the check script.
+
+### 1. The fewest false premises — frustration
+
+An impossible description with several loops and more than one wrong
+premise. **Select the smallest set of premises whose removal makes it
+possible.**
+
+- **Theory.** In a gain graph the smallest impossible sets are exactly the
+  loops that do not close. Reiter's theory of diagnosis (1987) says a
+  *diagnosis* is a smallest set that touches every such conflict: a minimum
+  hitting set. For signed premises (with/against) the size of that set is
+  Harary's **frustration index**. Computing it is NP-hard, since for an
+  all-"against" network it is the number of links minus the maximum cut.
+  Over ℤ_q it is the Unique Games problem.
+- **When one false premise can be found at all:** exactly when its two
+  objects are still joined by two routes sharing no premise once it is
+  removed. *Checked on every connected arrangement of four and five
+  objects: 4,284 cases.* So a generator knows in advance which errors the
+  description can expose.
+- **Against the floor.** Minimal Premises (2.1, ceiling 24) asks for the
+  smallest *settling* set, a spanning path, which is polynomial.
+  Contradiction (2.2, 25) finds one clash. This asks for the smallest
+  *correcting* set, which is NP-hard in general, and each loop's verdict
+  first has to be integrated through nested, non-abelian premises. It
+  clears 1, 2, 3 and 5.
+- **In the engine.** `possibleTrial` already alters a premise and records
+  which (`altered`). Alter one to three. Keep the item only when exactly one
+  smallest correcting set exists, checked over every subset up to that size
+  (twelve premises, three altered: 298 subsets, each a `consistent()`
+  call). A second question can follow: what should each have said? Ask it
+  only where the condition above holds.
+- **Lures:** a premise on a broken loop whose break another removal already
+  fixes; the right count with one premise swapped for its neighbour on the
+  loop.
+
+### 2. Rigid or flexible — distances alone
+
+Premises give only how far apart two objects are: "Red is five from Blue".
+Pythagorean triples keep the numbers whole. Three questions:
+
+1. Is the shape settled, up to sliding, turning and mirroring?
+2. Select every pair whose distance is settled.
+3. Select the one more distance that would settle the shape.
+
+- **Theory.** Distances settle a shape *locally* by **Laman's theorem**
+  (1970). With 2n − 3 distances, the shape is rigid exactly when every k of
+  the objects carry at most 2k − 3 distances among themselves. The pebble
+  game (Jacobs & Hendrickson 1997) decides it in polynomial time. They
+  settle it *uniquely* exactly when the graph is 3-connected and stays
+  rigid without any one distance (Hendrickson 1992; Connelly 2005; Jackson &
+  Jordán 2005). Equivalently, some stress matrix has rank n − 3 (Gortler,
+  Healy & Thurston 2010). *Both checked: Laman's count against generic rank
+  on all 5,131 graphs with 2n − 3 edges on four to six objects, and
+  Jackson–Jordán against the stress test on all 33,856 graphs on four to
+  six.* Deciding whether given distances can be drawn in the plane at all
+  is NP-hard (Saxe 1979).
+- **The mirror, and the flip.** The whole shape's mirror image always fits,
+  as in Betweenness. But a *part* can also flip across two objects that cut
+  it off from the rest, which is why a rigid shape can still fail to be
+  unique. That is *Can't tell* for distances.
+- **Against the floor.** Relation Algebra's *Can't tell* is a rank question
+  about whether two objects are linked, which a chain answers. This is the
+  rank of the **rigidity matroid**. No route settles anything, and the
+  count runs over every subset of objects (property 1). Betweenness (2.3,
+  26) has the mirror; this has the mirror, partial flips and flex. Answers
+  2 and 3 are selections (property 3).
+- **In the engine.** A new material (points in the plane), with questions
+  computed by the pebble game, or by rank at random coordinates as the
+  check script does.
+- **Lures:** counting 2n − 3 distances without the subset condition (a
+  square with both diagonals, one distance too many, beside a hinge left
+  floppy); the partial flip forgotten; a distance that is settled locally
+  but not uniquely.
+
+### 3. One group, two vocabularies — the dictionary is an automorphism
+
+The same arrangement described twice. Once in the trainer's code, once in
+invented words that name the same group's elements through an unknown
+relabelling **that respects composition**: an automorphism.
+
+- **Theory.** For notes, the automorphisms of ℤ₁₂ multiply by 1, 5, 7 or
+  11, and ×7 sends a semitone to a fifth. *Checked.* The chromatic circle
+  and the circle of fifths are one group relabelled, which pitch-class set
+  theory knows as the M7 operation. For orientations, D₄ has eight
+  automorphisms. Four are **inner**, a change of viewpoint: turn or mirror
+  the observer. Four are **outer**, and every one of them swaps the edge
+  mirrors with the diagonal flips, which no way of looking at the tile can
+  do. *Checked.*
+- **The task.** A few stated correspondences, given as composed relations
+  ("Gold's word for how Red stands to Blue is *vesk*"), pin down the
+  dictionary. Then complete an analogy or answer a question that crosses
+  the two vocabularies. Keep the item only when exactly one automorphism
+  fits.
+- **Against the floor.** Cross Analogy (2.5, 28) builds a signed
+  permutation of axes from entities said to correspond. Here the
+  dictionary must preserve a **non-abelian composition law**, the evidence
+  is relations computed through nesting rather than pairs of entities, and
+  the right dictionary may be **outer**, so spatial intuition cannot
+  shortcut it. It clears 1, 4 and 5.
+- **In the engine.** Find Aut(G) by brute force once (at most 8! maps for
+  D₄), then relabel `say` and `code`.
+- **Lures:** the inner automorphism nearest the outer one; the dictionary
+  applied backwards (φ⁻¹ for φ).
+
+### 4. Relations as values, in a non-abelian material
+
+Context Shifts with poses. "Context A is how Red stands to Blue" names a
+walk. Later contexts operate on it:
+
+- seen from the other end (the inverse);
+- **as context B sees it** (conjugation, `B·A·B⁻¹`);
+- followed by context C (composition);
+- seen in a mirror (an automorphism from 3).
+
+At the end, say where Gold lands if it starts at White and walks the final
+context. The Second-Order version gives one example of A becoming A′ and
+asks which operation did it: conjugation by which derived context, the
+inverse, or which mirror. The item is kept only when exactly one operation
+in the catalogue fits.
+
+- **Against the floor.** In Context Shifts (2.7, 27) the values are vectors
+  (abelian) and the operations are signed permutations. Here **both layers
+  are non-abelian**: the operations do not commute and neither do the
+  values. Some operations are themselves defined by another derived
+  relation ("as B sees it"), so there is integration inside the operations.
+  It clears 1, 2 and 4.
+- **In the engine.** Every operation is already `pose.op` and `pose.inv`.
+- **Lures:** conjugation the wrong way round (`B⁻¹·A·B`); the inverse taken
+  for the mirror; two operations swapped.
+
+### 5. Routes on a curved surface — holonomy
+
+Poses on the **surface of a cube**. A walker carries its facing over each
+edge onto the next face. Three facts, *checked by simulating the walker*:
+
+- `^<^<^`, three steps and two left turns round one corner, brings it back
+  where it started, **facing a quarter turn right of how it began**.
+- `^^>^^^>^`, round one edge, brings it back facing as it began, with only
+  two right turns. On a flat grid, two turns with steps between them never
+  close a route.
+- Eight steps straight round the middle bring it back facing as it began,
+  **with no turn at all**.
+
+The rule: a closed route's change of facing is its own turns, plus a
+quarter turn for each corner it goes round (counted with the direction of
+travel). Each of the eight corners is missing a quarter turn of angle,
+which totals two full turns: Descartes' theorem, the discrete Gauss–Bonnet.
+
+- **What changes.** Relations stop being group elements. "Red is Blue `^^<`"
+  depends on where Blue stands, because the walk may cross an edge. The
+  structure is a connection with curvature, not a gauge field that can be
+  flattened away.
+- **Tasks:**
+  - select every offered route that brings Red back facing the way it
+    started;
+  - *Possible?*, where loops must close up to the corners they go round;
+  - how many corners does this loop go round, read from its turning.
+- **Against the floor.** Pivot Transforms (2.5, 26) changes the frame
+  once, at a stated moment. Here the frame changes wherever a route crosses
+  an edge, by an amount set by which corners the route has gone round, so
+  no frame can ever be fixed. Whether two premises can be combined at all
+  depends on their routes (property 1). Nothing in either app trains this.
+- **In the engine.** Premises are walks; `solve` simulates them (the walker
+  in the check script is about 20 lines).
+- **Lures:** the flat-grid answer (corners ignored); a corner counted the
+  wrong way; the turn applied before crossing an edge instead of after.
+- *Next rungs:* Möbius and Klein-bottle boards, where a loop flips
+  handedness. Poses already carry handedness.
+
+### 6. Ranges with either/or — disjunctive temporal networks
+
+"Red is two to four from Blue, either way round; Gold is one to two after
+Red; Gold is at most five after Blue." The possible values of Gold − Blue
+are −3 to 0 and 3 to 5: **two stretches with a hole between them**.
+*Checked.*
+
+- **Theory.** Without either/or, a set of range premises is a simple
+  temporal network (Dechter, Meiri & Pearl 1991). It is possible when no
+  loop has a negative total, and the tightest range is a shortest path. With
+  either/or it becomes the disjunctive temporal problem, which is
+  NP-complete (Stergiou & Koubarakis 2000).
+- **The task.** Select every possible value of X − Y in a window of
+  thirteen (−6 to +6), the same size as Interval Algebra's menu of Allen
+  relations.
+- **Against the floor.** Interval Algebra (2.4, 26) selects possible
+  relations from qualitative premises. This does the same with quantities.
+  Each reading is a weighted graph whose negative loops must be found, and
+  the answer can have holes. It clears 2, 3 and 5, and 1 wherever loops
+  settle readings.
+- **In the engine.** Per reading, Floyd–Warshall on at most six objects,
+  then the union over readings. In two dimensions, per axis, or octagons
+  (Miné 2006) for diagonal ranges.
+- **Lures:** the hole filled in (the outer bounds read as one range);
+  interval subtraction done naïvely (`[a, b] − [c, d]` is `[a − d, b − c]`);
+  a reading that a loop rules out kept.
+
+### 7. Impossible only as a whole — parity and contextuality
+
+Premises over three objects at once, in ℤ₂ ("an odd number of Red, Blue
+and Gold vote against") or ℤ₃.
+
+- **Theory.** The **Mermin–Peres magic square**: fill nine cells with +1 or
+  −1 so that every row multiplies to +1 and the columns to +1, +1 and −1.
+  It is impossible, but drop any one of the six constraints and it can be
+  done. *Checked.* Penrose (1992) read his impossible triangle as a
+  cohomology class: fine at every corner, impossible as a whole. Abramsky
+  and Brandenburger (2011) showed quantum contextuality has the same shape.
+- **Tasks:** *Possible?*; then select the fewest constraints that are
+  already impossible together. That set is a *certificate*: constraints
+  whose left sides cancel and whose right sides do not.
+- **Against the floor.** Contradiction (2.2, 25) finds two premises that
+  clash. Betweenness's three-place premises can be met by holding
+  arrangements. Here, by construction, **no pair and no proper subset shows
+  anything**; the certificate is global. A computer finds it by elimination
+  over ℤ₂; a person has to find the parity argument. It clears 1, 2 and 3.
+- **In the engine.** Needs premises over three objects (elimination over
+  ℤ₂ or ℤ₃). Small enough to enumerate: 512 fillings of the square.
+- **Lures:** a certificate one constraint short; a pair that looks like a
+  clash and isn't.
+
+### 8. Complete the law, then reason in it
+
+Six invented words name a group's elements. A few products are stated
+("*vesk* then *dor* is *mim*"), and the player is told it is a group and
+nothing else.
+
+- **How little it takes.** Three of a non-abelian law's 36 products can
+  pin it down among all 480 group laws on six symbols; two never can.
+  *Checked exhaustively.* So a card can state almost nothing and still
+  determine everything, and everything else has to be **derived from the
+  axioms**: each row a permutation, associativity, an identity, inverses.
+  Then answer a nested relational question in the law just found.
+- **Theory.** A group's table is a Latin square. Completing a partial Latin
+  square is NP-complete (Colbourn 1984), and the Latin Square Task (Birney,
+  Halford & Andrews 2006) is relational complexity's psychometric probe.
+  Associativity is the constraint a Latin square lacks.
+- **Kinship variant.** A small genealogy gives some people's sections;
+  induce which permutation is "child of a man" and which is "child of a
+  woman", then reckon a mother's mother's brother's daughter's daughter.
+  The eight-subsection model is D₄. *Checked*; see the substrates table.
+- **Against the floor.** Hidden Algebra (2.3, 26) picks one of a handful of
+  known relation systems from a complete table. Here the table is nearly
+  empty and the law is **derived, not picked**, then used for nested
+  composition. It clears 1, 2, 4 and 5.
+- **In the engine.** Enumerate every labelled group law of the order: 480
+  for six elements, 22,080 for eight. Keep only partial tables with a
+  single completion, and run the trainer's question generator in the law
+  found.
+- **Lures:** the abelian completion; a completion that is a Latin square
+  but not associative.
+
+### 9. The largest shared arrangement, after integration
+
+Two descriptions of six objects each, different objects in each, both given
+by nested premises along a tree, so most pairwise relations have to be
+composed. **Select the largest group of the first whose relations are
+exactly those of some group in the second**, up to sliding (and, at higher
+rungs, turning).
+
+- **Against the floor.** Common Subsystem (2.8, 28) compares *stated*
+  arrows. Here no relation being compared is stated: every one has to be
+  integrated through nesting before the search starts. That is
+  Syllogimous's hardest search on top of Relation Algebra's hardest
+  integration. It clears 1, 3 and 5.
+- **An honest note on property 2.** For arrangements in a group the search
+  has a trick: every matched pair votes for one shift (`b·a⁻¹`), and the
+  largest shared group is the most-voted shift. That is point-pattern
+  matching, which is polynomial. The trick is worth teaching in the
+  explanation. Without it the task is a search over subsets.
+- **In the engine.** `rel()` for every pair; votes.
+- **Lures:** a group that matches up to turning when turning doesn't count;
+  a near-match one object larger.
+
+### 10. Relatedness through every path
+
+Pedigrees with loops. Sewall Wright's (1922) coefficient of relationship
+sums `(½)^L` over every pair of ancestral paths that meet at a common
+ancestor and share nobody else. Siblings are ½, half-siblings ¼, first
+cousins ⅛ and double first cousins ¼. *Checked by enumerating paths.* An
+inbred ancestor multiplies its paths by `1 + F`.
+
+- **Against the floor.** Every path must be found, and counting simple
+  paths is #P-complete in general (Valiant 1979). The whole pedigree is the
+  unit (property 1), and the lure is exact: one forgotten path halves or
+  quarters the answer. It clears 1 and 2, with four fractional options.
+- **In the engine.** A path algebra: sum over paths of products (a
+  semiring, Carré 1971; Mohri 2002) in place of the group's single
+  composite.
+- **Lures:** one path only; a path through someone who is not an ancestor
+  of both; an inbred ancestor's `1 + F` forgotten.
+
+### 11. A network of lenses — what survives
+
+Objects of several materials at once, linked by maps that forget:
+
+| Map | What it forgets |
+| --- | --- |
+| pose → heading | the place |
+| just interval → piano note | the commas (see substrates) |
+| date → weekday | the week |
+| shuffle → odd or even | everything else |
+
+**Select every pair whose relation is settled.**
+
+- **Theory.** A cellular sheaf (Hansen & Ghrist 2019; Robinson 2014): a
+  space of values at each object, a map on each link, and the possible
+  worlds as global sections. The current engine is the special case where
+  every object holds the same group and every map is a translation.
+- **Against the floor.** Projection (2.1, 24) asks who coincides through
+  one lens. Here there is a network of lenses with kernels, and information
+  flows only the way the maps point, so what is settled depends on the
+  direction of every map along every route. That is integration with
+  one-way links, answered as a set. It clears 1, 3 and 5.
+- **Lures:** settled in the image read as settled in the source; a kernel
+  element missed (the comma that vanishes on the piano and not in tune).
+
+### 12. Beliefs about beliefs (frontier)
 
 "Blue thinks Red is two north of Gold; Gold thinks Blue is one step off."
-Each agent holds its own model, and epistemic logic gives each agent an
-accessibility relation (a Kripke structure). The modal axioms correspond to
-properties of that relation: reflexive to T, transitive to 4, Euclidean to
-5. Adults manage about fifth-order intentionality ("I think you believe she
-wants…") before failing (Kinderman, Dunbar & Bentall 1998), which is a ready
-ceiling to calibrate against. The trainer's perspective premises are first
-order; nesting them across agents is new, and the hard part is phrasing it
-cleanly.
+Each agent holds its own premises, which makes a Kripke structure in
+epistemic logic. The questions are about what one agent's model says about
+another's. Adults manage about fifth-order intentionality before failing
+(Kinderman, Dunbar & Bentall 1998), a ready ceiling. It clears the floor on
+paper, but phrasing it cleanly by ear is unsolved, so it stays a frontier
+item.
 
 ---
 
-## Part 4 — Already elsewhere in this repository
+## Substrates: materials the proposals run on
 
-Not worth porting into Relation Algebra unless the point is to put them in
-its notation:
+On their own these are below the floor. They give the proposals
+non-abelian groups with real content, which is what 3, 4, 8 and 11 need.
 
-| Concept | Where |
-| --- | --- |
-| Allen's interval algebra | Syllogimous, Interval Algebra |
-| RCC8 (as the rectangle algebra) | Syllogimous, Region Connection |
-| Rock–paper–scissors dominance | Syllogimous, Cyclic Dominance |
-| Inferring a relation's properties | Syllogimous, Hidden Algebra |
-| Ignoring directions (projection) | Syllogimous, Projection |
-| Operations on relations | Syllogimous, Second-Order |
-| Which premises were needed | Syllogimous, Minimal Premises |
-| Graph isomorphism | Syllogimous, Graph Matching, Structure Match |
-| Moves in a skewed basis | Syllogimous, Oblique Basis |
-| Relational frames, stimulus functions | Syllogimous, Stimulus Function |
+| Material | Group | Why it is interesting | Checked |
+| --- | --- | --- | --- |
+| Chords | PLR and T/I, both dihedral of order 24 | neo-Riemannian P, L, R act on the 24 triads; the two groups commute and are each other's centralizers (Crans, Fiore & Satyendra 2009); PL cycles through 6 triads, PR 8, LR all 24 | yes |
+| Kinship sections | Klein four-group (Kariera); D₄ (Aranda-type) | Weil (1949) and White (1963) modelled section systems as groups; the eight-subsection model is D₄, the Orientations group, and gives mother's-mother's-brother's-daughter's-daughter marriage | yes |
+| Ratios and just intervals | ℤ³ (exponents of 2, 3, 5) | exchange rates (an impossible loop is arbitrage); 12-tone equal temperament maps it onto ℤ₁₂ and sends the syntonic comma, the Pythagorean comma and the diesis to zero | yes |
+| Turning a die | the cube's rotations, order 24 | non-abelian without mirrors; turns about the die's own axes equal turns about fixed axes in reverse order | yes |
+| Card stacks | S₃, S₄ | shuffles; odd and even shuffles never meet (the 15-puzzle's parity) | — |
+| Allies and rivals | ℤ₂ | Heider's balance theory (Cartwright & Harary 1956); either/or carries no information here | — |
+| Hexagons | ℤ² with six directions | the grid-cell lattice (Hafting et al. 2005; Constantinescu et al. 2016) | — |
+| Stems and branches | ℤ₆₀ inside ℤ₁₀ × ℤ₁₂ | only 60 of the 120 pairs occur | yes |
+
+Kinship sections are living cultural systems that vary (McConvell 2017).
+Use abstract section labels, and say where the structure comes from.
+
+## Considered and left below the floor
+
+Kept here so the reasoning is not lost and the ideas are not proposed
+again:
+
+- **A new material for the existing tasks** (every row of the table
+  above): same task, same difficulty.
+- **One false premise only**, **the missing premise** (abduction),
+  **shortest code** (Cayley-graph distance), **does the order matter**
+  (commutators), **n-back up to renaming**: each is a single composition
+  or a single isomorphism of three or four objects. Missing Premise and
+  Structure Match already exist in Syllogimous at lower weight.
+- **Ranges without either/or**: polynomial (shortest paths), so folded into
+  6.
+- **Tree distances** (ultrametrics: the larger distance wins unless the two
+  are equal): a Possibility-Sets-sized idea, below the band.
+- **One-way relations** (monoids): folded into 11, where maps that cannot
+  be undone are the point.
+- **Tarski's relation algebra**, the namesake (converse, composition,
+  residuals, Schröder's rules): vocabulary rather than a task here; set-
+  valued relations are Syllogimous's territory.
+- **Qualitative poses** (OPRA, Moratz 2006): comparable to Region
+  Connection, and close enough to the band to revisit if 2 or 5 is built.
 
 ---
 
-## Part 5 — What cognitive science says about difficulty, and about hope
+## What cognitive science says
 
 - **Relational complexity** (Halford, Wilson & Phillips 1998): the load of a
   step is how many things must be related *at once*. Adults top out around
-  four (a quaternary relation) unless the problem can be split
-  (segmentation) or compressed (chunking). Its psychometric probe, the Latin
-  Square Task (Birney, Halford & Andrews 2006), is fitting here: a Latin
-  square is the multiplication table of a quasigroup, and every group's
-  table is one. *Suggestion:* the level climbs by path length and nesting
-  depth. Log, per item, the largest number of terms that must be combined
-  in one step that cannot be split, and check from the records whether
-  errors follow that more closely than path length.
+  four unless the problem can be split (segmentation) or compressed
+  (chunking). The floor's property 1 is the case where it can't be split.
+  *Suggestion:* log, per item, the largest number of terms combined in one
+  step that cannot be split, and check from the records whether errors
+  follow that more closely than path length. The Latin Square Task (in 8)
+  is the standard probe of exactly this.
 - **Structure factored from content.** The Tolman–Eichenbaum Machine
   (Whittington et al. 2020) models the hippocampal formation as a code for
   structure (a group of actions, path-integrated) bound to a code for
-  content. That is the trainer's "one engine, seven groups" stated as a
-  theory of the brain. Grid cells have been modelled as representations of
-  the group of translations (Gao et al. 2021). Bellmund et al. (2018) review
-  the case that spatial codes organise thought generally.
+  content: "one engine, seven groups" stated as a theory of the brain. Grid
+  cells have been modelled as representations of a group of translations
+  (Gao et al. 2021). Bellmund et al. (2018) review the case that spatial
+  codes organise thought generally.
 - **Binding is a group operation.** In holographic reduced representations
-  (Plate 1995), binding is circular convolution and unbinding its inverse.
-  `rel(X, Y) = X·Y⁻¹` is, literally, an unbinding.
+  (Plate 1995), binding is circular convolution and unbinding its inverse,
+  so `rel(X, Y) = X·Y⁻¹` is literally an unbinding.
 - **The honest caveat** the README already makes: none of this shows that
-  practising group relations trains anything beyond itself. Large
-  meta-analyses of working-memory training find near transfer and little
-  or no far transfer (Melby-Lervåg, Redick & Hulme 2016). The Hidden groups
-  of 1.12 and the transfer materials (Units after Space; Kinship after
-  Orientations) are how this trainer could test its own hope on its own
-  records.
+  practising relations trains anything beyond itself. Large meta-analyses
+  of working-memory training find near transfer and little or no far
+  transfer (Melby-Lervåg, Redick & Hulme 2016). Proposals 3 and 8 are how
+  the trainer could test its own hope on its own records: the same group
+  in new words, and a law never seen before.
 
----
-
-## Part 6 — A suggested order
+## A suggested order
 
 Ranked by what each adds against what it costs.
 
-| # | Item | Kind | Cost | Why this early |
-| --- | --- | --- | --- | --- |
-| 1 | Which premise is false (2.1) | task | small: `altered` exists; one graph condition | the natural next question after *Possible?*, with an exact theory |
-| 2 | Teams, Hex, Wrapping space (1.1–1.3) | materials | small each | new structure for almost no code; Teams needs either/or turned off |
-| 3 | Ratios, then Through a lens (1.7, 2.6) | material + task | small, then medium | multiplicative reasoning; the comma is the best kernel example there is |
-| 4 | Missing premise, Shortest code (2.2, 2.3) | tasks | small | backward chaining and chunking, on every material at once |
-| 5 | n-back up to renaming (2.5) | task | small | structure without identity |
-| 6 | Card stacks, Chords, Kinship (1.4, 1.5, 1.9) | materials | medium (notation, drawings, audio for chords) | three non-abelian groups with real content; Kinship is D₄ in disguise |
-| 7 | Bounds (3.2) | solver | medium | the first step past exact values, and the 3-valued answers already fit |
-| 8 | Linear premises (3.1) | solver | medium | midpoints, analogies as premises, flows, the magic square |
-| 9 | Hidden groups (1.12) | material generator | medium | the transfer probe the README's hope needs |
-| 10 | 3-D orientations (1.6) | material | large (3-D drawing) | intrinsic against extrinsic |
-| 11 | Cube-surface poses (3.8) | solver | large: relations become paths | the most original item here; nothing else trains holonomy |
+| # | Proposal | Cost | Why this early |
+| --- | --- | --- | --- |
+| 1 | The fewest false premises (1) | small: `altered`, `consistent()`, subset search | the natural successor to *Possible?*, with exact theory for the generator |
+| 2 | Ranges with either/or (6) | small: Floyd–Warshall per reading | the trainer's either/or machinery reused; answers with holes |
+| 3 | Relations as values (4) | small: the pose group's own operations | Context Shifts' lesson, both layers non-abelian |
+| 4 | Two vocabularies (3) | medium: Aut(G), invented-word rendering | outer automorphisms are a dictionary no viewpoint gives |
+| 5 | Complete the law (8) | medium: enumerate laws, filter | induction from axioms; the transfer probe |
+| 6 | The largest shared arrangement (9) | medium | the hardest search on the hardest integration |
+| 7 | Rigid or flexible (2) | medium: new material, pebble game | a new kind of *Can't tell* |
+| 8 | Parity (7) | medium: three-object premises | the only proposal where nothing short of the whole shows anything |
+| 9 | Relatedness (10) | medium: pedigree material, path sums | real science, an exact lure |
+| 10 | Network of lenses (11) | large: several materials at once | one-way integration |
+| 11 | Curved surface (5) | large: relations become paths, a cube drawing | the most original item here |
+| 12 | Beliefs (12) | unknown | phrasing unsolved |
 
 ---
 
 ## Sources
 
+**Read from this repository:** Syllogimous's `MODE_SCALE`
+(`src/app/syllogimous/utils/calibration.utils.ts`), `ORDERED_QUESTION_TYPES`
+and `TIERS_MATRIX` (`constants/game.constants.ts`), and the headers of
+`generators/isomorphism.ts`, `cross-analogy.ts`, `context-shifts.ts`,
+`concave-regions.ts`, `betweenness.ts`, `intervals.ts`, `rcc8.ts`,
+`hidden-algebra.ts`, `projection.ts`, `minimal-premises.ts`,
+`second-order.ts` and `pivot-transforms.ts`.
+
 **Computed for these notes** (`research/relation-algebra-checks.js`, which
 uses the trainer's own `square` group where it applies):
 
-- PLR and T/I: both dihedral of order 24, commuting; the orders of PL, PR
-  and LR.
-- Kariera gives the Klein four-group; the Aranda-type model gives D₄,
-  isomorphic to the Orientations material, with MMBDD marriage.
 - A false premise is locatable exactly when its objects keep two
-  premise-disjoint routes without it (all 4,284 cases on four and five
-  objects).
-- 12-tone equal temperament sends the syntonic and Pythagorean commas and
-  the diesis to zero.
-- The cube's rotation group has order 24 and is non-abelian; in D₄, ab and
-  ba differ by at most a half turn.
-- The sexagenary cycle uses 60 of 120 pairs.
+  premise-disjoint routes without it: 4,284 cases.
+- Laman's count against generic rank: 5,131 graphs. Jackson–Jordán against
+  the stress-rank test: 33,856 graphs.
+- D₄ has four inner and four outer automorphisms, and the outer ones swap
+  the edge mirrors with the diagonal flips. Aut(ℤ₁₂) is ×1, ×5, ×7, ×11.
+- The cube walker: a quarter turn round one corner; no change round one
+  edge with two right turns, or round the middle with none.
+- Wright's coefficient for siblings, half-siblings, first and double first
+  cousins.
+- The either/or range example's answer, with its hole.
+- 480 group laws on six symbols; three products can pin a non-abelian one,
+  two never can.
 - The Mermin–Peres square is impossible, and minimally so.
+- PLR and T/I; Kariera and the Aranda-type model; the commas; the cube's
+  rotation group; D₄'s commutators; the sexagenary cycle.
 
 **Found and checked in this pass:**
 
 - Weil's appendix: [BnF, "Des lois du mariage"](https://bnf.fr/fr/mediatheque/des-lois-du-mariage-bourbaki) · [arXiv 2002.12813](https://arxiv.org/pdf/2002.12813)
-- Crans, Fiore & Satyendra 2009, *Musical actions of dihedral groups*: [arXiv 0711.1873](https://arxiv.org/pdf/0711.1873)
+- Crans, Fiore & Satyendra 2009: [arXiv 0711.1873](https://arxiv.org/pdf/0711.1873)
 - Khot, Kindler, Mossel & O'Donnell 2007: [paper](https://cs.nyu.edu/~khot/papers/maxcut.pdf)
-- Whittington et al. 2020, the Tolman–Eichenbaum Machine: [PMC7707106](https://pmc.ncbi.nlm.nih.gov/articles/PMC7707106/)
+- Whittington et al. 2020: [PMC7707106](https://pmc.ncbi.nlm.nih.gov/articles/PMC7707106/)
 - Constantinescu, O'Reilly & Behrens 2016: [PMC5248972](https://pmc.ncbi.nlm.nih.gov/articles/PMC5248972/)
-- Hansen & Ghrist, *Toward a spectral theory of cellular sheaves*: [arXiv 1808.01513](https://ar5iv.labs.arxiv.org/html/1808.01513)
+- Hansen & Ghrist: [arXiv 1808.01513](https://ar5iv.labs.arxiv.org/html/1808.01513)
 - Moratz 2006, OPRA: [Qualitative reasoning about relative direction](https://ar5iv.arxiv.org/html/1011.0098)
-- Birney, Halford & Andrews 2006, the Latin Square Task: [Educational and Psychological Measurement 66, 146–171](https://hal-amu.archives-ouvertes.fr/hal-01772235)
-- McConvell 2017, variation in Australian section systems: [Oceania](https://onlinelibrary.wiley.com/doi/abs/10.1002/ocea.5155)
+- Birney, Halford & Andrews 2006: [Latin Square Task](https://hal-amu.archives-ouvertes.fr/hal-01772235)
+- McConvell 2017: [Oceania](https://onlinelibrary.wiley.com/doi/abs/10.1002/ocea.5155)
 
-**Cited from the literature but not re-checked in this pass:** Lewin 1987;
-Harary 1953; Zaslavsky 1989; Khot 2002; Bulatov & Dalmau 2006; Bulatov
-2017 and Zhuk 2017 on the CSP dichotomy; Goldmann & Russell 2002; Heider 1946; Cartwright & Harary
-1956; De Soto 1960; Hafting et al. 2005; Johnson & Story 1879; Cohn 1998;
-Shepard & Metzler 1971; Buckingham 1914; White 1963; Gentner 1983;
-Rumelhart & Abrahamson 1973; Mikolov et al. 2013; Dechter, Meiri & Pearl
-1991; Miné 2006; Carré 1971; Gondran & Minoux 2008; Mohri 2002; Wright
-1922; Buneman 1971; Robinson 2014; Singer 2011; Penrose 1992; Abramsky &
-Brandenburger 2011; Abramsky et al. 2015; Mermin 1990 and Peres 1990;
-Allen 1983; Freksa 1992; Levinson 2003; Vilain & Kautz 1986; Nebel &
-Bürckert 1995; Tarski 1941; Codd 1970; Kinderman, Dunbar & Bentall 1998;
-Halford, Wilson & Phillips 1998; Gao et al. 2021; Bellmund et al. 2018;
-Plate 1995; Melby-Lervåg, Redick & Hulme 2016.
+**Cited from the literature but not re-checked in this pass** (the
+rigidity theorems were checked computationally above): Babai 2016; Renz &
+Nebel 1999; Opatrny 1979; Vilain & Kautz 1986; Lewin 1987; Harary 1953;
+Zaslavsky 1989; Khot 2002; Bulatov & Dalmau 2006; Goldmann & Russell 2002;
+Reiter 1987; Laman 1970; Jacobs & Hendrickson 1997; Hendrickson 1992;
+Connelly 2005; Jackson & Jordán 2005; Gortler, Healy & Thurston 2010; Saxe
+1979; M5/M7 in pitch-class set theory; Dechter, Meiri & Pearl 1991;
+Stergiou & Koubarakis 2000; Miné 2006; Mermin 1990; Peres 1990; Penrose
+1992; Abramsky & Brandenburger 2011; Colbourn 1984; Wright 1922; Valiant
+1979; Carré 1971; Mohri 2002; Robinson 2014; Kinderman, Dunbar & Bentall
+1998; Heider 1946; Cartwright & Harary 1956; Hafting et al. 2005; White
+1963; Halford, Wilson & Phillips 1998; Gao et al. 2021; Bellmund et al.
+2018; Plate 1995; Melby-Lervåg, Redick & Hulme 2016.

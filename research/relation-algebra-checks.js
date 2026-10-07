@@ -202,5 +202,228 @@ function kinship(lines, tau) {
   claim("drop any one and the rest are possible", all.every(k => solvable(all.filter(j => j !== k))));
 }
 
+/* ── Rigidity: what distances alone settle ──
+   Exact linear algebra mod a prime under 2^26 (products stay exact as
+   doubles after the BigInt fallback), at seeded random coordinates, which
+   is generic with overwhelming probability. */
+{
+  const P = 67108859;
+  let prime = true;
+  for (let d = 2; d * d <= P; d++) if (P % d === 0) prime = false;
+  const md = a => ((a % P) + P) % P;
+  const mul = (a, b) => { const r = a * b; return r <= Number.MAX_SAFE_INTEGER ? r % P : Number((BigInt(a) * BigInt(b)) % BigInt(P)); };
+  const inv = a => { let r = 1, b = a, e = P - 2; while (e) { if (e & 1) r = mul(r, b); b = mul(b, b); e = Math.floor(e / 2); } return r; };
+  function rref(rows, cols) {
+    const M = rows.map(r => r.map(md)), pivots = [];
+    let rank = 0;
+    for (let c = 0; c < cols && rank < M.length; c++) {
+      let piv = -1;
+      for (let r = rank; r < M.length; r++) if (M[r][c]) { piv = r; break; }
+      if (piv < 0) continue;
+      [M[rank], M[piv]] = [M[piv], M[rank]];
+      const iv = inv(M[rank][c]);
+      for (let k = 0; k < cols; k++) M[rank][k] = mul(M[rank][k], iv);
+      for (let r = 0; r < M.length; r++) if (r !== rank && M[r][c]) {
+        const f = M[r][c];
+        for (let k = 0; k < cols; k++) M[r][k] = md(M[r][k] - mul(f, M[rank][k]));
+      }
+      pivots.push(c); rank++;
+    }
+    return { M, rank, pivots };
+  }
+  const rng = Algebra.Rng(2026), coord = () => Math.floor(rng.next() * P);
+  const rigidityMatrix = (n, E, pts) => E.map(([i, j]) => {
+    const row = Array(2 * n).fill(0);
+    for (let d = 0; d < 2; d++) { const v = md(pts[i][d] - pts[j][d]); row[2 * i + d] = v; row[2 * j + d] = md(-v); }
+    return row;
+  });
+  const rank = (n, E, pts) => E.length ? rref(rigidityMatrix(n, E, pts), 2 * n).rank : 0;
+  /* Equilibrium stresses: w with w·R = 0. */
+  function stresses(R, m, cols) {
+    const RT = [];
+    for (let c = 0; c < cols; c++) RT.push(R.map(row => row[c]));
+    const { M, pivots } = rref(RT, m);
+    return [...Array(m).keys()].filter(c => !pivots.includes(c)).map(f => {
+      const w = Array(m).fill(0);
+      w[f] = 1;
+      pivots.forEach((pc, r) => { w[pc] = md(-M[r][f]); });
+      return w;
+    });
+  }
+  function connectedWithout(n, E, gone) {
+    const alive = [...Array(n).keys()].filter(v => !gone.includes(v));
+    const adj = [...Array(n)].map(() => []);
+    E.forEach(([a, b]) => { if (!gone.includes(a) && !gone.includes(b)) { adj[a].push(b); adj[b].push(a); } });
+    const seen = new Set([alive[0]]), queue = [alive[0]];
+    while (queue.length) adj[queue.shift()].forEach(x => { if (!seen.has(x)) { seen.add(x); queue.push(x); } });
+    return seen.size === alive.length;
+  }
+  const bits = x => { let c = 0; for (; x; x >>= 1) c += x & 1; return c; };
+  let lamanCases = 0, lamanAgree = 0, globalCases = 0, globalAgree = 0;
+  [4, 5, 6].forEach(n => {
+    const pairs = [];
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) pairs.push([i, j]);
+    for (let mask = 0; mask < (1 << pairs.length); mask++) {
+      const E = pairs.filter((_, k) => (mask >> k) & 1), m = E.length;
+      const pts = [...Array(n)].map(() => [coord(), coord()]);
+      const rigid = rank(n, E, pts) === 2 * n - 3;
+      /* Laman: with 2n - 3 distances, rigid iff every k objects carry at most 2k - 3 among themselves. */
+      if (m === 2 * n - 3) {
+        let laman = true;
+        for (let S = 0; S < (1 << n) && laman; S++) {
+          const k = bits(S);
+          if (k >= 2 && E.filter(([a, b]) => ((S >> a) & 1) && ((S >> b) & 1)).length > 2 * k - 3) laman = false;
+        }
+        lamanCases++;
+        if (laman === rigid) lamanAgree++;
+      }
+      /* Unique up to congruence: 3-connected and still rigid without any one distance
+         (Jackson & Jordán), against a stress matrix of rank n - 3 (Gortler, Healy & Thurston). */
+      const redundant = rigid && E.every((_, k) => rank(n, E.filter((_, j) => j !== k), pts) === 2 * n - 3);
+      let threeConnected = connectedWithout(n, E, []);
+      for (let a = 0; a < n && threeConnected; a++) for (let b = a + 1; b < n && threeConnected; b++) if (!connectedWithout(n, E, [a, b])) threeConnected = false;
+      let stressRank = false;
+      if (m) {
+        const basis = stresses(rigidityMatrix(n, E, pts), m, 2 * n);
+        if (basis.length) {
+          const w = Array(m).fill(0);
+          basis.forEach(b => { const c = coord(); b.forEach((x, e) => { w[e] = md(w[e] + mul(c, x)); }); });
+          const O = [...Array(n)].map(() => Array(n).fill(0));
+          E.forEach(([a, b], e) => { O[a][b] = md(O[a][b] - w[e]); O[b][a] = md(O[b][a] - w[e]); O[a][a] = md(O[a][a] + w[e]); O[b][b] = md(O[b][b] + w[e]); });
+          stressRank = rref(O, n).rank === n - 3;
+        }
+      }
+      globalCases++;
+      if ((threeConnected && redundant) === stressRank) globalAgree++;
+    }
+  });
+  claim("the modulus is prime", prime);
+  claim("Laman's count decides rigidity for 2n - 3 distances", lamanAgree === lamanCases, lamanAgree + " / " + lamanCases + " graphs on 4-6 objects");
+  claim("3-connected and redundantly rigid matches the stress-rank test for a unique shape",
+    globalAgree === globalCases, globalAgree + " / " + globalCases + " graphs on 4-6 objects");
+}
+
+/* ── Automorphisms: dictionaries that respect composition ── */
+{
+  const sq = Algebra.GROUPS.square, D = [];
+  for (let r = 0; r < 4; r++) for (let f = 0; f < 2; f++) D.push([r, f]);
+  const at = g => D.findIndex(h => sq.eq(g, h));
+  const perms = [];
+  (function build(p, used) {
+    if (p.length === D.length) { perms.push(p.slice()); return; }
+    for (let i = 0; i < D.length; i++) if (!used[i]) { used[i] = true; p.push(i); build(p, used); p.pop(); used[i] = false; }
+  })([], []);
+  const autos = perms.filter(p => D.every((a, i) => D.every((b, j) => p[at(sq.op(a, b))] === at(sq.op(D[p[i]], D[p[j]])))));
+  const inner = new Set(D.map(g => key(D.map(x => at(sq.op(sq.op(g, x), sq.inv(g)))))));
+  const outer = autos.filter(p => !inner.has(key(p)));
+  const mirrors = [at([0, 1]), at([2, 1])], diagonals = [at([1, 1]), at([3, 1])];
+  claim("D4 has 8 automorphisms: 4 inner (a change of viewpoint) and 4 outer", autos.length === 8 && inner.size === 4 && outer.length === 4);
+  claim("every outer one swaps the edge mirrors with the diagonal flips",
+    outer.every(p => mirrors.every(m => diagonals.includes(p[m])) && diagonals.every(d => mirrors.includes(p[d]))));
+  const units = [...Array(12).keys()].filter(k => new Set([...Array(12).keys()].map(x => (k * x) % 12)).size === 12);
+  claim("the automorphisms of Z12 multiply by 1, 5, 7 or 11; times 7 sends a semitone to a fifth",
+    key(units) === "1,5,7,11" && (7 * 1) % 12 === 7);
+}
+
+/* ── Walking on the surface of a cube ──
+   A walker on a cube of side 2 (four squares a face): position, facing and
+   the face's outward normal. Stepping off an edge carries it over onto the
+   next face, facing down it. */
+{
+  const add = (a, b) => a.map((x, i) => x + b[i]), scale = (a, k) => a.map(x => x * k);
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  function walk(start, moves) {
+    let { p, f, n } = start;
+    for (const mv of moves) {
+      if (mv === "<") f = cross(n, f);
+      else if (mv === ">") f = scale(cross(n, f), -1);
+      else {
+        const q = add(p, f);
+        if (q.every(x => x >= 0 && x <= 2)) p = q;
+        else { p = add(add(p, scale(f, 0.5)), scale(n, -0.5)); const g = scale(n, -1); n = f; f = g; }
+      }
+    }
+    return { p, f, n };
+  }
+  /* Turned by how much, clockwise positive as seen from outside. */
+  const turned = (s, e) => {
+    const c = s.f.reduce((t, x, i) => t + x * e.f[i], 0), sn = cross(s.f, e.f).reduce((t, x, i) => t + x * s.n[i], 0);
+    return -Math.round(Math.atan2(sn, c) * 180 / Math.PI);
+  };
+  const corner = { p: [1.5, 1.5, 2], f: [1, 0, 0], n: [0, 0, 1] };
+  const c = walk(corner, "^<^<^".split(""));
+  claim("^<^<^ round one corner: back where it started, facing a quarter turn right",
+    key(c.p) === key(corner.p) && turned(corner, c) === 90);
+  const edge = { p: [1.5, 0.5, 2], f: [0, 1, 0], n: [0, 0, 1] };
+  const e = walk(edge, "^^>^^^>^".split(""));
+  claim("^^>^^^>^ round one edge: back, facing as it began, with only two right turns",
+    key(e.p) === key(edge.p) && turned(edge, e) === 0);
+  const belt = { p: [2, 0.5, 1.5], f: [0, 1, 0], n: [1, 0, 0] };
+  const b = walk(belt, "^^^^^^^^".split(""));
+  claim("eight steps straight round the middle: back, facing as it began, with no turn at all",
+    key(b.p) === key(belt.p) && turned(belt, b) === 0);
+}
+
+/* ── Wright's coefficient of relationship, by enumerating paths ──
+   Every pair of ancestral paths that meet at a common ancestor and share
+   nobody else counts (1/2)^(steps). */
+{
+  function relatedness(parents, X, Y) {
+    const up = (v, path, out) => { out.push(path); (parents[v] || []).forEach(p => up(p, path.concat([p]), out)); return out; };
+    let sum = 0;
+    up(X, [X], []).forEach(a => up(Y, [Y], []).forEach(b => {
+      const top = a[a.length - 1];
+      if (top !== b[b.length - 1]) return;
+      const mine = new Set(a);
+      if (b.slice(0, -1).some(v => mine.has(v))) return;
+      sum += Math.pow(0.5, a.length + b.length - 2);
+    }));
+    return sum;
+  }
+  const family = { A: ["G1", "G2"], B: ["G1", "G2"], C: ["A", "S1"], D: ["B", "S2"], H1: ["G1", "X"], H2: ["G1", "Y"] };
+  const double = { A1: ["P", "Q"], A2: ["P", "Q"], B1: ["R", "S"], B2: ["R", "S"], C: ["A1", "B1"], D: ["A2", "B2"] };
+  claim("siblings 1/2, half-siblings 1/4, first cousins 1/8, double first cousins 1/4",
+    relatedness(family, "A", "B") === 0.5 && relatedness(family, "H1", "H2") === 0.25 &&
+    relatedness(family, "C", "D") === 0.125 && relatedness(double, "C", "D") === 0.25);
+}
+
+/* ── Ranges with an either/or: the answer can have a hole ──
+   |Red - Blue| in [2, 4]; Gold - Red in [1, 2]; Gold - Blue at most 5. */
+{
+  const seen = new Set();
+  for (let R = -10; R <= 10; R++) for (let B = -10; B <= 10; B++) for (let G = -10; G <= 10; G++) {
+    const d = Math.abs(R - B);
+    if (d >= 2 && d <= 4 && G - R >= 1 && G - R <= 2 && G - B <= 5) seen.add(G - B);
+  }
+  claim("Gold - Blue can be -3 to 0 or 3 to 5, and nothing between",
+    key([...seen].sort((a, b) => a - b)) === "-3,-2,-1,0,3,4,5");
+}
+
+/* ── How little of a group's table pins the whole law ── */
+{
+  const perms = n => { const out = []; (function build(p, used) {
+    if (p.length === n) { out.push(p.slice()); return; }
+    for (let i = 0; i < n; i++) if (!used[i]) { used[i] = true; p.push(i); build(p, used); p.pop(); used[i] = false; }
+  })([], []); return out; };
+  const S3 = perms(3);
+  const s3 = S3.map(a => S3.map(b => S3.findIndex(c => key(c) === key(b.map(i => a[i])))));
+  const z6 = [...Array(6)].map((_, a) => [...Array(6)].map((_, b) => (a + b) % 6));
+  const laws = new Map();
+  [s3, z6].forEach(T => perms(6).forEach(s => {
+    const t = Array(36);
+    for (let a = 0; a < 6; a++) for (let b = 0; b < 6; b++) t[s[a] * 6 + s[b]] = s[T[a][b]];
+    laws.set(key(t), t);
+  }));
+  const all = [...laws.values()], target = all.find(t => t.some((v, i) => v !== t[(i % 6) * 6 + Math.floor(i / 6)]));
+  const pins = cells => all.filter(t => cells.every(c => t[c] === target[c])).length === 1;
+  let two = false, three = false;
+  for (let a = 0; a < 36; a++) for (let b = a + 1; b < 36; b++) {
+    if (pins([a, b])) two = true;
+    for (let c = b + 1; c < 36 && !three; c++) if (pins([a, b, c])) three = true;
+  }
+  claim("there are 480 group laws on six symbols", all.length === 480);
+  claim("three of a non-abelian law's 36 products can pin it among them all; two never can", three && !two);
+}
+
 console.log(failed ? "\n" + failed + " claim(s) failed" : "\nall claims hold");
 process.exit(failed ? 1 : 0);

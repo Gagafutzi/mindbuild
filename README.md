@@ -351,14 +351,16 @@ control of feeling can and cannot do; the practices that went furthest
 directed facial action, metta's ordering); and an eight-rung exercise ladder
 that mirrors the visual one, with its measures and the safety it needs.
 
-`relation-algebra.md` surveys what else Relation Algebra's engine could hold:
-what the engine already is in six fields' terms (a torsor, a Generalized
-Interval System, a gain graph, a cohomology class, a gauge field, a unique
-game); new materials (balance theory's allies and rivals, hexagons, chords
-under PLR, kinship sections, ratios and the commas, the cube's rotations); new
-tasks (which premise is false, abduction, shortest code, homomorphisms between
-materials); and the generalisations past groups (bounds, semirings, monoids,
-sheaves, curved surfaces, contextuality), with a suggested order.
+`relation-algebra.md` is research towards Relation Algebra, with Syllogimous's
+hardest modes as the floor: their weights, ceilings and unlock rows, the five
+properties that make them hard, and twelve proposals that clear it, each
+measured against a named mode. Among them: the fewest false premises (the
+frustration index), rigidity from distances alone (Laman, Jackson–Jordán), a
+dictionary that is an outer automorphism, relations as values in poses, routes
+on a cube's surface (holonomy), either/or ranges with holes, global parity
+(the Mermin–Peres square), and a group law derived from three of its products.
+New materials (chords under PLR, kinship sections as D₄, ratios and the commas)
+appear only as substrates, and what fell below the floor is listed with why.
 `relation-algebra-checks.js` checks by brute force the claims the note works
 out rather than quotes: `node research/relation-algebra-checks.js`.
 
