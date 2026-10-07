@@ -8,7 +8,7 @@
      that loaded the page while the wiring was broken would keep serving
      itself the broken script for ten more minutes — and the failure is
      silent, so it would read as "the fix did not work". Bump on release. -->
-<link rel="stylesheet" href="css/base.css?v=9">
+<link rel="stylesheet" href="css/base.css?v=10">
 </head>
 <body>
 
@@ -57,6 +57,7 @@
 
     <span class="nav-label">Yours</span>
     <a class="nav-item" href="#notes"><svg class="icon"><use href="#i-pen"/></svg>Notes</a>
+    <a class="nav-item" href="#weekly"><svg class="icon"><use href="#i-clock"/></svg>Weekly&nbsp;log</a>
     <a class="nav-item" href="#imports"><svg class="icon"><use href="#i-scroll"/></svg>Log</a>
 
     <!-- One row per source, filled by renderSources: the dot is the source's
@@ -244,6 +245,63 @@
   <ul id="noteList" class="notes"></ul>
 </section>
 
+<section id="weekly" class="panel">
+  <div class="panel-head"><h2 id="lanternName">The Lantern Hours</h2></div>
+  <p class="dim">
+    Hours a week against a goal: trainer time from the records above, study time
+    written down here. The average runs over <b>every finished week</b> since the
+    diary began &mdash; a week with nothing logged counts as zero, because an
+    average over only the weeks you remembered is the one that flatters. The week
+    in progress is shown apart and never averaged.
+  </p>
+
+  <div id="lanternNow" class="cards"></div>
+
+  <!-- Study is the half no export holds, so it is typed in: one entry per
+       sitting, or one per day. -->
+  <form id="studyForm" class="noteform">
+    <div class="row">
+      <label>Day <input id="studyDay" type="date" required></label>
+      <label class="grow">Subject
+        <input id="studySubject" type="text" list="studySubjects" placeholder="Real analysis" autocomplete="off">
+      </label>
+      <label>Hours <input id="studyHours" type="number" step="0.25" min="0" placeholder="1.5"></label>
+    </div>
+    <div class="row">
+      <label class="grow">What, if anything
+        <input id="studyText" type="text" placeholder="chapter 3, exercises 1&ndash;12" autocomplete="off">
+      </label>
+      <button class="btn btn-primary" type="submit">Log study</button>
+      <span id="studyHint" class="dim"></span>
+    </div>
+    <datalist id="studySubjects"></datalist>
+  </form>
+
+  <div class="table-wrap"><table id="lanternWeeks"></table></div>
+  <div id="lanternBreakdown" class="cards"></div>
+
+  <details class="about">
+    <summary>Study entries</summary>
+    <ul id="studyList" class="notes"></ul>
+  </details>
+
+  <details class="about">
+    <summary>The diary's settings</summary>
+    <form id="diaryForm" class="noteform">
+      <div class="row">
+        <label class="grow">Name <input id="diaryName" type="text" autocomplete="off"></label>
+        <label>Goal, hours a week <input id="diaryGoal" type="number" step="0.5" min="0.5" max="168"></label>
+        <label>Counting from <input id="diaryStart" type="date"></label>
+        <button class="btn" type="submit">Save settings</button>
+      </div>
+      <p class="dim">
+        Without a start day the diary counts from its first study entry. Trainer
+        time before the start is history, not part of the plan, and is left out.
+      </p>
+    </form>
+  </details>
+</section>
+
 <section id="imports" class="panel">
   <div class="panel-head"><h2>Imports</h2></div>
   <ul id="log" class="log"></ul>
@@ -254,10 +312,11 @@
 
 <script src="js/record.js?v=6"></script>
 <script src="js/notes.js?v=6"></script>
-<script src="js/adapters.js?v=6"></script>
-<script src="js/archive.js?v=6"></script>
+<script src="js/adapters.js?v=7"></script>
+<script src="js/archive.js?v=7"></script>
 <script src="js/insight.js?v=6"></script>
 <script src="js/ability.js?v=6"></script>
-<script src="js/app.js?v=7"></script>
+<script src="js/weekly.js?v=1"></script>
+<script src="js/app.js?v=8"></script>
 </body>
 </html>

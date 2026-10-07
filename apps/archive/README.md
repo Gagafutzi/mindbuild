@@ -90,6 +90,39 @@ The convenience cache keeps notes **whole**, unlike records, which it stores
 lossy on purpose. Records can be rebuilt by dropping the exports in again;
 notes cannot be rebuilt from anything.
 
+## The weekly log
+
+Hours a week against a goal — by default 14, and the panel is named for the
+diary it keeps, *The Lantern Hours* (both are in its settings). A week is two
+things added together:
+
+- **Trainer time**, from the same `minutes` table the year and the day table
+  read, so the log can never disagree with them about a week. Under each
+  trainer, its modes, from the items' own seconds — listed *beneath* the
+  trainer's clock and never in place of it, since a trainer's clock also runs
+  between items. What the items do not account for is shown as its own line.
+- **Study time**, typed in: a day, a subject, hours, and optionally what. No
+  export holds it, so it is kept, merged and cached exactly like a note — by
+  when it was written, with tombstones for deletions, whole in the cache.
+
+Weeks start on Monday and run from the diary's start day (or, without one, its
+first study entry). Trainer time before the start is history and is left out:
+a hundred hours of last year's play would otherwise make the first month's
+average meaningless.
+
+Two rules keep the average honest:
+
+- **A week with nothing logged counts as zero.** An average over only the weeks
+  somebody remembered to log is the one every diary flatters itself with, and
+  the one a retest would contradict.
+- **The week in progress is never averaged.** Tuesday's three hours are not a
+  three-hour week. It is shown apart, with what it still needs — both to reach
+  the goal on its own, and for the running average to stand on the goal once it
+  ends, which carries any shortfall from the weeks before.
+
+The logic is `js/weekly.js`; `weeklyLog(archive, { today })` takes the day from
+outside so the tests stand on a fixed date and the page can pass its local one.
+
 ## The rules it is built on
 
 **Merging is a union, never an addition.** Records key on `source + id`;

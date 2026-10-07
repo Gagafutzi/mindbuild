@@ -12,10 +12,13 @@
 
 /* global emptyArchive, fold, foldNotes, days, dayRow, overlap, sourceSummary, cacheSave,
    cacheLoad, readFile, makeNote, noteId, tombstone, mergeNotes, visibleNotes, notesOn,
-   measureSeries, tagCounts, estimate, tierLabel, TIERS */
+   measureSeries, tagCounts, estimate, tierLabel, TIERS, makeStudy, studyProblem,
+   studyTombstone, mergeStudy, visibleStudy, knownSubjects, makeDiary, foldStudy,
+   weeklyLog */
 
 var archive = cacheLoad() || emptyArchive();
 if (!Array.isArray(archive.notes)) archive.notes = [];
+if (!Array.isArray(archive.study)) archive.study = [];
 var $ = function (id) { return document.getElementById(id); };
 
 /** Weeks of overlap before a cross-app comparison is worth computing. */
@@ -284,12 +287,15 @@ function importText(text, name) {
        reading — and they are folded at all, which a restore depends on: they
        exist in this file and in no export anywhere. */
     var noted = foldNotes(archive, reading.notes);
+    var studied = foldStudy(archive, reading.study, reading.diary);
     var ok = cacheSave(archive);
     note(name + " → archive (" + reading.readings.length + " sources): "
       + total.added + " new, " + total.updated + " updated, "
       + total.days + " new days"
       + (noted.added || noted.updated
         ? ", " + noted.added + " new notes, " + noted.updated + " updated" : "")
+      + (studied.added || studied.updated
+        ? ", " + studied.added + " new study entries, " + studied.updated + " updated" : "")
       + (ok ? "" : " (cache full — keep the archive file)"));
     markUnsaved();
     render();
@@ -422,13 +428,20 @@ function render() {
   renderNotes();
   renderMeasures();
   renderKnownTags();
+  renderLantern();
   renderSaveState();
   refreshUndo();
   /* Notes count as something to download, not just records.
      A fresh archive with a note in it and no imports had nothing to save by
      this test — so the page marked the file behind, armed the warning on close,
      and disabled the one button that could have written the note out. */
-  $("save").disabled = archive.records.length === 0 && visibleNotes(archive).length === 0;
+  $("save").disabled = !hasContent();
+}
+
+/** Anything worth writing out: records, or anything typed in by hand. */
+function hasContent() {
+  return archive.records.length > 0 || visibleNotes(archive).length > 0
+    || visibleStudy(archive).length > 0 || !!archive.diary;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1271,6 +1284,190 @@ function renderKnownTags() {
 }
 
 /* ------------------------------------------------------------------ *
+ * The weekly log                                                      *
+ * ------------------------------------------------------------------ */
+
+/*
+ * Everything here is computed by `weeklyLog` in weekly.js, which is the half
+ * with tests. Study entries are typed by a person, so every string is escaped.
+ */
+
+/** A week's bar: trainer time, then study, against the goal. */
+function weekBar(trainer, study, goal) {
+  var scale = Math.max(goal, trainer + study) || 1;
+  return "<span class='wbar' title='" + fmt(trainer, 1) + " h trainers, "
+    + fmt(study, 1) + " h study, goal " + fmt(goal, 1) + " h'>"
+    + "<i class='t' style='inline-size:" + (100 * trainer / scale) + "%'></i>"
+    + "<i class='s' style='inline-size:" + (100 * study / scale) + "%'></i>"
+    + "<b style='inset-inline-start:" + (100 * goal / scale) + "%'></b></span>";
+}
+
+function renderLantern() {
+  var host = $("lanternNow");
+  if (!host) return;
+  var log = weeklyLog(archive, { today: localDay() });
+  var goal = log.goalHours;
+
+  $("lanternName").textContent = log.name;
+
+  var current = log.weeks.filter(function (w) { return w.current; })[0];
+  var cur = current || { trainer: 0, study: 0 };
+  host.innerHTML =
+    "<div class='card" + (log.thisWeek >= goal ? " ok" : "") + "'><h3>This week</h3>"
+      + "<p><b>" + fmt(log.thisWeek, 1) + "</b> of " + fmt(goal, 1) + " h</p>"
+      + weekBar(cur.trainer / 60, cur.study / 60, goal)
+      + "<p class='dim'>" + (log.thisWeekLeft > 0
+        ? fmt(log.thisWeekLeft, 1) + " h to the goal" : "goal met") + "</p></div>"
+    + "<div class='card" + (log.average != null && log.average >= goal ? " ok" : "") + "'>"
+      + "<h3>Running average</h3>"
+      + (log.average == null
+        ? "<p><b>—</b></p><p class='dim'>after the first finished week</p>"
+        : "<p><b>" + fmt(log.average, 1) + "</b> h a week</p><p class='dim'>over "
+          + log.finished + " finished week" + (log.finished === 1 ? "" : "s")
+          + ", goal met in " + log.weeksMet + "</p>")
+      + "</div>"
+    + "<div class='card'><h3>To hold " + fmt(goal, 1) + "</h3>"
+      + "<p><b>" + fmt(log.neededForAverage, 1) + "</b> h more this week</p>"
+      + "<p class='dim'>" + (log.neededForAverage > 0
+        ? "for the average to stand on the goal when the week ends"
+        : "the average stays on the goal whatever this week brings") + "</p></div>"
+    + "<div class='card'><h3>Since " + esc(log.start) + "</h3>"
+      + "<p><b>" + fmt(log.totals.trainer + log.totals.study, 1) + "</b> h</p>"
+      + "<p class='dim'>" + fmt(log.totals.trainer, 1) + " trainers · "
+      + fmt(log.totals.study, 1) + " study"
+      + (log.startSet ? "" : " · start not set") + "</p></div>";
+
+  // Newest week first: the one being lived in is the one being looked for.
+  var rows = log.weeks.slice().reverse().map(function (w) {
+    var subjects = Object.keys(w.bySubject).length;
+    return "<tr" + (w.current ? " class='now'" : "") + "><td>" + esc(w.week)
+      + (w.current ? " <span class='dim nowtag'>now</span>" : "") + "</td>"
+      + "<td>" + fmt(w.trainer / 60, 1) + "</td>"
+      + "<td title='" + subjects + " subject" + (subjects === 1 ? "" : "s") + "'>"
+      + fmt(w.study / 60, 1) + "</td>"
+      + "<td><b>" + fmt(w.total / 60, 1) + "</b></td>"
+      + "<td class='barcell'>" + weekBar(w.trainer / 60, w.study / 60, goal) + "</td>"
+      + "<td>" + (w.runningAverage == null ? "—" : fmt(w.runningAverage, 1)) + "</td></tr>";
+  }).join("");
+  $("lanternWeeks").innerHTML = "<tr><th>week of</th><th>trainers</th><th>study</th>"
+    + "<th>total</th><th>against " + fmt(goal, 1) + " h</th><th>avg</th></tr>" + rows;
+
+  var subjectCard = "<div class='card'><h3>Study by subject</h3>"
+    + (log.totals.bySubject.length
+      ? "<table>" + log.totals.bySubject.map(function (s) {
+          return "<tr><td>" + esc(s.subject) + "</td><td>" + fmt(s.hours, 1) + " h</td></tr>";
+        }).join("") + "</table>"
+      : "<p class='dim'>Nothing logged yet.</p>")
+    + "</div>";
+  var trainerCards = log.totals.byMode.filter(function (s) { return s.hours > 0; })
+    .map(function (s) {
+      var modes = s.modes.slice(0, 10).map(function (m) {
+        return "<tr><td>" + esc(m.label) + "</td><td>" + fmt(m.hours, 1) + " h</td></tr>";
+      }).join("");
+      var rest = s.modes.length > 10
+        ? "<tr><td class='dim'>" + (s.modes.length - 10) + " more</td><td>"
+          + fmt(s.modes.slice(10).reduce(function (a, m) { return a + m.hours; }, 0), 1)
+          + " h</td></tr>"
+        : "";
+      // The trainer's clock runs between items too; that part is said, not spread.
+      var gap = s.unattributed >= 0.05
+        ? "<tr><td class='dim'>" + (s.modes.length ? "between items" : "not timed per item")
+          + "</td><td>" + fmt(s.unattributed, 1) + " h</td></tr>"
+        : "";
+      return "<div class='card'><h3>" + dot(s.source) + esc(sourceName(s.source))
+        + " <span class='dim'>" + fmt(s.hours, 1) + " h</span></h3>"
+        + "<table>" + modes + rest + gap + "</table></div>";
+    }).join("");
+  $("lanternBreakdown").innerHTML = subjectCard + trainerCards;
+
+  var entries = visibleStudy(archive);
+  $("studyList").innerHTML = entries.length
+    ? entries.map(function (e) {
+        return "<li class='note' data-id='" + esc(e.id) + "'><div class='note__head'>"
+          + "<b>" + esc(e.day) + "</b><span class='pill'>" + esc(e.subject) + " <b>"
+          + fmt(e.minutes / 60, 2).replace(/\.?0+$/, "") + "</b> h</span>"
+          + (e.text ? "<span class='dim'>" + esc(e.text) + "</span>" : "")
+          + "<span class='note__acts'><button class='btn quiet' type='button' data-act='delete'>"
+          + "Delete</button></span></div></li>";
+      }).join("")
+    : "<li class='dim'>No study logged yet.</li>";
+
+  $("studySubjects").innerHTML = knownSubjects(archive).map(function (s) {
+    return "<option value='" + esc(s.subject) + "'></option>";
+  }).join("");
+
+  /* The settings form shows what is stored — except while being typed in, when
+     a render from elsewhere must not pull the text out from under the cursor. */
+  var diary = makeDiary(archive.diary);
+  var fields = { diaryName: diary.name, diaryGoal: diary.goalHours, diaryStart: diary.start || "" };
+  Object.keys(fields).forEach(function (id) {
+    if (document.activeElement !== $(id)) $(id).value = fields[id];
+  });
+}
+
+function submitStudy(e) {
+  if (e) e.preventDefault();
+  var now = Date.now();
+  var entry = makeStudy({
+    id: noteId(now),
+    day: $("studyDay").value || localDay(),
+    at: now,
+    subject: $("studySubject").value,
+    hours: $("studyHours").value,
+    text: $("studyText").value,
+  });
+  var problem = studyProblem(entry);
+  if (problem) { $("studyHint").textContent = problem; return; }
+
+  archive.study = mergeStudy(archive.study, [entry]).study;
+  archive.updatedAt = now;
+  cacheSave(archive);
+  markUnsaved();
+  note("study logged — " + entry.day + ", " + entry.subject + ", "
+    + fmt(entry.minutes / 60, 2) + " h");
+  /* The day and subject stay: the next entry is usually the same evening, or
+     the same subject the next day. The time and the detail do not carry. */
+  $("studyHours").value = "";
+  $("studyText").value = "";
+  $("studyHint").textContent = "";
+  render();
+}
+
+/* A tombstone, as with notes, so an older archive folded in later cannot
+   bring the entry back. */
+function deleteStudy(id) {
+  var e = archive.study.filter(function (x) { return x.id === id; })[0];
+  if (!e) return;
+  if (!confirm("Delete " + e.subject + " on " + e.day + "?")) return;
+  archive.study = mergeStudy(
+    archive.study.filter(function (x) { return x.id !== id; }),
+    [studyTombstone(e, Date.now())]).study;
+  archive.updatedAt = Date.now();
+  cacheSave(archive);
+  markUnsaved();
+  note("study entry deleted — " + e.day + ", " + e.subject);
+  render();
+}
+
+function submitDiary(e) {
+  if (e) e.preventDefault();
+  var now = Date.now();
+  archive.diary = makeDiary({
+    name: $("diaryName").value,
+    goalHours: $("diaryGoal").value,
+    start: $("diaryStart").value,
+    editedAt: now,
+  });
+  archive.updatedAt = now;
+  cacheSave(archive);
+  markUnsaved();
+  note("diary settings saved — " + archive.diary.goalHours + " h a week"
+    + (archive.diary.start ? " from " + archive.diary.start : ""));
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  render();
+}
+
+/* ------------------------------------------------------------------ *
  * Taking the archive out                                              *
  * ------------------------------------------------------------------ */
 
@@ -1299,13 +1496,16 @@ function loadArchive(text) {
   archive.imports = archive.imports || [];
   archive.minutes = archive.minutes || {};
   archive.notes = Array.isArray(archive.notes) ? archive.notes : [];
+  archive.study = Array.isArray(archive.study) ? archive.study : [];
+  archive.diary = archive.diary || null;
   cacheSave(archive);
   /* Restoring means the page was just handed a file that already holds all of
      this, so nothing is outstanding. */
   unsavedImports = 0;
   storeSaveState();
   note("archive restored — " + archive.records.length + " records"
-    + (archive.notes.length ? ", " + visibleNotes(archive).length + " notes" : ""));
+    + (archive.notes.length ? ", " + visibleNotes(archive).length + " notes" : "")
+    + (archive.study.length ? ", " + visibleStudy(archive).length + " study entries" : ""));
   render();
   return true;
 }
@@ -1360,6 +1560,15 @@ window.addEventListener("DOMContentLoaded", function () {
   });
   clearNoteForm();
 
+  $("studyDay").value = localDay();
+  $("studyForm").addEventListener("submit", submitStudy);
+  $("diaryForm").addEventListener("submit", submitDiary);
+  $("studyList").addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("button[data-act]");
+    var li = btn && btn.closest("li[data-id]");
+    if (li) deleteStudy(li.getAttribute("data-id"));
+  });
+
   var drop = $("drop");
   ["dragenter", "dragover"].forEach(function (type) {
     drop.addEventListener(type, function (e) { e.preventDefault(); drop.classList.add("over"); });
@@ -1402,7 +1611,7 @@ window.addEventListener("DOMContentLoaded", function () {
      the archive, not the page the browser would otherwise offer to write. */
   document.addEventListener("keydown", function (e) {
     if (!(e.ctrlKey || e.metaKey) || (e.key !== "s" && e.key !== "S")) return;
-    if (!archive.records.length) return;
+    if (!hasContent()) return;
     e.preventDefault();
     saveArchive();
   });

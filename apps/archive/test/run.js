@@ -530,7 +530,7 @@ test("the page renders an archive without throwing", () => {
     .replace(/typeof require === "function"/g, "false");
 
   for (const f of ["js/record.js", "js/notes.js", "js/adapters.js", "js/archive.js",
-                   "js/insight.js", "js/ability.js", "js/app.js"]) {
+                   "js/insight.js", "js/ability.js", "js/weekly.js", "js/app.js"]) {
     vm.runInContext(strip(f), ctx, { filename: f });
   }
 
@@ -597,6 +597,23 @@ test("the page renders an archive without throwing", () => {
   ctx.render();
   assert.strictEqual(nodes.save.disabled, false,
     "an archive holding only notes could not be downloaded");
+
+  /* The weekly log through the real render, with a subject trying to be
+     markup — the second place on the page a person's own text is printed. */
+  const diary = A.emptyArchive();
+  diary.diary = W.makeDiary({ start: "2026-08-24", goalHours: 14, editedAt: 1 });
+  diary.study = [W.makeStudy({ id: "s1", day: "2026-08-25", at: 1,
+    subject: "<img src=x onerror=alert(1)>Topology", hours: 2 })];
+  ctx.archive = diary;
+  ctx.render();
+  assert.ok(nodes.lanternWeeks.innerHTML.includes("2026-08-24"), "the weekly table is empty");
+  assert.ok(nodes.studyList.innerHTML.includes("Topology"), "the study entry did not render");
+  assert.ok(!/<img/.test(nodes.studyList.innerHTML + nodes.lanternBreakdown.innerHTML
+    + nodes.studySubjects.innerHTML),
+    "a subject reached innerHTML unescaped");
+  assert.strictEqual(nodes.lanternName.textContent, "The Lantern Hours");
+  assert.strictEqual(nodes.save.disabled, false,
+    "an archive holding only study time could not be downloaded");
 });
 
 /* ------------------------------------------------------------------ */
@@ -1533,6 +1550,257 @@ test("notes: an archive written before notes existed still opens", () => {
     : Object.assign(old, { records: [makeRecord({ source: "s", id: "1", at: 1000 })] })));
   assert.ok(reading.archive);
   assert.deepStrictEqual(reading.notes, [], "a missing notes array should read as none");
+});
+
+/* ------------------------------------------------------------------ *
+ * The weekly log                                                      *
+ * ------------------------------------------------------------------ *
+ *
+ * Study time is typed by hand, so its merge carries the same stakes as the
+ * notes'. The average carries a different one: it is the number a person will
+ * hold a five-month plan to, and the easy ways to compute it all flatter.
+ */
+
+const W = require("../js/weekly.js");
+
+const study = (over) => W.makeStudy(Object.assign(
+  { id: "s1", day: "2026-10-06", at: 1000, subject: "Real analysis", hours: 1.5 }, over));
+
+/* 2026-10-05 is a Monday. */
+const diaryFrom = (start, goal) => W.makeDiary({ start: start, goalHours: goal || 14, editedAt: 1 });
+
+test("weekly: hours are kept as whole minutes, and the form's hours are read", () => {
+  assert.strictEqual(study({}).minutes, 90);
+  assert.strictEqual(study({ hours: "0.25" }).minutes, 15);
+  assert.strictEqual(study({ hours: undefined, minutes: 40 }).minutes, 40);
+  // An empty field is no time, not zero hours that look recorded.
+  assert.strictEqual(W.studyProblem(study({ hours: "" })), "Give it a time above zero.");
+  assert.strictEqual(W.studyProblem(study({ subject: "  " })), "Give it a subject.");
+  assert.ok(W.studyProblem(study({ hours: 30 })), "thirty hours in a day was accepted");
+  assert.strictEqual(W.studyProblem(study({})), "");
+  assert.strictEqual(study({ subject: "  Real   analysis " }).subject, "Real analysis");
+});
+
+test("weekly: weeks start on Monday, the same weeks isoWeek counts", () => {
+  assert.strictEqual(W.weekStart("2026-10-05"), "2026-10-05");
+  assert.strictEqual(W.weekStart("2026-10-11"), "2026-10-05");   // Sunday
+  assert.strictEqual(W.weekStart("2026-10-12"), "2026-10-12");
+  assert.strictEqual(W.weekStart("2027-01-01"), "2026-12-28");   // across a year
+  for (const d of ["2026-10-05", "2026-10-11", "2027-01-03"]) {
+    assert.strictEqual(A.isoWeek(W.weekStart(d)), A.isoWeek(d));
+  }
+});
+
+test("weekly: a week is trainer minutes plus study, and both are counted once", () => {
+  const a = A.emptyArchive();
+  a.diary = diaryFrom("2026-10-05");
+  a.minutes = { syllogimous: { "2026-10-05": 60, "2026-10-07": 30 }, rnb: { "2026-10-06": 30 } };
+  a.study = [study({}), study({ id: "s2", day: "2026-10-08", hours: 2, subject: "real analysis" })];
+  const log = W.weeklyLog(a, { today: "2026-10-09" });
+  assert.strictEqual(log.weeks.length, 1);
+  const w = log.weeks[0];
+  assert.strictEqual(w.trainer, 120);
+  assert.strictEqual(w.study, 210);
+  assert.strictEqual(w.total, 330);
+  assert.deepStrictEqual(w.bySource, { syllogimous: 90, rnb: 30 });
+  // One subject, whatever case it was typed in.
+  assert.strictEqual(log.totals.bySubject.length, 1);
+  assert.strictEqual(log.totals.bySubject[0].hours, 3.5);
+  assert.strictEqual(log.thisWeek, 5.5);
+  assert.strictEqual(log.thisWeekLeft, 8.5);
+});
+
+test("weekly: an empty week counts as zero in the average", () => {
+  const a = A.emptyArchive();
+  a.diary = diaryFrom("2026-09-21");
+  // 14 h in the first week, nothing in the second, now in the third.
+  a.study = [study({ day: "2026-09-22", hours: 14 })];
+  const log = W.weeklyLog(a, { today: "2026-10-07" });
+  assert.strictEqual(log.weeks.length, 3);
+  assert.strictEqual(log.finished, 2);
+  assert.strictEqual(log.average, 7,
+    "the skipped week was left out of the denominator — the average flatters");
+  assert.strictEqual(log.weeksMet, 1);
+  assert.strictEqual(log.weeks[0].runningAverage, 14);
+  assert.strictEqual(log.weeks[1].runningAverage, 7);
+});
+
+test("weekly: the week in progress is shown, never averaged", () => {
+  const a = A.emptyArchive();
+  a.diary = diaryFrom("2026-09-28");
+  a.study = [study({ day: "2026-09-29", hours: 14 }), study({ id: "s2", day: "2026-10-06", hours: 1 })];
+  const log = W.weeklyLog(a, { today: "2026-10-06" });
+  assert.strictEqual(log.average, 14, "Tuesday's hour was averaged as a one-hour week");
+  assert.strictEqual(log.weeks[1].current, true);
+  assert.strictEqual(log.weeks[1].runningAverage, null);
+  assert.strictEqual(log.thisWeek, 1);
+  // On the goal so far, so this week needs only its own fourteen.
+  assert.strictEqual(log.neededForAverage, 13);
+});
+
+test("weekly: what this week needs carries the shortfall, and is never negative", () => {
+  const a = A.emptyArchive();
+  a.diary = diaryFrom("2026-09-21");
+  a.study = [study({ day: "2026-09-22", hours: 10 }), study({ id: "s2", day: "2026-09-29", hours: 12 })];
+  let log = W.weeklyLog(a, { today: "2026-10-05" });
+  // 22 of 28 so far; for three weeks to average 14 this one needs 42 - 22 = 20.
+  assert.strictEqual(log.neededForAverage, 20);
+
+  a.study.push(study({ id: "s3", day: "2026-10-05", hours: 23 }));
+  log = W.weeklyLog(a, { today: "2026-10-05" });
+  assert.strictEqual(log.neededForAverage, 0);
+});
+
+test("weekly: trainer time before the diary began is history, not part of it", () => {
+  const a = A.emptyArchive();
+  a.diary = diaryFrom("2026-10-07");          // a Wednesday
+  a.minutes = { syllogimous: { "2025-01-01": 6000, "2026-10-06": 50, "2026-10-07": 40 } };
+  a.records = [
+    makeRecord({ source: "syllogimous", id: "old", at: Date.UTC(2025, 0, 1), seconds: 3600, label: "Distinction" }),
+    makeRecord({ source: "syllogimous", id: "new", at: Date.UTC(2026, 9, 7), seconds: 1800, label: "Distinction" }),
+  ];
+  const log = W.weeklyLog(a, { today: "2026-10-08" });
+  assert.strictEqual(log.weeks.length, 1);
+  assert.strictEqual(log.weeks[0].trainer, 40, "a day before the start was counted");
+  assert.strictEqual(log.totals.byMode[0].modes[0].hours, 0.5);
+});
+
+test("weekly: with no start set, the diary counts from its first study entry", () => {
+  const a = A.emptyArchive();
+  a.minutes = { syllogimous: { "2026-01-05": 600 } };
+  a.study = [study({ day: "2026-09-30" }), study({ id: "s2", day: "2026-10-06" })];
+  const log = W.weeklyLog(a, { today: "2026-10-07" });
+  assert.strictEqual(log.start, "2026-09-30");
+  assert.strictEqual(log.startSet, false);
+  assert.strictEqual(log.weeks[0].week, "2026-09-28");
+  assert.strictEqual(log.totals.trainer, 0, "January's play was counted into the diary");
+});
+
+test("weekly: an empty archive has this week and nothing to average", () => {
+  const log = W.weeklyLog(A.emptyArchive(), { today: "2026-10-07" });
+  assert.strictEqual(log.weeks.length, 1);
+  assert.strictEqual(log.average, null);
+  assert.strictEqual(log.thisWeek, 0);
+  assert.strictEqual(log.goalHours, 14);
+  assert.strictEqual(log.name, "The Lantern Hours");
+});
+
+test("weekly: modes are listed under their trainer's clock, never in place of it", () => {
+  const a = A.emptyArchive();
+  a.diary = diaryFrom("2026-10-05");
+  a.minutes = { syllogimous: { "2026-10-06": 60 } };
+  a.records = [
+    makeRecord({ source: "syllogimous", id: "1", at: Date.UTC(2026, 9, 6, 10), seconds: 1200, label: "Space 2D" }),
+    makeRecord({ source: "syllogimous", id: "2", at: Date.UTC(2026, 9, 6, 11), seconds: 600, label: "Distinction" }),
+  ];
+  const s = W.weeklyLog(a, { today: "2026-10-07" }).totals.byMode[0];
+  assert.strictEqual(s.hours, 1);
+  assert.deepStrictEqual(s.modes.map((m) => m.label), ["Space 2D", "Distinction"]);
+  assert.strictEqual(Math.round(s.unattributed * 60), 30,
+    "the time between items was spread across the modes or dropped");
+});
+
+test("weekly: a trainer with minutes and no timed items still has its hours", () => {
+  const a = A.emptyArchive();
+  a.diary = diaryFrom("2026-10-05");
+  a.minutes = { rnb: { "2026-10-06": 30 }, cct: { "2026-09-01": 30 } };
+  const by = W.weeklyLog(a, { today: "2026-10-07" }).totals.byMode;
+  assert.deepStrictEqual(by.map((s) => s.source), ["rnb"],
+    "a source with time in the diary was missing, or one with none was listed");
+  assert.strictEqual(by[0].hours, 0.5);
+  assert.strictEqual(by[0].unattributed, 0.5);
+});
+
+test("weekly: study merges like notes — idempotent, later edit wins, deletions stay", () => {
+  const one = [study({}), study({ id: "s2", day: "2026-10-07" })];
+  const first = W.mergeStudy([], one);
+  const again = W.mergeStudy(first.study, one);
+  assert.strictEqual(again.total, 2);
+  assert.strictEqual(again.added + again.updated, 0);
+
+  const edited = study({ hours: 3, editedAt: 5000 });
+  const afterEdit = W.mergeStudy(first.study, [edited]).study;
+  // An older copy folded in later does not revert the edit…
+  const stale = W.mergeStudy(afterEdit, one).study;
+  assert.strictEqual(stale.find((e) => e.id === "s1").minutes, 180);
+
+  // …and does not bring a deleted entry back.
+  const dead = W.mergeStudy(stale, [W.studyTombstone(edited, 9000)]).study;
+  const revived = W.mergeStudy(dead, one).study;
+  const archive = Object.assign(A.emptyArchive(), { study: revived });
+  assert.deepStrictEqual(W.visibleStudy(archive).map((e) => e.id), ["s2"]);
+  const stone = revived.find((e) => e.id === "s1");
+  assert.strictEqual(stone.subject, "", "a tombstone kept what it was told to forget");
+  assert.strictEqual(stone.minutes, 0);
+});
+
+test("weekly: the later settings win, and an unset diary never overrides a set one", () => {
+  const set = W.makeDiary({ name: "The Lantern Hours", goalHours: 14, start: "2026-10-05", editedAt: 10 });
+  const later = W.makeDiary({ goalHours: 16, start: "2026-10-05", editedAt: 20 });
+  assert.strictEqual(W.mergeDiary(set, later).goalHours, 16);
+  assert.strictEqual(W.mergeDiary(later, set).goalHours, 16);
+  assert.strictEqual(W.mergeDiary(set, null).start, "2026-10-05");
+  assert.strictEqual(W.mergeDiary(null, null), null);
+  // Nonsense goals fall back rather than dividing the week by zero.
+  assert.strictEqual(W.makeDiary({ goalHours: 0 }).goalHours, 14);
+  assert.strictEqual(W.makeDiary({ goalHours: "" }).goalHours, 14);
+});
+
+test("weekly: an archive carries its study and settings out and back", () => {
+  const archive = A.emptyArchive();
+  W.foldStudy(archive, [study({})], diaryFrom("2026-10-05", 15));
+  A.fold(archive, {
+    source: "syllogimous",
+    records: [makeRecord({ source: "syllogimous", id: "1", at: Date.UTC(2026, 9, 6), seconds: 30, correct: 1 })],
+    minutes: { "2026-10-06": 10 },
+  }, "a");
+
+  const roundTrip = readFile(JSON.stringify(archive));
+  assert.ok(roundTrip.archive);
+  assert.strictEqual(roundTrip.study.length, 1, "the study entries did not survive the download");
+  assert.strictEqual(roundTrip.diary.goalHours, 15, "the settings did not survive the download");
+
+  const restored = A.emptyArchive();
+  for (const r of roundTrip.readings) A.fold(restored, r, "f", roundTrip.writtenOn);
+  const out = W.foldStudy(restored, roundTrip.study, roundTrip.diary);
+  assert.strictEqual(out.added, 1);
+  assert.strictEqual(W.weeklyLog(restored, { today: "2026-10-07" }).thisWeek, 1.5 + 10 / 60);
+});
+
+test("weekly: a diary begun before any import is still an archive", () => {
+  const archive = A.emptyArchive();
+  W.foldStudy(archive, [study({})], null);
+  const reading = readFile(JSON.stringify(archive));
+  assert.ok(reading.archive, "an archive holding only study entries was turned away");
+  assert.strictEqual(reading.readings.length, 0);
+  assert.strictEqual(reading.study.length, 1);
+  // And one with nothing authored in it is still not mistaken for one.
+  assert.ok(!readFile(JSON.stringify(A.emptyArchive())).archive);
+});
+
+test("weekly: the cache keeps study whole, and an old cache opens without it", () => {
+  const store = {};
+  global.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  try {
+    const archive = A.emptyArchive();
+    W.foldStudy(archive, [study({ text: "chapter 3" })], diaryFrom("2026-10-05"));
+    assert.ok(A.cacheSave(archive));
+    const back = A.cacheLoad();
+    assert.strictEqual(back.study[0].text, "chapter 3");
+    assert.strictEqual(back.diary.start, "2026-10-05");
+
+    const old = JSON.parse(store[A.CACHE_KEY]);
+    delete old.study; delete old.diary;
+    store[A.CACHE_KEY] = JSON.stringify(old);
+    const opened = A.cacheLoad();
+    assert.deepStrictEqual(opened.study, []);
+    assert.strictEqual(opened.diary, null);
+  } finally {
+    delete global.localStorage;
+  }
 });
 
 /* ------------------------------------------------------------------ *

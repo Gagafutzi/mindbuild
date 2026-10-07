@@ -1033,3 +1033,44 @@ button.tag:hover { color: var(--text-primary); border-color: var(--accent); }
   html { scroll-behavior: auto; }
   * { transition: none !important; }
 }
+
+/* ------------------------------------------------------------------ *
+ * The weekly log                                                      *
+ * ------------------------------------------------------------------ */
+
+/* Trainer time and study as one bar, with the goal a tick across it. Sage for
+   the trainers, the warm tone for study, so the two halves of the plan read
+   apart without a legend. The bar is scaled to the goal, or to the week when
+   the week went past it, so the tick always sits inside. */
+.wbar {
+  position: relative;
+  display: flex;
+  inline-size: 100%;
+  min-inline-size: 90px;
+  block-size: 8px;
+  margin: 6px 0;
+  background: rgba(var(--accent-rgb), .10);
+}
+.wbar i { display: block; block-size: 100%; }
+.wbar i.t { background: var(--accent); }
+.wbar i.s { background: var(--warn); }
+.wbar b {
+  position: absolute;
+  inset-block: -3px;
+  inline-size: 2px;
+  margin-inline-start: -1px;
+  background: var(--text-primary);
+}
+.barcell { inline-size: 30%; }
+#lanternWeeks td:last-child { color: var(--text-secondary); }
+#lanternWeeks tr.now td { background: rgba(var(--accent-rgb), .07); }
+.card h3 .dim { font-weight: 400; }
+.card table td:last-child { white-space: nowrap; }
+#weekly details.about { margin-top: 14px; }
+#lanternWeeks td:first-child { white-space: nowrap; }
+/* On a phone the bar column is what does not fit, and the card above already
+   draws this week's; the numbers beside it say the rest. */
+@media (max-width: 480px) {
+  #lanternWeeks .barcell, #lanternWeeks th:nth-child(5), #lanternWeeks .nowtag { display: none; }
+  #lanternWeeks th, #lanternWeeks td { padding-inline: 5px; }
+}

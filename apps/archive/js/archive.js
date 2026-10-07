@@ -82,6 +82,11 @@ function emptyArchive() {
      * convenience cache keeps in full.
      */
     notes: [],
+    /* Study time written down by hand, and the weekly log's own settings —
+       see `weekly.js`. Like the notes, they exist in this file and nowhere
+       else. */
+    study: [],
+    diary: null,
   };
 }
 
@@ -347,6 +352,9 @@ function cacheSave(archive) {
          rebuilt from anything, so dropping them to save space would make this
          the one cache whose loss actually costs something. */
       notes: archive.notes || [],
+      // Kept whole for the same reason: typed by hand, rebuilt from nothing.
+      study: archive.study || [],
+      diary: archive.diary || null,
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(slim));
     return true;
@@ -365,6 +373,8 @@ function cacheLoad() {
     parsed.minutes = parsed.minutes || {};
     // Archives written before notes existed have none, rather than an error.
     parsed.notes = Array.isArray(parsed.notes) ? parsed.notes : [];
+    parsed.study = Array.isArray(parsed.study) ? parsed.study : [];
+    parsed.diary = parsed.diary || null;
     return parsed;
   } catch (e) {
     return null;
