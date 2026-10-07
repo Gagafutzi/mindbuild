@@ -138,12 +138,23 @@ possible.**
 - **In the engine.** `possibleTrial` already alters a premise and records
   which (`altered`). Alter one to three. Keep the item only when exactly one
   smallest correcting set exists, checked over every subset up to that size
-  (twelve premises, three altered: 298 subsets, each a `consistent()`
-  call). A second question can follow: what should each have said? Ask it
-  only where the condition above holds.
-- **Lures:** a premise on a broken loop whose break another removal already
-  fixes; the right count with one premise swapped for its neighbour on the
-  loop.
+  (twelve premises, three altered: 298 subsets). The subset check cannot be
+  `consistent()` as it stands: that checks only premises linked to the
+  first name it is given, which is always everything in today's tasks, but
+  striking premises can split the graph and hide a broken loop in the other
+  part. It needs a check over every component. A second question can
+  follow: what should each have said? Ask it only where the condition above
+  holds.
+- **Where the trap is.** Measured on generated items with two false
+  premises, counting *every* broken loop and striking the premise on most of
+  them never led to a true premise outright: 911 of 911 items with five
+  objects, 555 of 555 with six, though 69 of the six-object items had a tie
+  that included one. Counting broken *triangles*, which is what a person
+  checks first, is trapped in 52 of 555 six-object items: a true premise
+  sits on more broken triangles than either false one. Those are the items
+  worth serving at the top.
+- **Lures:** the premise on the most broken triangles when it is true; the
+  right count with one premise swapped for its neighbour on the loop.
 
 ### 2. Rigid or flexible — distances alone
 
