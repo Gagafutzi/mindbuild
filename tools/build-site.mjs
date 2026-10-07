@@ -110,7 +110,7 @@ fs.mkdirSync(DIST, { recursive: true });
    a subset of the same trainer. What reads its *records* stays — see the
    archive's `readIsomorph` — because a file somebody exported in 2025 is still
    their training history. */
-for (const name of ["rnb", "rotation", "cct", "rrt", "synth", "ewmt", "archive"]) {
+for (const name of ["rnb", "rotation", "cct", "rrt", "synth", "ewmt", "relations", "listening", "archive"]) {
   log(`[copy] ${name}`);
   copyDir(path.join(ROOT, "apps", name), path.join(DIST, name));
 }

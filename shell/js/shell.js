@@ -47,6 +47,13 @@
       what: "Relational updating — a running order of symbols" },
     { id: "synth", name: "Synaesthesia colours", path: "synth/", colour: "#56d4dd",
       what: "Grapheme–colour association" },
+    /* From Chimera Hub, where both were written. They keep the Chimera record
+       format, which the archive reads by key pattern, so the meter counts them
+       with no adapter of their own. */
+    { id: "relations", name: "Relation Algebra", path: "relations/", colour: "#d2a8ff",
+      what: "Nested relations in space, numbers, notes, days, headings and orientations" },
+    { id: "listening", name: "Listening Integration", path: "listening/", colour: "#7ee787",
+      what: "Relations between spoken numbers, places and pitches, by ear, no input" },
   ];
 
   /* Stageable, but never a trainer.

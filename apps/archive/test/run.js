@@ -1552,6 +1552,27 @@ test("notes: an archive written before notes existed still opens", () => {
   assert.deepStrictEqual(reading.notes, [], "a missing notes array should read as none");
 });
 
+test("the Chimera record format: both trainers from Chimera Hub are read", () => {
+  for (const id of ["relations", "listening"]) {
+    const text = fs.readFileSync(path.join(__dirname, "..", "..", id, "test", "sample-record.json"), "utf8");
+    const out = readFile(text);
+    assert.ok(out && !out.error, `${id}'s own exported record was not recognised`);
+    assert.strictEqual(out.source, id);
+    assert.ok(out.records.length > 0);
+    /* The unit carries the app, so one trainer's "n" never shares an axis
+       with another's. */
+    for (const r of out.records) {
+      if (r.unit) assert.ok(r.unit.startsWith(id + "-"), `${id} produced the bare unit ${r.unit}`);
+    }
+    const total = Object.values(out.minutes).reduce((a, m) => a + m, 0);
+    assert.ok(total > 0, `${id}'s session carried no time`);
+    // Folding the same record twice changes nothing.
+    const a = A.emptyArchive();
+    A.fold(a, out, "x"); A.fold(a, readFile(text), "x");
+    assert.strictEqual(a.records.length, out.records.length);
+  }
+});
+
 /* ------------------------------------------------------------------ *
  * The weekly log                                                      *
  * ------------------------------------------------------------------ *

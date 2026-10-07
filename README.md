@@ -1,10 +1,11 @@
 # mindbuild
 
-Eight trainers, one record, one day's total — and a quota the desktop enforces.
+Ten trainers, one record, one day's total — and a quota the desktop enforces.
 
 ```
-apps/       the seven grafted in with git subtree, histories intact, and
-            rrt, which was written here
+apps/       the seven grafted in with git subtree, histories intact; rrt,
+            which was written here; and relations and listening, copied in
+            from Chimera Hub, where they were written
 apps/more/  DorsalFlow, offered by the hub in its own box, not yet counted
 shell/      the hub: a menu, a frame to run a trainer in, and the meter
 gate/       the quota, and the window that holds you to it
@@ -47,6 +48,22 @@ The shell never writes to a trainer's keys, never injects script into a frame,
 and never asks a trainer to report anything. A trainer that has never heard of
 this page works here exactly as well as one that has — which is the whole
 reason eight repositories could be merged in an afternoon.
+
+## The two from Chimera Hub
+
+Relation Algebra (`apps/relations`) and Listening Integration
+(`apps/listening`) were written in
+[Chimera Hub](https://github.com/Project-Chimera-Hub/ChimeraHub) and copied
+here as they were, without history — they have no repository of their own to
+graft from, so changes to them belong upstream first. Both keep the **Chimera
+record format** under `chimera.<app>.record.v1`; the archive's
+`readChimeraRecord` reads it, and the meter, the archive's "Read this browser"
+and the gate's Firefox reader all find those keys by pattern, so they count
+with no adapter of their own.
+
+Listening Integration's spoken numbers are Dark's recordings from Relational
+Integration Training, shipped in Chimera Hub with Dark's permission and with
+the licence still to be confirmed — see `apps/listening/AUDIO-LICENSE`.
 
 ## Reading an app's history
 

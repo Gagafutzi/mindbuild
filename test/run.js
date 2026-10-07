@@ -329,6 +329,44 @@ test("every key the shell watches is one an adapter recognises", () => {
   }
 });
 
+/*
+ * The two trainers from Chimera Hub, through the sample records each one
+ * exported from a session actually played, under the key its own source
+ * writes. Read out of the trainer rather than typed here, because the way
+ * this breaks is a key renamed on one side and not the other — and then the
+ * meter shows a smaller day, not an error.
+ */
+test("Relation Algebra and Listening Integration reach the meter", () => {
+  const fs = require("fs");
+  for (const [id, src] of [["relations", "trainer.js"], ["listening", "listening.js"]]) {
+    const code = fs.readFileSync(path.join(__dirname, "..", "apps", id, src), "utf8");
+    const key = (code.match(/RECORD_KEY\s*=\s*"([^"]+)"/) || [])[1];
+    assert.strictEqual(key, `chimera.${id}.record.v1`,
+      `${id} writes its record under ${key}, which the meter's pattern does not match`);
+
+    const sample = fs.readFileSync(path.join(__dirname, "..", "apps", id, "test", "sample-record.json"), "utf8");
+    const day = new Date(JSON.parse(sample).sessions[0].start).toISOString().slice(0, 10);
+    reset();
+    store[key] = sample;
+    store[`chimera.${id}.settings.v1`] = "{}";        // a neighbour key, not a record
+    assert.ok(Today.minutesOn(day)[id] > 0, `${id}'s session produced no minutes`);
+  }
+});
+
+test("every trainer on the hub is in the site", () => {
+  const fs = require("fs");
+  const shell = fs.readFileSync(path.join(__dirname, "..", "shell", "js", "shell.js"), "utf8");
+  const build = fs.readFileSync(path.join(__dirname, "..", "tools", "build-site.mjs"), "utf8");
+  const listed = shell.slice(shell.indexOf("var TRAINERS"), shell.indexOf("var ARCHIVE"));
+  const ids = [...listed.matchAll(/id: "([a-z]+)"/g)].map((m) => m[1]);
+  assert.ok(ids.includes("relations") && ids.includes("listening"), "the hub does not offer them");
+  /* Two are built by their own toolchain and named in the build by path. */
+  for (const id of ids) {
+    assert.ok(new RegExp(`"${id}"`).test(build) || build.includes(`apps", "${id}"`),
+      `${id} is on the hub's menu and never copied into the site — a dead card`);
+  }
+});
+
 /* ------------------------------------------------------------------ *
  * The quota's caps                                                    *
  * ------------------------------------------------------------------ *

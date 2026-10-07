@@ -48,6 +48,8 @@ var SOURCE_NAMES = {
   ewmt: "eWMT",
   rrt: "Running Order",
   synth: "Synaesthesia colours",
+  relations: "Relation Algebra",
+  listening: "Listening Integration",
 };
 
 function sourceName(id) {
@@ -72,6 +74,8 @@ var SOURCE_COLOURS = {
   ewmt: "#ff7b72",
   rrt: "#ffa657",
   synth: "#56d4dd",
+  relations: "#d2a8ff",
+  listening: "#7ee787",
 };
 
 function sourceColour(id) {
@@ -395,6 +399,24 @@ function importNeighbours() {
       var wrap = {};
       wrap[singles[s].key] = val;
       importText(JSON.stringify(wrap), singles[s].label + " (this browser)");
+      found++;
+    }
+  } catch (e) { /* storage off */ }
+
+  /* Every trainer writing the Chimera record format — Relation Algebra and
+     Listening Integration so far. Found by pattern rather than listed, so the
+     next one to arrive is read without a line here. The value is the whole
+     record and needs no wrapper. */
+  try {
+    var chimeraKeys = [];
+    for (var c = 0; c < localStorage.length; c++) {
+      var ck = localStorage.key(c);
+      if (ck && /^chimera\.[a-z][a-z0-9-]*\.record\.v1$/.test(ck)) chimeraKeys.push(ck);
+    }
+    for (var ci = 0; ci < chimeraKeys.length; ci++) {
+      var cv = localStorage.getItem(chimeraKeys[ci]);
+      if (!cv) continue;
+      importText(cv, chimeraKeys[ci].split(".")[1] + " (this browser)");
       found++;
     }
   } catch (e) { /* storage off */ }
