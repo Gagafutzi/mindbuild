@@ -16,4 +16,6 @@ jobs:
       - run: python3 gate/test_gate.py
       - run: node test/run.js
       - run: node apps/archive/test/run.js
+      - run: node apps/relations/test/algebra.test.js
+      - run: node apps/relations/test/routes.test.js
       - run: node sketches/fourth-axis/test/run.js
