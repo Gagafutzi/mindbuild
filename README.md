@@ -351,6 +351,17 @@ control of feeling can and cannot do; the practices that went furthest
 directed facial action, metta's ordering); and an eight-rung exercise ladder
 that mirrors the visual one, with its measures and the safety it needs.
 
+`relation-algebra.md` surveys what else Relation Algebra's engine could hold:
+what the engine already is in six fields' terms (a torsor, a Generalized
+Interval System, a gain graph, a cohomology class, a gauge field, a unique
+game); new materials (balance theory's allies and rivals, hexagons, chords
+under PLR, kinship sections, ratios and the commas, the cube's rotations); new
+tasks (which premise is false, abduction, shortest code, homomorphisms between
+materials); and the generalisations past groups (bounds, semirings, monoids,
+sheaves, curved surfaces, contextuality), with a suggested order.
+`relation-algebra-checks.js` checks by brute force the claims the note works
+out rather than quotes: `node research/relation-algebra-checks.js`.
+
 ## Third-party art
 
 One thing here was not written here: the animal silhouettes in
