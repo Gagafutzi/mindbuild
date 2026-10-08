@@ -267,8 +267,9 @@ edge onto the next face. Three facts, *checked by simulating the walker*:
 - `^^>^^^>^`, round one edge, brings it back facing as it began, with only
   two right turns. On a flat grid, two turns with steps between them never
   close a route.
-- Eight steps straight round the middle bring it back facing as it began,
-  **with no turn at all**.
+- Eight steps straight round the middle of this cube (two squares a side;
+  twelve on a cube of three) bring it back facing as it began, **with no turn
+  at all**.
 
 The rule: a closed route's change of facing is its own turns, plus a
 quarter turn for each corner it goes round (counted with the direction of

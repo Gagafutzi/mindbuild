@@ -527,7 +527,7 @@
               if (at >= 0) picked.splice(at, 1); else picked.push(j);
               mark();
             }
-            if (resp) { given = picked.slice().sort(); rtMs = Math.round(s.now() - t0); }
+            if (resp) { given = picked.slice().sort(function (a, b) { return a - b; }); rtMs = Math.round(s.now() - t0); }
             good = !!given && given.join() === trial.answer.join();
           } else {
             var bs;
@@ -552,12 +552,16 @@
               if (oc.kind === "flat" || oc.kind === "turned" || oc.kind === "surprise") seen(oc.kind, !!given && (given.indexOf(i) >= 0) === (oc.cube === "home"));
             });
           } else if (trial.lure) seen(trial.lure, good);
+          /* A home selection is logged as the walks' numbers as shown (1–4), and an empty
+             one as "none": the record keeps an empty response for no answer at all. */
+          var walks = function (set) { return set.length ? set.map(function (i) { return i + 1; }).join() : "none"; };
           log({
             target: trial.kind === "loop" ? trial.answer === "possible" : trial.kind === "meet" ? trial.answer === "yes" : undefined,
-            response: trial.kind === "loop" ? (given === "possible" ? "possible" : null) : trial.kind === "meet" ? (given === "yes" ? "yes" : null) : (given ? String(given) : null),
+            response: trial.kind === "loop" ? (given === "possible" ? "possible" : null) : trial.kind === "meet" ? (given === "yes" ? "yes" : null)
+              : Array.isArray(given) ? walks(given) : given,
             correct: good, rtMs: rtMs,
-            extra: { task: "routes", material: "cube", kind: trial.kind, answer: Array.isArray(trial.answer) ? trial.answer.join() : trial.answer,
-              said: Array.isArray(given) ? given.join() : given, lure: trial.lure || null, level: level, cube: o.N,
+            extra: { task: "routes", material: "cube", kind: trial.kind, answer: Array.isArray(trial.answer) ? walks(trial.answer) : trial.answer,
+              said: Array.isArray(given) ? walks(given) : given, lure: trial.lure || null, level: level, cube: o.N,
               premises: trial.premises ? trial.premises.length : null, grid: trial.gridAnswer || null },
           });
           s.feedback(good);
@@ -674,17 +678,17 @@
       /* ---- the rounds ---- */
       /* Round r's task and material. The material steps every round; the task
        * is the material's place in the order plus the number of passes made
-       * through the materials, so all 28 pairings come up within 28 rounds.
-       * How far needs a distance, so in a material without one it becomes
-       * questions. */
-      /* Routes are a task and a material at once, so choosing either chooses both. With
-         the material rotating, the cube is the eighth material and its round is routes;
-         a fixed task other than routes rotates through the seven groups only. With both
-         rotating, every one of the 28 pairings comes up within 32 rounds, and routes once
-         in every eight. */
+       * through the materials, so every task meets every material. How far
+       * needs a distance, so in a material without one it becomes questions.
+       *
+       * Routes are a task and a material at once, so choosing either chooses
+       * both. With both rotating the cube is the eighth material and its round
+       * is routes: once in every eight rounds, with every other task in every
+       * other material within 32. Any fixed task, mixed included, keeps to the
+       * seven groups. */
       function plan(r) {
         if (set.task === "routes" || set.material === "cube") return { task: "routes", material: "cube" };
-        var i = rot + r, mats = set.task === "rotate" || set.task === "mixed" ? MATS : G_ORDER, len = mats.length;
+        var i = rot + r, mats = set.task === "rotate" ? MATS : G_ORDER, len = mats.length;
         var material = set.material === "rotate" ? mats[i % len] : set.material;
         if (material === "cube") return { task: "routes", material: "cube" };
         var task = set.task === "rotate" ? T_ORDER[(set.material === "rotate" ? i % len + Math.floor(i / len) : i) % T_ORDER.length] : set.task;

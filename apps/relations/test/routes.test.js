@@ -59,6 +59,22 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   ok(!sq.x && !sq.y && !sq.r && !R.samePose(R.walk(ne, "^Q^Q^Q^Q").end, ne), "^Q^Q^Q^Q closes on a grid but not round the corner");
 }
 
+/* ── Words: every square and facing on the cube reads differently ── */
+for (const N of [2, 3]) {
+  const said = new Set(), M = 2 * N;
+  let poses = 0;
+  for (let axis = 0; axis < 3; axis++) for (const side of [0, M]) {
+    const n = [0, 0, 0]; n[axis] = side ? 1 : -1;
+    const others = [0, 1, 2].filter((a) => a !== axis);
+    for (let u = 1; u < M; u += 2) for (let v = 1; v < M; v += 2) for (const o of others) for (const sign of [1, -1]) {
+      const P = [0, 0, 0]; P[axis] = side; P[others[0]] = u; P[others[1]] = v;
+      const f = [0, 0, 0]; f[o] = sign;
+      said.add(R.where(R.pose(N, P, f, n))); poses++;
+    }
+  }
+  ok(said.size === poses, `where() names every one of the ${poses} poses on a cube of ${N} differently (${said.size})`);
+}
+
 /* ── Symmetry: turning or mirroring the whole cube turns or mirrors every walk ── */
 {
   const mul = (m, v) => [0, 1, 2].map((i) => m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2] || 0);
@@ -195,6 +211,23 @@ for (let level = 1; level <= 30; level++) {
 for (const k of ["homeTrial:0", "homeTrial:1", "homeTrial:2", "homeTrial:3", "homeOneTrial:home", "homeOneTrial:turned", "homeOneTrial:away",
   "loopTrial:possible/flat", "loopTrial:impossible/flat", "loopTrial:impossible", "meetTrial:yes/flat", "meetTrial:no/flat", "meetTrial:cant"]) {
   ok(Object.keys(tally).some((t) => t === k || t.startsWith(k + "/")), "comes up: " + k);
+}
+/* The intended answer is drawn before any retry, so the answers come up at the rates coded:
+   a loop half the time possible, and every subset of four home walks equally often. */
+{
+  const counts = { possible: 0, loops: 0 }, subsets = {};
+  for (let i = 0; i < 1600; i++) {
+    const o = R.difficulty(1 + (i % 30)), rng = A.Rng(90000 + i);
+    const l = R.loopTrial(rng, o); counts.loops++; if (l.answer === "possible") counts.possible++;
+    const h = R.homeTrial(rng, o), key = h.answer.join(); subsets[key] = (subsets[key] || 0) + 1;
+  }
+  const share = counts.possible / counts.loops;
+  ok(share > 0.44 && share < 0.56, `loops are possible about half the time (${share.toFixed(3)})`);
+  ok(Object.keys(subsets).length === 16, "all 16 home answers come up");
+  /* By how many walks come home, the shares are the binomial 1, 4, 6, 4, 1 in 16. */
+  const byCount = [0, 0, 0, 0, 0];
+  Object.keys(subsets).forEach((k) => { byCount[k ? k.split(",").length : 0] += subsets[k] / 1600; });
+  [1, 4, 6, 4, 1].forEach((n, k) => ok(Math.abs(byCount[k] - n / 16) < 0.04, `home answers with ${k} right: ${byCount[k].toFixed(3)}, about ${n}/16`));
 }
 /* The same seed, the same trial. */
 ok(JSON.stringify(R.card(R.loopTrial(A.Rng(9), R.difficulty(14)), true)) === JSON.stringify(R.card(R.loopTrial(A.Rng(9), R.difficulty(14)), true)), "seeded trials repeat");

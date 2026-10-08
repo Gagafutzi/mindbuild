@@ -42,8 +42,9 @@ A session is a run of **rounds** and lasts as long as you set: 10, 15, 20,
 trials (4 to 100, 12 by default) of one task in one material.
 
 - **Task** and **Material** can each be fixed or set to change every round.
-  With both changing, one round in eight is routes on a cube, and all 28
-  other pairings come up within 32 rounds. Choosing routes as the task, or
+  With both changing, one round in eight is routes on a cube, and every
+  other task comes up in every material within 32 rounds (How far? asks a
+  question instead in the four materials with no distance). Choosing routes as the task, or
   the cube as the material, chooses both. A session picks up the rotation
   where the last one stopped.
 - **The level moves after every round**, not just at the end of the session.
@@ -141,8 +142,9 @@ the way Red then faces.
   side.
 - Three squares meet at each corner where four would on a flat grid, so a
   walk round a corner comes back turned. `^Q^Q^` from the north-east square
-  facing east ends on the same square facing south. Eight steps straight
-  round the middle come back facing the same way.
+  facing east ends on the same square facing south. Straight round the
+  middle, 8 steps on a cube of two or 12 on a cube of three, comes back facing
+  the same way.
 - So a walk is not a fixed relation: what `^^q` does depends on where it
   starts, and the premises have to be walked.
 

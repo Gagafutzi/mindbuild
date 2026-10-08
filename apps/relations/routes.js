@@ -12,8 +12,9 @@
  * four would on a plane, so a quarter turn of angle is missing there, and a
  * walk that goes round a corner comes back turned by it: ^Q^Q^ round one
  * corner ends on the square it started from, facing a quarter turn right.
- * Eight steps straight round the middle come back facing the same way
- * without a single turn. The eight missing quarters total two full turns
+ * Four sides' worth of steps straight round the middle (8 on a cube of two, 12
+ * on a cube of three) come back facing the same way without a single turn. The
+ * eight missing quarters total two full turns
  * (Descartes' theorem, the discrete Gauss–Bonnet).
  *
  * So a walk is no longer a relation in the group sense: what a premise says
@@ -242,11 +243,28 @@
     }
     throw new Error("no such square: " + digit);
   }
-  /** "on top, in the north-east square, facing east", or "on the east side, facing north". */
+  /*
+   * Where a pose is, in words, on any face. The top and the bottom name their squares by
+   * the compass, as seen from above; a side names its square by height (upper, lower and,
+   * on a cube of three, middle) and by the compass along the side. Every square of the
+   * cube gets its own words, so two different places never read the same.
+   */
+  var ALONG = { 2: ["west", "east"], 3: ["west", "middle", "east"] }, ACROSS = { 2: ["south", "north"], 3: ["south", "middle", "north"] };
+  var HEIGHT = { 2: ["lower", "upper"], 3: ["lower", "middle", "upper"] };
+  function squareWords(s) {
+    var n = s.n, at = function (c) { return (c - 1) / 2; };
+    if (n[2]) {
+      var col = at(s.P[0]), row = s.N - 1 - at(s.P[1]);
+      return SQUARE_WORDS[s.N][KEYPAD[s.N][row][col]];
+    }
+    var h = HEIGHT[s.N][at(s.P[2])], side = n[0] ? ACROSS[s.N][at(s.P[1])] : ALONG[s.N][at(s.P[0])];
+    if (h === "middle" && side === "middle") return "the centre";
+    return "the " + h + " " + side + " square";
+  }
+  /** "on top, in the north-east square, facing east"; "on the east side, in the upper north square, facing up". */
   function where(s) {
-    var face = FACE[vkey(s.n)], dir = DIRECTION[vkey(s.f)];
-    if (face === "top") return "on top, in " + SQUARE_WORDS[s.N][squareDigit(s)] + ", facing " + dir;
-    return "on " + face + ", facing " + dir;
+    var face = FACE[vkey(s.n)];
+    return "on " + face + ", in " + squareWords(s) + ", facing " + DIRECTION[vkey(s.f)];
   }
   var TURN_WORDS = ["facing the same way", "turned a quarter right", "turned round", "turned a quarter left"];
 
@@ -357,9 +375,12 @@
    * one subset in sixteen.
    */
   function homeTrial(rng, o) {
+    /* How many of the four come home, drawn once and kept through every retry: drawn
+       inside, the counts that are easier to build would come up more often than meant.
+       The odds are the binomial ones, so each of the sixteen subsets is equally likely. */
+    var roll = rng.next(), k = roll < 1 / 16 ? 0 : roll < 5 / 16 ? 1 : roll < 11 / 16 ? 2 : roll < 15 / 16 ? 3 : 4;
     return attempt(function () {
       var s0 = randomStart(rng, o.N), pools = candidates(rng, o, s0);
-      var roll = rng.next(), k = roll < 0.08 ? 0 : roll < 0.42 ? 1 : roll < 0.78 ? 2 : roll < 0.95 ? 3 : 4;
       /* A surprise (home on the cube, not on a grid) leads the right ones and a flat trap
          (home on a grid, not on the cube) the wrong ones, wherever there is one; then one of
          each other kind before any repeats. At least one option must be one the grid gets
@@ -382,8 +403,9 @@
 
   /** Home, by ear: one walk. Home, back turned, or away. */
   function homeOneTrial(rng, o) {
+    var roll = rng.next();        /* drawn once, as in homeTrial */
     return attempt(function () {
-      var s0 = randomStart(rng, o.N), pools = candidates(rng, o, s0), roll = rng.next(), c;
+      var s0 = randomStart(rng, o.N), pools = candidates(rng, o, s0), c;
       if (roll < 0.34) c = pick(rng, pools.surprise.length && rng.next() < 0.7 ? pools.surprise : pools.surprise.concat(pools.control));
       else if (roll < 0.67) c = pick(rng, pools.flat.filter(function (x) { return x.cube === "turned"; }).concat(pools.turned));
       else c = pick(rng, pools.flat.length && rng.next() < 0.6 ? pools.flat.filter(function (x) { return x.cube === "away"; }) : pools.away);
@@ -400,6 +422,9 @@
    * walked from Red, ends exactly where Red stands, facing Red's way.
    */
   function loopTrial(rng, o) {
+    /* Drawn once, as in homeTrial: impossible loops are thrown back more often, and drawn
+       afresh on every retry "possible" came up two times in three. */
+    var possible = rng.next() < 0.5;
     return attempt(function () {
       var s0 = randomStart(rng, o.N), names = ["Red"].concat(shuffle(rng, OTHERS).slice(0, o.objects - 1));
       var walks = [], cur = s0, all = "";
@@ -411,7 +436,7 @@
       if (walk(s0, all).crossings < 1) return null;
       var truth = shortest(cur, function (s) { return samePose(s, s0); }, o.moves);
       var gridClose = flatWalk(flat(inverse(all)), o);
-      var possible = rng.next() < 0.5, close, lure = null;
+      var close, lure = null;
       if (possible) {
         close = truth;
         if (!close || close.length > o.segMax + 3) return null;
@@ -444,6 +469,7 @@
    * cube, or the true one with one move changed. Can't tell when the chain is broken.
    */
   function meetTrial(rng, o) {
+    var roll = rng.next();        /* drawn once, as in loopTrial */
     return attempt(function () {
       var s0 = randomStart(rng, o.N), names = ["Red"].concat(shuffle(rng, OTHERS).slice(0, o.objects - 1));
       var poses = [s0], walks = [], all = "";
@@ -456,7 +482,7 @@
       var X = names[names.length - 1], target = poses[poses.length - 1];
       var truth = shortest(s0, function (s) { return samePose(s, target); }, o.moves);
       if (!truth || truth === normalize(all, half(o))) return null;
-      var roll = rng.next(), answer, asked, lure = null;
+      var answer, asked, lure = null;
       var premises = walks.map(function (w, i) { return premise(rng, o, names[i + 1], names[i], w); });
       if (roll < 0.15) {
         /* Break the chain: one link goes, and Red's group and X's group stand apart. */
