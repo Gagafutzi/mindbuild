@@ -1,0 +1,67 @@
+XT∘YZ == YZ∘XT ? true  (disjoint planes commute)
+XT∘TY == TY∘XT ? false  (shared axis: they do not)
+det of a quarter turn: 1 ; of a single-axis mirror: -1
+
+=== Worked example, rung `frames` (4D, two turned objects) ===
+Setup: Some objects are TURNED. A turned object reckons with the usual words, but along its own axes.
+Premises:
+  Eve is turned a quarter from above toward west.
+  Bell is turned a quarter from north toward later.
+  Dell is east, north, above and earlier relative to Ash.
+  By Bell's reckoning, Cole is same longitude, south, above and earlier relative to Bell.
+  Fay is same longitude, south, below and earlier relative to Ash.
+  By Bell's reckoning, Ash is east, north, above and earlier relative to Bell.
+  By Eve's reckoning, Cole is east, south, above and earlier relative to Eve.
+Question: By Eve's reckoning, how does Dell stand to Eve?
+Answer:   east, same latitude, below and same time
+  lure literal      east, north, above and earlier
+  lure viewer only  east, north, below and earlier
+  lure our frame    east, same latitude, above and same time
+  lure inverse      same longitude, same latitude, above and earlier
+  frames: Eve p=[2,1,0,3] s=[1,1,-1,1] det=1; Bell p=[0,3,2,1] s=[1,1,1,-1] det=1
+  depth (premises between the pair): 4
+  derivation:
+    Ash - Bell: stated [1,1,1,-1] in Bell's axes -> ours [1,1,1,1]
+    Cole - Bell: stated [0,-1,1,-1] in Bell's axes -> ours [0,1,1,-1]
+    Dell - Ash: stated [1,1,1,-1] (ours)
+    Cole - Eve: stated [1,-1,1,-1] in Eve's axes -> ours [-1,-1,1,-1]
+    Fay - Ash: stated [0,-1,-1,-1] (ours)
+  Dell - Eve in our axes: [1,0,2,0] -> in Eve's axes: [2,0,-1,0]
+
+=== Worked example, rung `relative-frames` (4D) ===
+Setup: Some objects are TURNED. A turned object reckons with the usual words, but along its own axes.
+Premises:
+  Cole is turned a quarter from north toward later.
+  Eve is turned as Cole is, then a further quarter from its own later toward its own west.
+  By Cole's reckoning, Fay is west, south, above and later relative to Cole.
+  By Cole's reckoning, Eve is same longitude, same latitude, above and later relative to Cole.
+  Bell is west, same latitude, below and earlier relative to Ash.
+  Ash is east, same latitude, above and same time relative to Dell.
+  By Cole's reckoning, Ash is east, same latitude, above and earlier relative to Cole.
+Question: By Eve's reckoning, how does Bell stand to Eve?
+Answer:   west, south, below and same time
+  lure literal      same longitude, same latitude, below and earlier
+  lure viewer only  same longitude, south, below and same time
+  lure our frame    same longitude, north, below and earlier
+  lure inverse      east, same latitude, below and earlier
+  lure outer order  west, same latitude, below and earlier
+  frames: Cole p=[0,3,2,1] s=[1,1,1,-1] det=1; Eve p=[1,3,2,0] s=[-1,1,1,-1] det=1
+  depth (premises between the pair): 3
+  derivation:
+    Bell - Ash: stated [-1,0,-1,-1] (ours)
+    Ash - Cole: stated [1,0,1,-1] in Cole's axes -> ours [1,1,1,0]
+    Ash - Dell: stated [1,0,1,0] (ours)
+    Eve - Cole: stated [0,0,1,1] in Cole's axes -> ours [0,-1,1,0]
+    Fay - Cole: stated [-1,-1,1,1] in Cole's axes -> ours [-1,-1,1,-1]
+  Bell - Eve in our axes: [0,2,-1,-1] -> in Eve's axes: [-2,-1,-1,0]
+
+frames 4D, 2 turned: 3000 items from 3656 draws (82% kept); independent text solver agrees on 3000/3000; mean depth 3.82
+   lure differs from answer: literal 100%, viewer only 76%, our frame 100%, inverse 94%
+frames 5D, 2 turned: 3000 items from 3593 draws (83% kept); independent text solver agrees on 3000/3000; mean depth 3.79
+   lure differs from answer: literal 100%, viewer only 77%, our frame 100%, inverse 96%
+frames 4D, 3 turned: 3000 items from 3553 draws (84% kept); independent text solver agrees on 3000/3000; mean depth 3.84
+   lure differs from answer: literal 100%, viewer only 85%, our frame 100%, inverse 94%
+relative 4D, 2 turned: 3000 items from 7487 draws (40% kept); independent text solver agrees on 3000/3000; mean depth 3.87
+   lure differs from answer: literal 100%, viewer only 87%, our frame 100%, inverse 98%, outer order 100%
+relative 5D, 3 turned: 3000 items from 5010 draws (60% kept); independent text solver agrees on 3000/3000; mean depth 4.30
+   lure differs from answer: literal 100%, viewer only 93%, our frame 100%, inverse 96%, outer order 100%

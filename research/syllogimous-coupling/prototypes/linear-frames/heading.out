@@ -1,0 +1,22 @@
+east/up/north -> [ 0, 1, 0 ] (expect [0, 1, 0])
+east/up/above -> [ 0, 0, 1 ] (expect [0, 0, 1])
+east/north/above -> [ 0, -1, 0 ] (expect [0, -1, 0])
+
+=== Worked example, heading (4D) ===
+Setup: A facing is fixed when stated, and so is where the head points. Left and right are judged from both.
+Premises:
+  Bell is east, south, above and same time relative to Ash.
+  Cole is west, same latitude, above and later relative to Ash.
+  Fay is west, south, same height and same time relative to Cole.
+  Eve is west, north, below and earlier relative to Cole.
+  Cole is west, south, same height and same time relative to Dell.
+  Cole faces Dell.
+  Cole's head points toward Ash.
+Claim:    Bell is on Cole's left.   ->  TRUE
+  f = Dell-Cole = [1,1,0]   h = Ash-Cole = [1,0,-1]   v = Bell-Cole = [2,-1,0]  (east, north, up)
+  det[h,f,v] = 3 -> left; body signs ahead/left/above = [1, 1, 1]
+  lure flat (today's facing rung, plane only): right
+  lure head-up (head assumed to point above):  right
+
+planar lure must be wrong: 2000 items from 2073 layouts; float solver agrees 2000/2000; mean usable quadruples per layout 158.0; flat lure right 0%, head-up lure right 0%
+no lure required: 2000 items from 2073 layouts; float solver agrees 2000/2000; mean usable quadruples per layout 258.1; flat lure right 37%, head-up lure right 37%

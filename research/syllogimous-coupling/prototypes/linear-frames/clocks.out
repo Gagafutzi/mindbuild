@@ -1,0 +1,57 @@
+clocks∘drift = [[1,1],[1,2]]  drift∘clocks = [[2,1],[1,1]]
+
+=== Worked example, clocks (4D) ===
+Setup: Clocks are local: one step east, a clock reads one step later than a clock one step west of it at the same moment. Premises marked by local clocks give the time as the clocks where the two things are read it; the rest use the station clock.
+       Each premise is one step on every dimension it names.
+Premises:
+  By local clocks, Eve is west, south, below and later relative to Fay.
+  Cole is east, south, above and earlier relative to Ash.
+  Dell is west, south, below and earlier relative to Ash.
+  By local clocks, Eve is west, same latitude, same height and earlier relative to Bell.
+  By local clocks, Ash is east, south, above and earlier relative to Bell.
+Question: By the station clock, is Fay later or earlier relative to Dell, or at the same time?
+Answer:   later   (vector in the asked reading [0,3,1,1])
+  lure literal       same time
+  lure wrong way     earlier
+  lure all marked    same time
+  lure other reading later   (= answer)
+  derivation:
+    Ash - Bell: stated [1,-1,1,-1] (marked) -> world [1,-1,1,-2]
+    Cole - Ash: stated [1,-1,1,-1]
+    Dell - Ash: stated [-1,-1,-1,-1]
+    Eve - Bell: stated [-1,0,0,-1] (marked) -> world [-1,0,0,0]
+    Eve - Fay: stated [-1,-1,-1,1] (marked) -> world [-1,-1,-1,2]
+  Fay - Dell in world: [0,3,1,1]; depth 4
+
+=== Worked example, drift (4D) ===
+Setup: A barge drifts one step east for every step of time. Premises marked aboard measure east and west on the barge; the rest measure from the bank.
+       Each premise is one step on every dimension it names.
+Premises:
+  Aboard, Dell is west, north, below and earlier relative to Cole.
+  Dell is west, north, below and earlier relative to Fay.
+  Bell is west, south, below and earlier relative to Cole.
+  Aboard, Eve is west, south, below and same time relative to Ash.
+  From the bank, Bell is same longitude, south, above and later relative to Ash.
+Question: Aboard, is Eve east or west relative to Fay, or at the same longitude?
+Answer:   east   (vector in the asked reading [1,-1,-3,-2])
+  lure literal       west
+  lure wrong way     west
+  lure all marked    west
+  lure other reading west
+  derivation:
+    Bell - Ash: stated [0,-1,1,1]
+    Bell - Cole: stated [-1,-1,-1,-1]
+    Dell - Cole: stated [-1,1,-1,-1] (marked) -> world [-2,1,-1,-1]
+    Eve - Ash: stated [-1,-1,-1,0] (marked) -> world [-1,-1,-1,0]
+    Dell - Fay: stated [-1,1,-1,-1]
+  Eve - Fay in world: [-1,-1,-3,-2]; depth 5
+
+clocks {}: 3000 items from 13042 draws (23% kept); text solver agrees 3000/3000; mean depth 3.80
+   answer balance earlier/same/later: 848/1290/862
+   lure differs: literal 100%, wrong way 100%, all marked 61%, other reading 65%
+drift {}: 3000 items from 13003 draws (23% kept); text solver agrees 3000/3000; mean depth 3.79
+   answer balance earlier/same/later: 830/1317/853
+   lure differs: literal 100%, wrong way 100%, all marked 61%, other reading 67%
+clocks {"n":5,"objects":7,"skewed":[3,4]}: 3000 items from 12532 draws (24% kept); text solver agrees 3000/3000; mean depth 4.29
+   answer balance earlier/same/later: 931/1184/885
+   lure differs: literal 100%, wrong way 100%, all marked 58%, other reading 67%
