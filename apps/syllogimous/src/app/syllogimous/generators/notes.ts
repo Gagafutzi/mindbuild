@@ -71,6 +71,19 @@ export const UNNAMED_NOTE =
  * across dimensions, and its size is not written anywhere: it is the gap the
  * second pair turns out to have.
  */
+/**
+ * Stated on every clocked item, with the two direction words passed in marked
+ * as relations, so a relabelled card names them the way its premises do.
+ *
+ * The rule is the whole item: a marked premise's time clause is a difference
+ * of local readings, and a local reading is the station time plus the clock's
+ * own offset. Without it the marks are noise.
+ */
+export const CLOCK_NOTE = (east: string, later: string) =>
+    `Clocks are <b>local</b>: at the same moment, a clock one step ${east} of another reads`
+    + ` one step ${later}. Premises marked <b>by local clocks</b> give each time as read where`
+    + ` that thing is; the rest use the station clock.`;
+
 export const BRIDGE_NOTE =
     "A premise saying one pair is <b>as many steps</b> apart on one dimension as"
     + " another pair is on a different one means the two gaps are the same size"

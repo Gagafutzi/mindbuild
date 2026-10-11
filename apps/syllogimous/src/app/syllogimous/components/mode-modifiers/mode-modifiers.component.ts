@@ -124,6 +124,7 @@ export class ModeModifiersComponent {
             "facing": "Relations from an object’s own facing, not the map’s",
             "mirror-twins": "Some have their left and right swapped",
             "bridges": "One dimension’s gap given by another’s — “as many steps east as later”",
+            "local-clocks": "Some times read on local clocks, one step later per step east",
             "speakers": "Premises reported by speakers, and some of them lie",
             "testimony": "Reports that have to be checked against each other",
             "transform-1": "One transformation applied to the arrangement",

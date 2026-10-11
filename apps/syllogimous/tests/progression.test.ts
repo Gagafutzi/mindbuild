@@ -13,7 +13,7 @@ import {
     DEFAULT_ABILITY, MAX_REFERENCE_SECONDS, RUNG_COST, chooseConfig, levelOf, pCorrect, referenceSecondsFrom, timeCost,
 } from "../src/app/syllogimous/utils/ability.utils";
 import { EnumQuestionType } from "../src/app/syllogimous/constants/question.constants";
-import { RUNG_LADDERS, ladderFor, settableRungsFor } from "../src/app/syllogimous/utils/progression.utils";
+import { ND_LADDER_AT_SPLIT, RUNG_LADDERS, ladderFor, settableRungsFor } from "../src/app/syllogimous/utils/progression.utils";
 import { ORDERED_QUESTION_TYPES } from "../src/app/syllogimous/constants/game.constants";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../src/app/syllogimous/constants/settings.constants";
 import { ProgressionService, lengthCapFor } from "../src/app/syllogimous/services/progression.service";
@@ -116,14 +116,27 @@ test("no mode is missing from the ladder table", () => {
         `these fall back to an empty ladder rather than declaring one: ${missing.join(", ")}`);
 });
 
-test("the composed spaces all share a ladder", () => {
-    // They are one generator. A rung any of them honours, all of them honour.
+test("the composed spaces share a ladder within each family, and a common stem across them", () => {
+    /*
+     * They are one generator, and until the coupling rungs every one of them
+     * honoured every rung. Those rungs need axes some stacks lack — a time axis
+     * to read clocks off, a third spatial axis for a heading — so the ladder is
+     * forked per family (research/syllogimous-coupling). What must still hold:
+     * the spaces within a family share one ladder, and every family begins
+     * with the same stem, so a stored rung count means the same rungs whichever
+     * space it was earned in.
+     */
     const spaces = ORDERED_QUESTION_TYPES.filter(t => /^Space \d+D$/.test(t));
     assert(spaces.length >= 5, `only found ${spaces.length} composed spaces`);
 
-    const first = ladderFor(spaces[0]).join(",");
-    for (const s of spaces) {
-        equal(ladderFor(s).join(","), first, `${s} has a different ladder from ${spaces[0]}`);
+    const nd = spaces.filter(s => s !== "Space 3D");
+    const first = ladderFor(nd[0]).join(",");
+    for (const s of nd) {
+        equal(ladderFor(s).join(","), first, `${s} has a different ladder from ${nd[0]}`);
+    }
+    for (const s of ["Space 3D", "Direction", ...nd]) {
+        equal(ladderFor(s).slice(0, ND_LADDER_AT_SPLIT.length).join(","), ND_LADDER_AT_SPLIT.join(","),
+            `${s} no longer begins with the shared stem`);
     }
 });
 

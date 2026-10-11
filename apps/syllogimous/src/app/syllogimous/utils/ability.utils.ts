@@ -97,6 +97,13 @@ export const RUNG_COST: Record<string, number> = {
      */
     bridges: 1.6,
     /*
+     * One linear correction and one extra running total, kept over the marked
+     * premises only: dearer than under-specification, cheaper than a facing.
+     * Raise it if play shows the quantitative step — it needs magnitudes, not
+     * just signs — is harder than the sign-only rungs.
+     */
+    "local-clocks": 1.4,
+    /*
      * Two puzzles stacked: work out who is lying, then work out the
      * arrangement from what is left. Dearer than either alone because the
      * second cannot start until the first is finished.
@@ -374,6 +381,8 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
      * the cut is cramped there. Space 6D and 7D, capped at six, only just fit.
      */
     bridges: 5,
+    // A marked premise and an unmarked one on a path at least two long.
+    "local-clocks": 4,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,

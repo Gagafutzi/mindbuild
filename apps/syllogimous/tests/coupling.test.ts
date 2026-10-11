@@ -20,14 +20,15 @@ import { createDistinction } from "../src/app/syllogimous/generators/distinction
 import { createNdSpace } from "../src/app/syllogimous/generators/ndspace";
 import { ND_LADDER_AT_SPLIT, ladderFor } from "../src/app/syllogimous/utils/progression.utils";
 import {
-    AxisSpec, axesForDimensions, buildNdLayout, determinedOn, drawBridge, indeterminatePairs,
+    AXIS_CHOICES, AxisSpec, axesForDimensions, buildNdLayout, determinedOn, drawBridge, indeterminatePairs,
     isCircular, ndAxisColors, renderNdCoupling, renderNdPremises, withholdClauses,
 } from "../src/app/syllogimous/utils/ndspace.utils";
 
 export const strip = (h: string) => h.replace(/<[^>]+>/g, "");
 
 /** A context holding exactly `held`, with nothing forced. */
-export function ctxHolding(held: string[], forced: Record<string, unknown> = {}): GeneratorContext {
+export function ctxHolding(held: string[], forced: Record<string, unknown> = {},
+                           loops: number | null = null, stack: string[] | null = null): GeneratorContext {
     const settings = new Settings();
     for (const t of Object.values(EnumQuestionType)) settings.question[t].enabled = true;
     const has = (_t: string, r: string) => held.includes(r);
@@ -36,7 +37,8 @@ export function ctxHolding(held: string[], forced: Record<string, unknown> = {})
         logger: new Logger("error", false),
         settingsOverrideService: {
             linearOverride: (k: string) => (k in forced ? forced[k] : null),
-            axesFor: () => null, circularAxes: () => null,
+            axesFor: () => stack && stack.map(id => AXIS_CHOICES.find(a => a.id === id)!),
+            circularAxes: () => loops,
             spread: () => null, depthFor: () => 0, scramble: 100, rungOverride: () => null,
         } as unknown as SettingsOverrideService,
         progressionService: {
@@ -228,24 +230,50 @@ const subjectsOf = (html: string) =>
     [...html.matchAll(/<span class="subject">([^<]+)<\/span>/g)].map(m => m[1]);
 
 export interface Read {
-    kind: "edge" | "bridge";
+    kind: "edge" | "bridge" | "anchor";
     words: string[];
-    /** Per clause: axis and the signed step it names. */
+    /** Per clause: axis and the signed step it names (steps round, on a loop). */
     clauses: Array<{ axis: number; delta: number }>;
+    /** Stated by local clocks. */
+    local: boolean;
+}
+
+/** A clause's signed step, or on a loop its displacement round. */
+function clauseValue(word: string, axis: AxisSpec): number {
+    const s = axis.scale;
+    // Classes, not positions: any representative of the parity will do, since
+    // the reader only ever compares it mod 2.
+    if (s.parity) return word === s.parity.same ? 0 : word === s.parity.opposite ? 1 : NaN;
+    if (word === s.tie) return 0;
+    if (isCircular(axis)) {
+        const c = s.cyclic!, m = axis.modulus!;
+        if (word === c.direction[0]) return 1;
+        if (word === c.direction[1]) return m - 1;
+        if (word === c.oppositeClause) return m / 2;
+        const n = /^(\d+) steps? (\S+)$/.exec(word);
+        assert(!!n, `"${word}" is not a word of the looped ${s.name} axis`);
+        return n![2] === c.direction[0] ? Number(n![1]) : mod(-Number(n![1]), m);
+    }
+    const d = word === s.direction[0] ? 1 : word === s.direction[1] ? -1 : NaN;
+    assert(!Number.isNaN(d), `"${word}" is not a word of the ${s.name} axis`);
+    return d;
 }
 
 /** One premise, from its HTML. */
 export function readPremise(html: string, axes: AxisSpec[]): Read {
     const colors = ndAxisColors(axes).map(c => c.split(" ").pop()!);
+    const plain = strip(html);
     const clauses = [...html.matchAll(/<span class="highlight dim (dim-\d+)">([^<]+)<\/span>/g)].map(m => {
         const axis = colors.indexOf(m[1]);
         assert(axis >= 0, `a clause in a colour no axis has: ${m[0]}`);
-        const s = axes[axis].scale;
-        const delta = m[2] === s.direction[0] ? 1 : m[2] === s.direction[1] ? -1 : m[2] === s.tie ? 0 : NaN;
-        assert(!Number.isNaN(delta), `"${m[2]}" is not a word of the ${s.name} axis`);
-        return { axis, delta };
+        return { axis, delta: /date line/.test(plain) ? 0 : clauseValue(m[2], axes[axis]) };
     });
-    return { kind: /as many/.test(strip(html)) ? "bridge" : "edge", words: subjectsOf(html), clauses };
+    return {
+        kind: /date line/.test(plain) ? "anchor" : /as many/.test(plain) ? "bridge" : "edge",
+        words: subjectsOf(html),
+        clauses,
+        local: /^By local clocks/.test(plain),
+    };
 }
 
 /** How the reader takes a bridge: as written, or one of the misreadings. */
@@ -255,6 +283,7 @@ export function solve(premises: string[], axes: AxisSpec[], reading: Reading = "
     const sys = new Solver();
     for (const html of premises) {
         const r = readPremise(html, axes);
+        if (r.kind === "anchor") continue;
         if (r.kind === "edge") {
             const [to, from] = r.words;
             for (const c of r.clauses) sys.add([[`${to}|${c.axis}`, 1], [`${from}|${c.axis}`, -1]], c.delta);
@@ -275,45 +304,54 @@ export function solve(premises: string[], axes: AxisSpec[], reading: Reading = "
     return sys;
 }
 
+/** What any reader settles: a gap per pair and axis, or nothing. */
+export interface Gaps { gap(a: string, b: string, axis: number): number | null; inconsistent?: boolean }
+
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+
+/** Whether a gap matches a claimed clause value, on a line or a loop. */
+const matches = (g: number | null, want: number, axis: AxisSpec) =>
+    g != null && (axis.scale.parity ? mod(g, 2) === mod(want, 2)
+        : isCircular(axis) ? mod(g, axis.modulus!) === mod(want, axis.modulus!) : Math.sign(g) === want);
+
 /** A claim of the "A is c1, c2 … relative to B" shape, or a one-axis claim. */
-function claimHolds(text: string, sys: Solver, axes: AxisSpec[]): boolean {
+function claimHolds(text: string, sys: Gaps, axes: AxisSpec[]): boolean {
     const [a, b] = subjectsOf(text);
     const wide = readPremise(text, axes).clauses;
     if (wide.length) {
         // Necessity semantics: an unsettled gap makes the claim false.
-        return wide.every(c => {
-            const g = sys.gap(a, b, c.axis);
-            return g != null && Math.sign(g) === c.delta;
-        });
+        return wide.every(c => matches(sys.gap(a, b, c.axis), c.delta, axes[c.axis]));
     }
     const colors = ndAxisColors(axes).map(c => c.split(" ").pop()!);
     const m = /<span class="relation dim (dim-\d+)">([^<]+)<\/span>/.exec(text);
     assert(!!m, `no claim could be read from: ${strip(text)}`);
     const axis = colors.indexOf(m![1]);
     const s = axes[axis].scale;
+    assert(!isCircular(axes[axis]), `a one-axis claim on a loop: ${strip(text)}`);
+    if (s.parity) return matches(sys.gap(a, b, axis), m![2] === s.parity.sameRelation ? 0 : 1, axes[axis]);
     const want = m![2] === s.above ? 1 : m![2] === s.below ? -1 : 0;
-    const g = sys.gap(a, b, axis);
-    return g != null && Math.sign(g) === want;
+    return matches(sys.gap(a, b, axis), want, axes[axis]);
 }
 
-function analogyHolds(text: string, sys: Solver, axes: AxisSpec[]): boolean {
+function analogyHolds(text: string, sys: Gaps, axes: AxisSpec[]): boolean {
     const [a, b, c, d] = subjectsOf(text);
     const same = /same relation/.test(strip(text));
-    return axes.every((_, i) => {
+    return axes.every((axis, i) => {
         const one = sys.gap(b, a, i), two = sys.gap(d, c, i);
         if (one == null || two == null) return false;
+        if (axis.scale.parity) return mod(two, 2) === mod(one, 2);
+        if (isCircular(axis)) return mod(two, axis.modulus!) === mod(same ? one : -one, axis.modulus!);
         return Math.sign(two) === (same ? 1 : -1) * Math.sign(one);
     });
 }
 
 /**
- * Whether a reader taking the bridge this way gives the keyed answer.
+ * Whether a reader that settles these gaps gives the keyed answer.
  *
  * A boolean is judged by necessity; a choice is right only if exactly the keyed
  * option holds; a construction only if every slot is settled and matches.
  */
-export function readerAgrees(q: Question, axes: AxisSpec[], reading: Reading): boolean {
-    const sys = solve(q.premises, axes, reading);
+export function judge(q: Question, axes: AxisSpec[], sys: Gaps): boolean {
     if (sys.inconsistent) return false;
     const holds = (t: string) => /pair-to/.test(t) ? analogyHolds(t, sys, axes) : claimHolds(t, sys, axes);
 
@@ -321,6 +359,13 @@ export function readerAgrees(q: Question, axes: AxisSpec[], reading: Reading): b
         return q.construct.every(claim => claim.slots.every((slot, i) => {
             const g = sys.gap(claim.a, claim.b, i);
             if (g == null) return false;
+            if (axes[i].scale.parity) return (mod(g, 2) === 0 ? 0 : 1) === slot.answerDirection;
+            if (isCircular(axes[i])) {
+                const m = axes[i].modulus!, steps = mod(g, m), forward = steps <= m / 2;
+                const dir = steps === 0 ? 2 : forward ? 0 : 1;
+                return dir === slot.answerDirection
+                    && (!slot.asksDistance || (forward ? steps : m - steps) === slot.answerMagnitude);
+            }
             const dir = g === 0 ? 2 : g > 0 ? 0 : 1;
             return dir === slot.answerDirection && (!slot.asksDistance || Math.abs(g) === slot.answerMagnitude);
         }));
@@ -333,6 +378,10 @@ export function readerAgrees(q: Question, axes: AxisSpec[], reading: Reading): b
     // Several claims in one conclusion: true only if every one holds.
     if (Array.isArray(q.conclusion)) return q.conclusion.every(holds) === q.isValid;
     return holds(String(q.conclusion)) === q.isValid;
+}
+
+export function readerAgrees(q: Question, axes: AxisSpec[], reading: Reading): boolean {
+    return judge(q, axes, solve(q.premises, axes, reading));
 }
 
 /** The pairs an item asks about, in whatever form it asks. */
@@ -527,4 +576,218 @@ test("bridges: rendered in the axes' own colours, with the notes it needs", () =
     const explained = items.filter(q => q.explanation.some(l => /by the bridge/.test(strip(l))));
     assert(explained.length > items.length * 0.3,
         `only ${explained.length}/${items.length} derivations show the bridge being used`);
+});
+
+/* ------------------------------------------------------------------ *
+ * Local clocks                                                         *
+ * ------------------------------------------------------------------ */
+
+export type ClockReading = "true" | "literal" | "wrong-way" | "no-date-line" | "all-corrected" | "other-reading";
+
+/**
+ * The clock rule applied exactly as the setup states it.
+ *
+ * Positions off the time axis come from the clauses as written. Zones are the
+ * east positions — on a loop, counted round from the anchored object and
+ * numbered 1 to m. A marked premise's time clause is a difference of local
+ * readings, so its real gap is the clause minus the zone change; the answer
+ * is then read on whichever clock the setup says the question uses.
+ */
+export function readClocks(q: Question, axes: AxisSpec[], how: ClockReading = "true"): Gaps {
+    const T = axes.findIndex(a => a.scale.id === "temporal");
+    const S = axes.findIndex(a => a.scale.id === "east");
+    const ring = isCircular(axes[S]);
+    const asked = q.setup.some(l => /Answer <b>by local clocks/.test(l)) ? "local" : "station";
+    const reading = how === "other-reading" ? (asked === "local" ? "station" : "local") : asked;
+    const reads = q.premises.map(p => readPremise(p, axes));
+
+    const space = new Solver();
+    for (const r of reads) {
+        if (r.kind !== "edge") continue;
+        const [to, from] = r.words;
+        for (const c of r.clauses) {
+            if (c.axis === T) continue;
+            // A loop's clause is one step either way round; carried unwrapped.
+            const step = ring && c.axis === S && c.delta === axes[S].modulus! - 1 ? -1 : c.delta;
+            space.add([[`${to}|${c.axis}`, 1], [`${from}|${c.axis}`, -1]], step);
+        }
+    }
+    const anchor = reads.find(r => r.kind === "anchor");
+    const ref = anchor?.words[0] ?? reads[0].words[0];
+    const at = anchor ? Number(/zone (\d+) of/.exec(strip(q.premises[reads.indexOf(anchor)]))![1]) : 0;
+    const zone = (w: string) => {
+        const g = space.gap(w, ref, S)!;
+        return ring ? mod(at - 1 + g, axes[S].modulus!) + 1 : g;
+    };
+
+    const time = new Solver();
+    for (const r of reads) {
+        if (r.kind !== "edge") continue;
+        const [to, from] = r.words;
+        const said = r.clauses.find(c => c.axis === T)!.delta;
+        const shift = zone(to) - zone(from);
+        const eastStep = space.gap(to, from, S)!;
+        const real =
+            how === "literal" ? said
+            : how === "all-corrected" ? said - shift
+            : !r.local ? said
+            : how === "wrong-way" ? said + shift
+            : how === "no-date-line" ? said - eastStep
+            : said - shift;
+        time.add([[`${to}|${T}`, 1], [`${from}|${T}`, -1]], real);
+    }
+    return {
+        inconsistent: space.inconsistent || time.inconsistent,
+        gap(a, b, axis) {
+            if (axis !== T) return space.gap(a, b, axis);
+            const g = time.gap(a, b, T);
+            if (g == null) return null;
+            return reading === "local" ? g + zone(a) - zone(b) : g;
+        },
+    };
+}
+
+const isClocked = (q: Question) => q.premises.some(p => /^By local clocks/.test(strip(p)));
+
+function clockedItems(type: EnumQuestionType, held: string[], count: number, seed: number, loops: number | null = null) {
+    const ctx = ctxHolding(held, {}, loops);
+    const items = build(ctx, type, 6, count, seed).filter(isClocked);
+    // The axes as the generator drew them: loops go on cyclic axes, east first.
+    const axes = axesForDimensions(dimsOf[type]).map(scale => ({ scale }) as AxisSpec);
+    return { items, axesFor: (q: Question) => {
+        const looped = q.setup.find(l => /is a loop of|zones/.test(strip(l)));
+        const m = looped ? Number(/(?:loop of|is) (\d+)/.exec(strip(looped))?.[1]) : 0;
+        return axes.map(a => (a.scale.id === "east" && m ? { ...a, modulus: m } : a));
+    } };
+}
+
+const CLOCK_FORMS: Record<string, string[]> = {
+    plain: ["branching", "indeterminate", "local-clocks"],
+    choice: ["branching", "indeterminate", "choose-conclusion", "local-clocks"],
+    construct: ["branching", "indeterminate", "construct-conclusion", "construct-distance", "local-clocks"],
+    analogy: ["branching", "indeterminate", "analogy", "local-clocks"],
+};
+
+test("local clocks: the marked answer is what the setup's rule gives, on a line and on a loop", () => {
+    let checked = 0;
+    for (const loops of [null, 1]) {
+        for (const [form, held] of Object.entries(CLOCK_FORMS)) {
+            for (const type of [EnumQuestionType.Space4D, EnumQuestionType.Space5D, EnumQuestionType.Space7D]) {
+                const { items, axesFor } = clockedItems(type, held, 40, 5201, loops);
+                assert(items.length >= 8, `${form} ${type} loops=${loops}: only ${items.length} clocked items`);
+                for (const q of items) {
+                    const axes = axesFor(q);
+                    const marked = q.premises.filter(p => /^By local clocks/.test(strip(p))).length;
+                    const plain = q.premises.filter(p => readPremise(p, axes).kind === "edge").length - marked;
+                    assert(marked >= 1 && plain >= 1,
+                        `${form} ${type}: ${marked} marked and ${plain} unmarked — the correction telescopes`);
+                    if (loops) {
+                        assert(q.premises.some(p => /date line/.test(strip(p))),
+                            `${form} ${type}: a looped east axis and no zone anchor`);
+                    }
+                    assert(judge(q, axes, readClocks(q, axes)),
+                        `${form} ${type} loops=${loops}: the clocks run the wrong way — the setup's rule `
+                        + `disagrees with the key on\n  `
+                        + [...q.setup, ...q.premises, String(q.conclusion), ...q.choices].map(strip).join("\n  "));
+                    checked++;
+                }
+            }
+        }
+    }
+    assert(checked > 200, `only ${checked} items checked`);
+});
+
+test("local clocks: reading the time column alone fails, and so does correcting the wrong way", () => {
+    for (const loops of [null, 1]) {
+        for (const [form, held] of Object.entries(CLOCK_FORMS)) {
+            const { items, axesFor } = clockedItems(EnumQuestionType.Space4D, held, 80, 5202, loops);
+            const fails = (how: ClockReading) =>
+                items.filter(q => !judge(q, axesFor(q), readClocks(q, axesFor(q), how))).length / items.length;
+            // A choice or a construction states the time answer outright, so the
+            // enforced misreadings are wrong on every one. A true/false claim can
+            // lie with only one misreading's value, so each is wrong on part.
+            const enforced = form === "choice" || form === "construct" ? 1 : 0.4;
+            const shares = {
+                literal: fails("literal"), "wrong-way": fails("wrong-way"),
+                ...(loops ? { "no-date-line": fails("no-date-line") } : {}),
+            };
+            for (const [how, share] of Object.entries(shares)) {
+                assert(share >= enforced, `${form} loops=${loops}: the ${how} reading fails only `
+                    + `${Math.round(share * 100)}% of ${items.length}`);
+            }
+            // Measured, not enforced: correcting every premise, and answering on
+            // the other clock.
+            for (const how of ["all-corrected", "other-reading"] as ClockReading[]) {
+                assert(fails(how) >= 0.25, `${form} loops=${loops}: the ${how} reading fails only `
+                    + `${Math.round(fails(how) * 100)}%`);
+            }
+        }
+    }
+});
+
+test("local clocks: time answers are not mostly 'same time'", () => {
+    const { items } = clockedItems(EnumQuestionType.Space4D, CLOCK_FORMS.construct, 150, 5203);
+    const T = axesForDimensions(4).findIndex(s => s.id === "temporal");
+    const counts = [0, 0, 0];
+    for (const q of items) for (const c of q.construct) counts[c.slots[T].answerDirection]++;
+    const total = counts.reduce((a, b) => a + b, 0);
+    for (const [i, n] of counts.entries()) {
+        const share = n / total;
+        assert(share > 0.2 && share < 0.47,
+            `time answer class ${["later", "earlier", "same"][i]} is ${Math.round(share * 100)}% of ${total}`);
+    }
+});
+
+test("local clocks: delivered on 4D–7D when held, charged only where delivered, never in 2D or 3D", () => {
+    for (const type of [EnumQuestionType.Space4D, EnumQuestionType.Space6D, EnumQuestionType.Space7D]) {
+        const held = [...fullLadder(type), "bridges", "local-clocks"];
+        const items = build(ctxHolding(held), type, 6, 160, 5204);
+        const clocked = items.filter(isClocked);
+        assert(clocked.length > items.length * 0.15,
+            `${type}: ${clocked.length}/${items.length} items read clocks with the rung held`);
+        for (const q of items) {
+            equal(q.undelivered.includes("local-clocks"), !isClocked(q),
+                `${type}: local-clocks charged on an item that ${isClocked(q) ? "reads" : "lacks"} clocks`);
+            assert(!(isClocked(q) && isBridged(q)), `${type}: one item carries two couplings`);
+        }
+        for (const q of clocked) {
+            equal(q.premises.length, 6, `${type}: a clocked item has ${q.premises.length} premises`);
+            assert(q.undelivered.includes("indeterminate"),
+                `${type}: a clocked item withholds nothing and is still charged for under-specification`);
+        }
+    }
+    for (const type of [EnumQuestionType.Direction, EnumQuestionType.Space3D]) {
+        assert(!ladderFor(type).includes("local-clocks"), `${type} offers local clocks with no time axis`);
+    }
+    // A stack the picker left without time: held, never delivered, never charged.
+    const timeless = build(ctxHolding(["local-clocks"], {}, null, ["east", "north", "up", "contains"]),
+        EnumQuestionType.Space4D, 6, 40, 5205);
+    assert(timeless.length > 30, `only ${timeless.length} timeless items built`);
+    for (const q of timeless) {
+        assert(!isClocked(q), "clocks on a stack with no time axis");
+        assert(q.undelivered.includes("local-clocks"), "local clocks charged on a stack with no time axis");
+    }
+});
+
+test("local clocks: the marks, the rule and the clock asked are all on the card", () => {
+    for (const loops of [null, 1]) {
+        const { items, axesFor } = clockedItems(EnumQuestionType.Space5D, CLOCK_FORMS.plain, 60, 5206, loops);
+        for (const q of items) {
+            const setup = q.setup.map(strip).join(" ");
+            assert(/Clocks are local/.test(setup), "the clock rule is not stated");
+            assert(/by local clocks/.test(setup), "the mark is not explained");
+            assert(/Answer by (the station clock|local clocks)/.test(setup), "the clock asked is not named");
+            assert(/one step/.test(setup), "the one-step convention is not stated");
+            if (loops) assert(/date line/.test(setup) && /sets a clock back/.test(setup),
+                "the date line, and the jump it makes, are not stated");
+            const marked = q.premises.filter(p => /^By local clocks/.test(strip(p)));
+            for (const p of marked) {
+                const r = readPremise(p, axesFor(q));
+                equal(r.clauses.length, axesFor(q).length, `a marked premise drops a clause: ${strip(p)}`);
+            }
+        }
+        const walked = items.filter(q => q.explanation.some(l => /by local clocks/.test(strip(l))));
+        assert(walked.length > items.length * 0.3,
+            `loops=${loops}: only ${walked.length}/${items.length} derivations correct a local reading`);
+    }
 });

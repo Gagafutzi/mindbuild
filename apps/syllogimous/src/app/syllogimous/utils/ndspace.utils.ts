@@ -57,6 +57,17 @@ export interface AxisSpec {
      * anything.
      */
     modulus?: number;
+    /**
+     * This axis is read on local clocks set by another one: a marked premise
+     * states `value + rate × zone(source)` rather than the value itself.
+     *
+     * The one axis property that is not a relabelling. Every map elsewhere —
+     * rotations, axis maps, frames — sends one source axis to one target, so
+     * after undoing it the columns are independent again. A shear feeds one
+     * stated clause into two axes, and only on the premises that are marked,
+     * so no global change of basis separates them. See `zoneOf`.
+     */
+    local?: { source: number; rate: number };
 }
 
 export function isCircular(axis: AxisSpec): boolean {
@@ -265,6 +276,13 @@ export interface NdEdge {
      * clauses that carry a real difference, and says nothing in their place.
      */
     stated?: boolean[];
+    /**
+     * Stated by local clocks: the clause on an axis with `local` set gives the
+     * reading where each thing is, not the station clock's. `deltas` stay the
+     * real ones, so everything that walks the edges — positions, determinacy,
+     * depth — is unchanged; only what is printed differs.
+     */
+    local?: boolean;
 }
 
 export interface NdLayout {
@@ -282,6 +300,13 @@ export interface NdLayout {
      * call a coupled pair open.
      */
     couplings?: NdCoupling[];
+    /**
+     * Which clock the coordinates on a `local` axis are read on. Absent means
+     * the station clock, which is what the edges sum to; "local" adds each
+     * object's own zone, and is what a question asked by local clocks is
+     * answered from.
+     */
+    reading?: "station" | "local";
 }
 
 /**
@@ -433,7 +458,7 @@ export function applyNdEdits(layout: NdLayout, edits: NdEdit[]): NdLayout {
 }
 
 /** Walk the tree from an arbitrary root, accumulating each axis. */
-function coordsFromEdges(layout: NdLayout, edges: NdEdge[]): Record<string, number[]> {
+export function coordsFromEdges(layout: NdLayout, edges: NdEdge[]): Record<string, number[]> {
     const { words, axes } = layout;
     const coords: Record<string, number[]> = { [words[0]]: axes.map(() => 0) };
     const byNode = new Map<string, Array<{ other: string; deltas: number[]; sign: number }>>();
@@ -973,6 +998,131 @@ export function ndPairDepth(layout: NdLayout, a: string, b: string, axis?: numbe
     }
 }
 
+/* ------------------------------------------------------------------ *
+ * Local clocks — a shear between two axes                             *
+ * ------------------------------------------------------------------ */
+
+/** The axis read on local clocks, if any, and what sets them. */
+export function clockAxes(layout: { axes: AxisSpec[] }): { target: number; source: number; rate: number } | null {
+    const target = layout.axes.findIndex(a => a.local);
+    if (target < 0) return null;
+    return { target, ...layout.axes[target].local! };
+}
+
+/**
+ * Which zone an object's clock is set by.
+ *
+ * On a straight source axis, its position: only differences ever matter, so
+ * where zero sits is immaterial. On a looped one, its position counted from
+ * the date line, 1 to m — absolute, because crossing the line is where a
+ * clock jumps back, and a difference of positions cannot see that.
+ */
+export function zoneOf(layout: NdLayout, w: string, source: number): number {
+    const v = layout.coords[w][source];
+    return isCircular(layout.axes[source]) ? mod(v, layout.axes[source].modulus!) + 1 : v;
+}
+
+/** What a premise states on one axis: the real step, or its local reading. */
+export function statedDelta(layout: NdLayout, edge: NdEdge, axis: number): number {
+    const clock = layout.axes[axis].local;
+    if (!edge.local || !clock) return edge.deltas[axis];
+    return edge.deltas[axis]
+        + clock.rate * (zoneOf(layout, edge.to, clock.source) - zoneOf(layout, edge.from, clock.source));
+}
+
+/**
+ * Re-read some of a layout's premises as local-clock readings.
+ *
+ * The drawn unit steps become what the marked premises *say*, and the real
+ * steps are worked back from them: real = stated − rate × (zone change). So
+ * every printed clause stays one step, as the one-step note promises, and the
+ * real arrangement is whatever those readings imply. The literal reader's
+ * model — every clause taken at face value — is then exactly the layout that
+ * was drawn, which is what makes it a lure that can be checked.
+ *
+ * Marked and unmarked premises are mixed, at least one of each where there
+ * are two: if every premise were marked the correction would telescope to the
+ * two ends of the question, and the item would be one subtraction at the end
+ * rather than a running total carried through the marked premises only.
+ */
+export function skewEdges(drawn: NdLayout, target: number, source: number, rate = 1): NdLayout {
+    const axes = drawn.axes.map((a, i) => (i === target ? { ...a, local: { source, rate } } : a));
+    const marks = drawn.edges.map(() => Math.random() < 0.5);
+    if (drawn.edges.length >= 2) {
+        if (marks.every(m => !m)) marks[Math.floor(Math.random() * marks.length)] = true;
+        if (marks.every(m => m)) marks[Math.floor(Math.random() * marks.length)] = false;
+    }
+    // Zones come from the source axis, which the skew never changes.
+    const zones = (w: string) => zoneOf({ ...drawn, axes }, w, source);
+    const edges: NdEdge[] = drawn.edges.map((e, i) => {
+        if (!marks[i]) return { ...e, deltas: [...e.deltas] };
+        const deltas = [...e.deltas];
+        deltas[target] = e.deltas[target] - rate * (zones(e.to) - zones(e.from));
+        return { ...e, deltas, local: true };
+    });
+    const layout: NdLayout = { ...drawn, axes, edges };
+    return { ...layout, coords: coordsFromEdges(layout, edges) };
+}
+
+/**
+ * A clocked layout as some reader would build it.
+ *
+ * `literal` takes every clause at face value — the per-axis reading, which
+ * never lets the time column see the east one. `wrong-way` corrects in the
+ * wrong direction; `no-date-line` corrects by the step on the source axis, as
+ * though the loop had no line on it; `all-corrected` corrects the unmarked
+ * premises too. The coordinates are real-time ones, so `inReading` can put
+ * any of them into the clock the question asks about.
+ */
+export type ClockMisreading = "literal" | "wrong-way" | "no-date-line" | "all-corrected";
+
+export function clockModel(layout: NdLayout, how: ClockMisreading): NdLayout {
+    const clock = clockAxes(layout);
+    if (!clock) return layout;
+    const { target, source, rate } = clock;
+    const zones = (w: string) => zoneOf(layout, w, source);
+    const edges = layout.edges.map(e => {
+        const said = statedDelta(layout, e, target);
+        const shift = zones(e.to) - zones(e.from);
+        const deltas = [...e.deltas];
+        deltas[target] =
+            how === "literal" ? said
+            : how === "all-corrected" ? said - rate * shift
+            : !e.local ? said
+            : how === "wrong-way" ? said + rate * shift
+            : said - rate * e.deltas[source];
+        return { ...e, deltas };
+    });
+    return { ...layout, edges, coords: coordsFromEdges(layout, edges) };
+}
+
+/** The same layout with the clocked axis read on the clock asked about. */
+export function inReading(layout: NdLayout, reading: "station" | "local"): NdLayout {
+    const clock = clockAxes(layout);
+    if (!clock || reading === "station") return { ...layout, reading: "station" };
+    const coords: Record<string, number[]> = {};
+    for (const w of layout.words) {
+        coords[w] = [...layout.coords[w]];
+        coords[w][clock.target] += clock.rate * zoneOf(layout, w, clock.source);
+    }
+    return { ...layout, coords, reading: "local" };
+}
+
+/**
+ * Where the date line is, as one object's zone.
+ *
+ * Steps fix every zone relative to every other, and only up to the loop; one
+ * absolute zone pins them all. Without it a clocked premise that crosses the
+ * line cannot be told from one that does not.
+ */
+export function renderZoneAnchor(layout: NdLayout, source: number): string {
+    const w = layout.words[Math.floor(Math.random() * layout.words.length)];
+    const axis = layout.axes[source];
+    const color = ndAxisColors(layout.axes)[source];
+    return `${subj(w)} is in zone ${zoneOf(layout, w, source)} of ${axis.modulus},`
+        + ` counting ${hi(axis.scale.cyclic!.direction[0], color)} from the date line`;
+}
+
 function shuffled<T>(xs: T[]): T[] {
     const out = [...xs];
     shuffleInPlace(out);
@@ -1114,7 +1264,7 @@ export function renderNdPremise(
      * configurable, and `compact` already removes clauses from the middle.
      */
     const clauses = layout.axes
-        .map((axis, i) => ({ axis, i, delta: sign * edge.deltas[i] }))
+        .map((axis, i) => ({ axis, i, delta: sign * statedDelta(layout, edge, i) }))
         .filter(c => edge.stated ? edge.stated[c.i] : true)
         .filter(c => !options.compact || c.delta !== 0)
         .map(c => hi(axisClause(c.axis, c.delta), colors[c.i]));
@@ -1123,7 +1273,9 @@ export function renderNdPremise(
     // hand-built layout could be, and an empty clause list reads as a bug.
     if (!clauses.length) return `${subj(to)} is at the same point as ${subj(from)}`;
 
-    return `${subj(to)} is ${clauses.join(", ")} relative to ${subj(from)}`;
+    // Named in front, so the reading is known before any clause is.
+    const by = edge.local ? `<b>By local clocks</b>, ` : "";
+    return `${by}${subj(to)} is ${clauses.join(", ")} relative to ${subj(from)}`;
 }
 
 /**
@@ -1841,10 +1993,49 @@ export function explainNdAxis(
         const delta = found.sign * found.edge.deltas[axisIndex];
         total += delta;
 
+        if (found.edge.local && axis.local) {
+            /*
+             * A local reading, corrected to the station clock. Shown as its own
+             * step with the zone change spelled out, because the correction is
+             * per premise — it is the running total over the marked premises
+             * that the item is about.
+             */
+            const said = found.sign * statedDelta(layout, found.edge, axisIndex);
+            const src = layout.axes[axis.local.source];
+            const srcColor = ndAxisColors(layout.axes)[axis.local.source];
+            const zFrom = zoneOf(layout, path[i], axis.local.source);
+            const zTo = zoneOf(layout, path[i + 1], axis.local.source);
+            const where = isCircular(src)
+                ? `${subj(path[i + 1])} is in zone ${zTo} and ${subj(path[i])} in zone ${zFrom}`
+                : zTo === zFrom
+                ? `they are at the same ${hi(src.scale.tie, srcColor)}`
+                : `${subj(path[i + 1])} is ${hi(`${Math.abs(zTo - zFrom)} ${src.scale.direction[zTo > zFrom ? 0 : 1]}`, srcColor)}`;
+            lines.push(
+                `<b>by local clocks</b> ${subj(path[i + 1])} is ${hi(axisClause(axis, said), color)}`
+                + ` relative to ${subj(path[i])}; ${where}, so by the station clock it is`
+                + ` ${hi(delta === 0 ? axis.scale.tie : `${Math.abs(delta)} ${axisClause(axis, delta)}`, color)}`
+                + ` — ${rel(runningTotal())}`);
+            continue;
+        }
+
         const word = delta === 0 ? axis.scale.tie : axisClause(axis, delta);
         lines.push(
             `${subj(path[i + 1])} is ${hi(word, color)} relative to ${subj(path[i])}`
             + ` — ${rel(runningTotal())}`);
+    }
+
+    /*
+     * Asked by local clocks: the real gap, then each end's own clock. The
+     * conversion happens once, at the ends, which is the one place it does.
+     */
+    if (axis.local && layout.reading === "local") {
+        const ahead = axis.local.rate
+            * (zoneOf(layout, b, axis.local.source) - zoneOf(layout, a, axis.local.source));
+        total += ahead;
+        lines.push(ahead === 0
+            ? `${subj(b)}'s clock and ${subj(a)}'s read alike — ${rel(runningTotal())}`
+            : `${subj(b)}'s clock reads ${hi(`${Math.abs(ahead)} ${axisClause(axis, ahead)}`, color)}`
+              + ` than ${subj(a)}'s — ${rel(runningTotal())}`);
     }
 
     /*

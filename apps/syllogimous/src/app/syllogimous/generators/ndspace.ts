@@ -10,7 +10,7 @@ import { buildConstructClaims } from "./context";
 import { Question } from "../models/question.models";
 import { coinFlip, getRandomSymbols, pickUniqueItems, shuffle } from "../utils/question.utils";
 import { describeTransform } from "../utils/transformations.utils";
-import { AxisSpec, NdConclusion, NdLayout, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
+import { AxisSpec, NdConclusion, NdLayout, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
 import { orderPremises, scrambleBlocks, scrambleByFactor, scrambleLeading } from "../utils/premise-order.utils";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
 import { LinearFeatureFlags } from "../services/settings-override.service";
@@ -23,7 +23,7 @@ import {
     describeFacing, egocentric,
 } from "../utils/facing.utils";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../constants/settings.constants";
-import { BRIDGE_NOTE, COMPACT_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
+import { BRIDGE_NOTE, CLOCK_NOTE, COMPACT_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
 
 /** How many dimensions each composed-space mode asks for. */
 export function dimensionsOf(ctx: GeneratorContext, type: EnumQuestionType): number {
@@ -79,6 +79,63 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
     const base = ndFeatures(ctx, type);
 
     /*
+     * Loops are applied to the axes that have cyclic wording — a ring of
+     * sizes or of quantities is not something anyone can reason about, so
+     * those stay straight however many the rung has earned.
+     */
+    const circularCapable = scales
+        .map((s, i) => (s.cyclic ? i : -1))
+        .filter(i => i >= 0);
+    const loops = new Set(circularCapable.slice(0, base.circular));
+
+    const axes: AxisSpec[] = scales.map((scale, i) => ({
+        scale,
+        // An odd modulus never lets a pair sit exactly opposite, an even one
+        // does; alternating keeps both kinds of claim in circulation.
+        modulus: loops.has(i) ? (coinFlip() ? 4 : 5) : undefined,
+    }));
+
+    /*
+     * Local clocks need a straight time axis to read and an east axis to set
+     * them. The axis picker can drop either from any stack, and the circular
+     * dial can bend time into a loop; on those stacks the rung is held and
+     * cannot be delivered, and the item says so rather than being priced for
+     * it. A looped east axis is the date-line form, not an exclusion.
+     */
+    const timeAxis = axes.findIndex(a => a.scale.id === "temporal" && !isCircular(a) && !isParity(a));
+    const eastAxis = axes.findIndex(a => a.scale.id === "east" && !isParity(a));
+    const clockable = timeAxis >= 0 && eastAxis >= 0;
+    const dateLine = clockable && isCircular(axes[eastAxis]);
+
+    /*
+     * One coupling per item, decided before anything else is.
+     *
+     * Every coupling rung is a claim about the premises as stated — a bridge
+     * between two axes, a clock read off another axis — so an item carries at
+     * most one, and shares itself with nothing that rewrites, replaces or
+     * reinterprets the premises: reports and testimony replace them, a facing
+     * re-reads them from inside, and a checkpoint needs a prefix that already
+     * settles something, which a coupled axis never does until the coupling is
+     * read. Those step aside for the item and are recorded as not delivered,
+     * as is every held coupling the item did not get, so nothing is priced as
+     * though it were carried.
+     *
+     * Half the time when any is held, the way analogy and construction share:
+     * a rung that took every item would stop the ones it displaces from ever
+     * being served, which is the facing bug again from the other side.
+     */
+    const heldCouplings = [
+        ...(base.bridges ? ["bridges"] : []),
+        ...(base.localClocks ? ["local-clocks"] : []),
+    ];
+    const offered = heldCouplings.filter(r => r !== "local-clocks" || clockable);
+    const coupling = offered.length && numOfPremises >= 4 && coinFlip()
+        ? offered[Math.floor(Math.random() * offered.length)]
+        : null;
+    const wantBridge = coupling === "bridges";
+    const wantClocks = coupling === "local-clocks";
+
+    /*
      * A checkpoint item is built without mutations, because otherwise it is
      * never built at all.
      *
@@ -100,47 +157,24 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
      * which would delete a form of item that works — it is the scale family's
      * top rung and fires there.
      */
-    /*
-     * A bridged item, decided before anything else is.
-     *
-     * A bridge is a premise about the arrangement as stated, so it shares an
-     * item with nothing that rewrites, replaces or reinterprets the premises:
-     * reports and testimony replace them, a facing re-reads them from inside,
-     * and a checkpoint needs a prefix that already settles something — which a
-     * cut axis never does until the bridge is read. Those step aside for this
-     * item, and are recorded as not delivered so it is not priced as though it
-     * carried them.
-     *
-     * Half the time when held, the way analogy and construction share: a rung
-     * that took every item would stop the ones it displaces from ever being
-     * served, which is the facing bug again from the other side.
-     */
-    const wantBridge = base.bridges && numOfPremises >= 4 && coinFlip();
-    const wantCheckpoint = !wantBridge && base.checkpoint && numOfPremises > 4 && coinFlip();
-    const feat = wantBridge
-        ? { ...base, speakers: false, testimony: false, facing: false, twins: false, checkpoint: false }
+    const wantCheckpoint = !coupling && base.checkpoint && numOfPremises > 4 && coinFlip();
+    const feat = coupling
+        ? {
+            ...base, speakers: false, testimony: false, facing: false, twins: false, checkpoint: false,
+            /*
+             * A clocked premise has to state its east clause, or its time
+             * clause cannot be corrected and nothing it says about time is
+             * usable; so nothing is withheld on a clocked item.
+             */
+            indeterminate: base.indeterminate && !wantClocks,
+        }
         : wantCheckpoint
         ? { ...base, edits: 0, transforms: 0, speakers: false, testimony: false }
         : base;
-    const displacedByBridge = ["speakers", "testimony", "facing", "mirror-twins", "checkpoint"]
-        .filter(r => ctx.hasRung(type, r));
-
-    /*
-     * Loops are applied to the axes that have cyclic wording — a ring of
-     * sizes or of quantities is not something anyone can reason about, so
-     * those stay straight however many the rung has earned.
-     */
-    const circularCapable = scales
-        .map((s, i) => (s.cyclic ? i : -1))
-        .filter(i => i >= 0);
-    const loops = new Set(circularCapable.slice(0, feat.circular));
-
-    const axes: AxisSpec[] = scales.map((scale, i) => ({
-        scale,
-        // An odd modulus never lets a pair sit exactly opposite, an even one
-        // does; alternating keeps both kinds of claim in circulation.
-        modulus: loops.has(i) ? (coinFlip() ? 4 : 5) : undefined,
-    }));
+    const displaced = coupling
+        ? ["speakers", "testimony", "facing", "mirror-twins", "checkpoint",
+           ...(wantClocks ? ["indeterminate"] : [])].filter(r => ctx.hasRung(type, r))
+        : [];
 
     /*
      * Edit and transformation premises come out of the object count rather
@@ -166,19 +200,23 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         feat.transforms,
         Math.max(0, numOfPremises - 3 - editCount),
         Math.max(0, numOfPremises + 1 - objectFloor - editCount));
-    // The bridge is a premise too, and comes out of the objects as edits do.
-    const objectCount = Math.max(4, numOfPremises + 1 - editCount - transformCount - (wantBridge ? 1 : 0));
+    // A bridge is a premise too, as is the date line's anchor, and each comes
+    // out of the objects as edits do.
+    const couplingPremises = wantBridge || (wantClocks && dateLine) ? 1 : 0;
+    const objectCount = Math.max(4, numOfPremises + 1 - editCount - transformCount - couplingPremises);
     const vocab = ndTransformVocab(axes);
 
     for (let attempt = 0; attempt < 300; attempt++) {
         /*
-         * A bridge that cannot be found in two hundred layouts is not found in
-         * the last hundred either; those build an ordinary item, one object
-         * richer so the premise count still holds, and say the bridge was not
-         * delivered.
+         * A coupling that cannot be found in two hundred layouts is not found
+         * in the last hundred either; those build an ordinary item, richer by
+         * the coupling's own premise so the count still holds, and say the
+         * coupling was not delivered.
          */
-        const bridging = wantBridge && attempt < 200;
-        const words = getRandomSymbols(settings, bridging || !wantBridge ? objectCount : objectCount + 1);
+        const coupling_ = coupling && attempt < 200 ? coupling : null;
+        const bridging = coupling_ === "bridges";
+        const clocking = coupling_ === "local-clocks";
+        const words = getRandomSymbols(settings, objectCount + (coupling && !coupling_ ? couplingPremises : 0));
 
         /*
          * Nine draws, and keep one by width.
@@ -237,7 +275,13 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
          */
         const bridged = bridging ? drawBridge(drawn) : null;
         if (bridging && !bridged) continue;
-        const layout = bridged
+        /*
+         * The drawn steps become what the clocked premises say, and the real
+         * arrangement is worked back from them — so the drawn layout is exactly
+         * the model of a reader who takes every clause at face value.
+         */
+        const clocked = clocking ? skewEdges(drawn, timeAxis, eastAxis) : null;
+        const layout = bridged ?? clocked
             ?? (feat.indeterminate
                 ? withholdClauses(drawn, 1 + Math.floor(Math.random() * 2))
                 : drawn);
@@ -291,7 +335,14 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
          * alongside meta: a checkpoint the reader cannot answer at the
          * checkpoint is not one.
          */
-        const canCheckpoint = !editCount && !transformCount && !reported && !told && !bridged;
+        const canCheckpoint = !editCount && !transformCount && !reported && !told && !bridged && !clocked;
+        /*
+         * Which clock a clocked item is asked by. Either, so that answering
+         * from the premises in the wrong reading is a lure rather than a
+         * convention the reader can settle once and stop reading.
+         */
+        const reading: "station" | "local" = clocked && coinFlip() ? "local" : "station";
+        const asRead = (l: NdLayout) => inReading(l, reading);
         /*
          * On a bridged item the "before" layout is the bridge misread as one
          * ordinary step, and the reversed reading is a second lure. Every
@@ -300,17 +351,36 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
          * construction included — need the bridge, rather than only a pair
          * chosen to cross it.
          */
+        /*
+         * A clocked item does the same with the clocks: the literal reading is
+         * `initial`, correcting the wrong way is a lure, and on a looped east
+         * axis so is correcting as though the loop had no date line. Its time
+         * answers are balanced by class, because the two bites together pull
+         * them towards "same time" (43% in the prototype).
+         */
+        const fill = bridged
+            ? { initial: bridgeReading(bridged, "one-step"), final,
+                coupling: { lures: [bridgeReading(bridged, "reversed")], axis: bridged.couplings![0].axis } }
+            : clocked
+            ? { initial: asRead(clockModel(clocked, "literal")), final: asRead(clocked),
+                coupling: {
+                    lures: [asRead(clockModel(clocked, "wrong-way")),
+                        ...(dateLine ? [asRead(clockModel(clocked, "no-date-line"))] : [])],
+                    axis: timeAxis, balance: timeAxis,
+                } }
+            : { initial: layout, final, coupling: {} };
         if (!fillNdConclusion(
-            ctx, question, bridged ? bridgeReading(bridged, "one-step") : layout, final, feat,
-            // A bridged item gives up on analogy sooner: a matching pair that
-            // also crosses the cut is rare at six axes, and the bridge is the
-            // rung this item exists to deliver.
-            numOfPremises, attempt >= (bridging ? 150 : 250), extraPremises, asked, canCheckpoint,
-            bridged ? [bridgeReading(bridged, "reversed")] : [])) continue;
+            ctx, question, fill.initial, fill.final, feat,
+            // A coupled item gives up on analogy sooner: a matching pair the
+            // coupling also decides is rare at six axes, and the coupling is
+            // the rung this item exists to deliver.
+            numOfPremises, attempt >= (coupling_ ? 150 : 250), extraPremises, asked, canCheckpoint,
+            fill.coupling)) continue;
 
-        if (!bridged && base.bridges) question.undelivered.push("bridges");
-        // Set aside for the bridge whether or not one was found in the end.
-        if (wantBridge) question.undelivered.push(...displacedByBridge);
+        const delivered = bridged ? "bridges" : clocked ? "local-clocks" : null;
+        question.undelivered.push(...heldCouplings.filter(r => r !== delivered));
+        // Set aside for the coupling whether or not one was found in the end.
+        question.undelivered.push(...displaced);
 
         /*
          * The testimony has to be load-bearing.
@@ -332,6 +402,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             : [
                 ...renderNdPremises(layout, { compact: feat.compact }),
                 ...(layout.couplings ?? []).map(c => renderNdCoupling(layout, c)),
+                ...(clocked && dateLine ? [renderZoneAnchor(clocked, eastAxis)] : []),
                 ...extraPremises,
             ];
         const mutations = [
@@ -431,10 +502,13 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         question.bucket = [...words];
         question.widthDelta = widthDelta;
         // Post-operation, so the picture matches the question asked.
-        question.wordCoordMap = { ...final.coords };
+        // By the station clock on a clocked item: the picture is of where and
+        // when things are, not of what some clock said.
+        question.wordCoordMap = { ...(clocked ?? final).coords };
         question.axisNames = axes.map(a => a.scale.name);
         question.setup = [
-            ...ndSetup(ctx, axes, feat, edits.length > 0, transforms.length > 0, !!bridged),
+            ...ndSetup(ctx, axes, feat, edits.length > 0, transforms.length > 0,
+                { bridged: !!bridged, clocked: clocked ? { layout: clocked, reading } : undefined }),
             ...question.setup,
         ];
         return question;
@@ -534,10 +608,16 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
      * "cut".
      */
     const bridges = ladder("bridges") && edits === 0 && transforms === 0 && !compact;
+    /*
+     * Same exclusions, for the same reason. Whether the stack can carry it —
+     * a straight time axis and an east axis — is decided where the axes are.
+     */
+    const localClocks = ladder("local-clocks") && edits === 0 && transforms === 0 && !compact;
 
     return {
         testimony,
         bridges,
+        localClocks,
         speakers: speakers && !testimony,
         facing,
         twins,
@@ -596,12 +676,18 @@ export function fillNdConclusion(ctx: GeneratorContext,
      */
     canCheckpoint = false,
     /**
-     * Further wrong readings the answer must also disagree with, beside
-     * `initial`. A bridged item hands in the bridge read backwards; the one-step
-     * reading is `initial` itself.
+     * What a coupled item needs of its conclusion, from the caller that built
+     * the coupling.
+     *
+     * `lures`: further wrong readings the answer must disagree with, beside
+     * `initial` — the bridge read backwards, the clocks corrected the wrong
+     * way. Present (even empty) marks the item as coupled. `axis`: the axis the
+     * coupling decides, for the derivation. `balance`: an axis whose answer
+     * class is drawn first, for a coupling whose bites skew the answers.
      */
-    lures: NdLayout[] = [],
+    coupling: { lures?: NdLayout[]; axis?: number; balance?: number } = {},
 ): boolean {
+    const lures = coupling.lures ?? [];
     /*
      * Mutations have to matter. A conclusion whose truth survives the edits
      * and transformations is answerable from the relations as first stated,
@@ -664,7 +750,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
      * bridge is one more step, of a derived size — so its derivation can be
      * shown. Only operations that set coordinates directly make a walk lie.
      */
-    const coupled = !!layout.couplings?.length;
+    const coupled = coupling.lures != null || !!layout.couplings?.length;
 
     /*
      * Where a false wide claim may lie on a coupled item: on an axis the
@@ -701,6 +787,18 @@ export function fillNdConclusion(ctx: GeneratorContext,
             }
         }
         if (!live.length) return null;
+        /*
+         * The answer class first, then a pair that has it. Rejecting the whole
+         * draw when no pair does is deliberate: settling for another class
+         * would put the skew straight back.
+         */
+        if (coupling.balance != null) {
+            const ax = coupling.balance;
+            const want = [-1, 0, 1][Math.floor(Math.random() * 3)];
+            const fits = live.filter(([a, b]) => Math.sign(layout.coords[a][ax] - layout.coords[b][ax]) === want);
+            if (!fits.length) return null;
+            live.splice(0, live.length, ...fits);
+        }
         const deepest = Math.max(...live.map(p => depthOf(p[0], p[1])));
         const band = live.filter(p => depthOf(p[0], p[1]) >= deepest - slack);
         const chosen = band[Math.floor(Math.random() * band.length)];
@@ -1038,7 +1136,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
                     // A true claim turns on every axis; on a bridged item the
                     // one worth walking is the one the bridge decides.
                     ...explainNdAxis(layout, c.b, c.a,
-                        c.axis >= 0 ? c.axis : coupled ? layout.couplings![0].axis : 0),
+                        c.axis >= 0 ? c.axis : coupling.axis ?? 0),
                     wants[i] ? `so claim ${i + 1} holds.`
                         : `so claim ${i + 1} does ${hi("not")} hold.`,
                 ]);
@@ -1163,8 +1261,9 @@ export function ndSetup(ctx: GeneratorContext,
     feat: ReturnType<typeof ndFeatures>,
     edited: boolean,
     transformed: boolean,
-    bridged = false,
+    coupled: { bridged?: boolean; clocked?: { layout: NdLayout; reading: "station" | "local" } } = {},
 ): string[] {
+    const bridged = !!coupled.bridged;
     const loops = axes.filter(a => isCircular(a));
     const lines: string[] = [];
     /*
@@ -1187,6 +1286,7 @@ export function ndSetup(ctx: GeneratorContext,
      */
     if (feat.indeterminate || bridged) lines.push(UNNAMED_NOTE);
     if (bridged) lines.push(BRIDGE_NOTE);
+    if (coupled.clocked) lines.push(...clockNotes(coupled.clocked.layout, coupled.clocked.reading));
     if (feat.facing) lines.push(FACING_NOTE);
     if (feat.twins) lines.push(MIRROR_NOTE);
     if (feat.speakers) lines.push(SPEAKERS_NOTE);
@@ -1217,6 +1317,35 @@ export function ndSetup(ctx: GeneratorContext,
     return lines;
 }
 
+
+/**
+ * What a clocked item has to say about its clocks.
+ *
+ * The rule, the mark, and which clock the question uses — none of which the
+ * premises convey. On a looped east axis the date line is stated with the
+ * jump it causes, because a ring of zones implies a day of that many steps
+ * and nobody should have to infer it.
+ */
+function clockNotes(layout: NdLayout, reading: "station" | "local"): string[] {
+    const clock = clockAxes(layout)!;
+    const time = layout.axes[clock.target].scale;
+    const east = layout.axes[clock.source];
+    const lines = [CLOCK_NOTE(rel(east.scale.direction[0]), rel(time.direction[0]))];
+    if (isCircular(east)) {
+        const m = east.modulus!;
+        const round = rel(east.scale.cyclic!.direction[0]);
+        lines[0] = `Clocks are <b>local</b>. The loop is <b>${m} zones</b>, numbered 1 to ${m}`
+            + ` going ${round} from the <b>date line</b>, and a clock in zone k reads k steps`
+            + ` ${rel(time.direction[0])} than the station clock \u2014 so crossing the date line`
+            + ` going ${round} sets a clock back ${m - 1} steps. Premises marked`
+            + ` <b>by local clocks</b> give each time as read where that thing is; the rest`
+            + ` use the station clock.`;
+    }
+    lines.push(reading === "station"
+        ? "Answer <b>by the station clock</b>."
+        : "Answer <b>by local clocks</b>: each time as read where that thing is.");
+    return lines;
+}
 
 /** A claim of necessity rather than of fact. */
 function mustBe(text: string): string {

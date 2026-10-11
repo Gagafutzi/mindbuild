@@ -329,6 +329,7 @@ const SPACE_ND_LADDER: string[] = Object.freeze([
     "checkpoint",
     "mirror-twins",
     "bridges",
+    "local-clocks",
 ]) as string[];
 
 /**
