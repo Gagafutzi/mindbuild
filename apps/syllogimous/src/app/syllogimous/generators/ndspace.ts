@@ -11,7 +11,7 @@ import { buildConstructClaims } from "./context";
 import { Question } from "../models/question.models";
 import { coinFlip, getRandomSymbols, pickUniqueItems, shuffle } from "../utils/question.utils";
 import { describeTransform } from "../utils/transformations.utils";
-import { AxisSpec, NdConclusion, NdLayout, ndAxisColors, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, coneAxes, coneLayout, edgeSteps, routeForms, routePath, routeSteps, timeBounds, travelSteps, kindsFaceValue, kindsLayout, relDelta, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
+import { AxisSpec, NdConclusion, NdLayout, ndAxisColors, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, coneAxes, coneLayout, edgeSteps, routeForms, routePath, routeSteps, timeBounds, travelSteps, kindsFaceValue, kindsLayout, relDelta, countedAxes, drawWalk, walkDistance, walkLures, walkReading, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
 import { orderPremises, scrambleBlocks, scrambleByFactor, scrambleLeading } from "../utils/premise-order.utils";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
 import { LinearFeatureFlags } from "../services/settings-override.service";
@@ -24,7 +24,7 @@ import {
     describeFacing, egocentric,
 } from "../utils/facing.utils";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../constants/settings.constants";
-import { BRIDGE_NOTE, CLOCK_NOTE, COMPACT_NOTE, CONE_NOTE, KIND_NOTE, ONE_STEP_MINUTES_NOTE, REACH_NOTE, SIGNAL_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
+import { BRIDGE_NOTE, CLOCK_NOTE, COMPACT_NOTE, CONE_NOTE, KIND_NOTE, NEAREST_NOTE, WALK_NOTE, ONE_STEP_MINUTES_NOTE, REACH_NOTE, SIGNAL_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
 
 /** How many dimensions each composed-space mode asks for. */
 export function dimensionsOf(ctx: GeneratorContext, type: EnumQuestionType): number {
@@ -112,6 +112,8 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
     // Kind frames need a straight axis to reframe; the parity axis that
     // carries kind is added where the stack has none.
     const frameable = axes.some(a => !isCircular(a) && !isParity(a));
+    // A total needs a straight axis to cut and another to subtract.
+    const walkable = countedAxes(axes).length >= 2;
 
     /*
      * One coupling per item, decided before anything else is.
@@ -135,11 +137,13 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         ...(base.localClocks ? ["local-clocks"] : []),
         ...(base.cone ? ["cone"] : []),
         ...(base.kinds ? ["kinds"] : []),
+        ...(base.walkingTotals ? ["walking-totals"] : []),
     ];
     const offered = heldCouplings
         .filter(r => r !== "local-clocks" || clockable)
         .filter(r => r !== "cone" || coneable)
-        .filter(r => r !== "kinds" || frameable);
+        .filter(r => r !== "kinds" || frameable)
+        .filter(r => r !== "walking-totals" || walkable);
     const coupling = offered.length && numOfPremises >= 4 && coinFlip()
         ? offered[Math.floor(Math.random() * offered.length)]
         : null;
@@ -147,6 +151,13 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
     const wantClocks = coupling === "local-clocks";
     const wantCone = coupling === "cone";
     const wantKinds = coupling === "kinds";
+    const wantWalk = coupling === "walking-totals";
+    /*
+     * Two forms on one rung: a premise with a total (Form A), or the nearest
+     * question, which asks for the total itself. The open-budget form is a
+     * later rung of its own.
+     */
+    const walkNearest = wantWalk && coinFlip();
     /*
      * A kinds item reads kind off a parity axis, and only the seven-axis stack
      * has one. Elsewhere it is appended for the item — one axis wider than the
@@ -201,7 +212,9 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
              * clause cannot be corrected and nothing it says about time is
              * usable; so nothing is withheld on a clocked item.
              */
-            indeterminate: base.indeterminate && !wantClocks,
+            // And nothing on a cone or nearest item either, whose questions
+            // are their own and withhold nothing.
+            indeterminate: base.indeterminate && !wantClocks && !wantCone && !walkNearest,
             analogy: base.analogy && !wantKinds,
         }
         : wantCheckpoint
@@ -223,6 +236,9 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             * off a kinds item rather than given a rule nobody has stated.
             */
            ...(wantKinds ? ["analogy"] : []),
+           // The nearest question is the item's whole conclusion, as the cone's is.
+           ...(walkNearest ? ["indeterminate", "analogy", "construct-conclusion", "construct-distance",
+               "choose-conclusion"] : []),
           ].filter(r => ctx.hasRung(type, r))
         : [];
     // The cone's later rungs ride on it, and are charged only on the item
@@ -256,7 +272,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         Math.max(0, numOfPremises + 1 - objectFloor - editCount));
     // A bridge is a premise too, as is the date line's anchor, and each comes
     // out of the objects as edits do.
-    const couplingPremises = wantBridge || (wantClocks && dateLine) ? 1 : 0;
+    const couplingPremises = wantBridge || (wantClocks && dateLine) || (wantWalk && !walkNearest) ? 1 : 0;
     const objectCount = Math.max(4, numOfPremises + 1 - editCount - transformCount - couplingPremises);
     const vocab = ndTransformVocab(axes);
 
@@ -346,7 +362,10 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         if (coupling_ === "cone" && !coned) continue;
         const kinded = coupling_ === "kinds" ? kindsLayout(drawn, kindRule) : null;
         if (coupling_ === "kinds" && !kinded) continue;
-        const layout = bridged ?? clocked ?? coned ?? kinded
+        const walked = coupling_ === "walking-totals" && !walkNearest ? drawWalk(drawn) : null;
+        if (coupling_ === "walking-totals" && !walkNearest && !walked) continue;
+        const neared = coupling_ === "walking-totals" && walkNearest ? drawn : null;
+        const layout = bridged ?? clocked ?? coned ?? kinded ?? walked ?? neared
             ?? (feat.indeterminate
                 ? withholdClauses(drawn, 1 + Math.floor(Math.random() * 2))
                 : drawn);
@@ -438,12 +457,23 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
              * result is a lure: an item either kind-blind reading gets right is
              * not a kinds item.
              */
+            /*
+             * The total read as an ordinary one-step premise is `initial`; each
+             * leg counted as one step, and the whole total given to the cut
+             * axis, are the further lures.
+             */
+            : walked
+            ? { initial: walkReading(walked, "one-step"), final,
+                coupling: { lures: [walkReading(walked, "legs"), walkReading(walked, "whole")],
+                    axis: walked.couplings![0].axis } }
             : kinded
             ? { initial: kindsFaceValue(kinded, 0), final,
                 coupling: { lures: [kindsFaceValue(kinded, 1)], axis: kinded.frames!.axes[0] } }
             : { initial: layout, final, coupling: {} };
         if (coned) {
             if (!fillConeConclusion(question, coned, coneKind, coneSelect, coneWant)) continue;
+        } else if (neared) {
+            if (!fillNearestConclusion(question, neared)) continue;
         } else if (!fillNdConclusion(
             ctx, question, fill.initial, fill.final, feat,
             // A coupled item gives up on analogy sooner: a matching pair the
@@ -452,7 +482,8 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             numOfPremises, attempt >= (coupling_ ? 150 : 250), extraPremises, asked, canCheckpoint,
             fill.coupling)) continue;
 
-        const delivered = bridged ? "bridges" : clocked ? "local-clocks" : coned ? "cone" : kinded ? "kinds" : null;
+        const delivered = bridged ? "bridges" : clocked ? "local-clocks" : coned ? "cone" : kinded ? "kinds"
+            : walked || neared ? "walking-totals" : null;
         if (kinded && appendParity) question.surcharge = Math.round(0.2 * numOfPremises * 100) / 100;
         question.undelivered.push(...heldCouplings.filter(r => r !== delivered));
         question.undelivered.push(...heldConeForms.filter(r =>
@@ -587,7 +618,8 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         question.setup = [
             ...ndSetup(ctx, layout.axes, feat, edits.length > 0, transforms.length > 0,
                 { bridged: !!bridged, clocked: clocked ? { layout: clocked, reading } : undefined,
-                  coned: coned ?? undefined, kinded: kinded ?? undefined }),
+                  coned: coned ?? undefined, kinded: kinded ?? undefined,
+                  walked: !!walked, neared: !!neared }),
             ...question.setup,
         ];
         return question;
@@ -699,6 +731,8 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
     const cone = ladder("cone") && edits === 0 && transforms === 0 && !compact;
     // Kind frames re-read every premise, so the same exclusions again.
     const kinds = ladder("kinds") && edits === 0 && transforms === 0 && !compact;
+    // A total is a premise about the arrangement as stated, as a bridge is.
+    const walkingTotals = ladder("walking-totals") && edits === 0 && transforms === 0 && !compact;
 
     return {
         testimony,
@@ -708,6 +742,7 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
         signals: cone && ladder("signals"),
         reach: cone && ladder("reach"),
         kinds,
+        walkingTotals,
         speakers: speakers && !testimony,
         facing,
         twins,
@@ -1357,9 +1392,11 @@ export function ndSetup(ctx: GeneratorContext,
         clocked?: { layout: NdLayout; reading: "station" | "local" };
         coned?: NdLayout;
         kinded?: NdLayout;
+        walked?: boolean;
+        neared?: boolean;
     } = {},
 ): string[] {
-    const bridged = !!coupled.bridged;
+    const bridged = !!coupled.bridged || !!coupled.walked;
     const loops = axes.filter(a => isCircular(a));
     const lines: string[] = [];
     /*
@@ -1382,7 +1419,9 @@ export function ndSetup(ctx: GeneratorContext,
      * is held, so the reading of an omission is stated with it either way.
      */
     if (feat.indeterminate || bridged) lines.push(UNNAMED_NOTE);
-    if (bridged) lines.push(BRIDGE_NOTE);
+    if (coupled.bridged) lines.push(BRIDGE_NOTE);
+    if (coupled.walked) lines.push(WALK_NOTE(axes.some(a => isCircular(a) || isParity(a))));
+    if (coupled.neared) lines.push(NEAREST_NOTE(axes.some(a => isParity(a)), axes.some(a => isCircular(a))));
     if (coupled.clocked) lines.push(...clockNotes(coupled.clocked.layout, coupled.clocked.reading));
     if (coupled.coned) {
         const cone = coneAxes(coupled.coned.axes)!;
@@ -1592,6 +1631,61 @@ function fillFacingConclusion(
             : [`so ${describeEgocentric(chosen.target, chosen.viewer, chosen.rel)}`]),
     ];
     return true;
+}
+
+/**
+ * "Counting every step on every dimension, which is nearer to F?"
+ *
+ * Two options, as every choice in the app is — a longer menu is searched, not
+ * judged. The right one is nearer by the walking total; the other is the one
+ * the per-axis stand-ins prefer: none of fewest dimensions differing, the
+ * smallest longest leg, or fewest premises apart picks the right one, and at
+ * least two of them pick the wrong one outright. An item any shortcut answers
+ * is not asking for the total.
+ */
+function fillNearestConclusion(question: Question, layout: NdLayout): boolean {
+    for (const anchor of shuffle([...layout.words])) {
+        const others = layout.words.filter(w => w !== anchor);
+        for (let t = 0; t < 20; t++) {
+            const trio = shuffle([...others]).slice(0, 2);
+            if (trio.length < 2) return false;
+            const [p, q] = trio.map(w => walkDistance(layout, anchor, w));
+            if (p === q) continue;
+            const right = p < q ? trio[0] : trio[1];
+            const wrong = right === trio[0] ? trio[1] : trio[0];
+            // Which of the pair a stand-in prefers: -1 the right one, 1 the
+            // wrong one, 0 a tie.
+            const prefers = (f: (w: string) => number) => Math.sign(f(right) - f(wrong));
+            const stand = [
+                prefers(w => walkLures(layout, anchor, w).hamming),
+                prefers(w => walkLures(layout, anchor, w).widest),
+                prefers(w => graphDistance(anchor, w, layout.neighbors)),
+            ];
+            if (stand.includes(-1) || stand.filter(x => x === 1).length < 2) continue;
+
+            question.choices = trio.map(w => subj(w));
+            question.correctChoice = trio.indexOf(right);
+            question.answerMode = "choice";
+            question.choicePrompt = `Counting every step on every dimension, which is nearer to ${subj(anchor)}?`;
+            question.isValid = true;
+            question.conclusion = "";
+            question.depth = Math.max(...trio.map(w => graphDistance(anchor, w, layout.neighbors)));
+            const colors = ndAxisColors(layout.axes);
+            question.explanation = [
+                ...trio.map(w => {
+                    const legs = layout.axes.map((axis, i) => ({ axis, i, d: layout.coords[w][i] - layout.coords[anchor][i] }))
+                        .filter(l => !isParity(l.axis) && (isCircular(l.axis) ? displacementOn(layout, l.i, w, anchor) : l.d) !== 0)
+                        .map(l => isCircular(l.axis)
+                            ? hi(`${Math.min(displacementOn(layout, l.i, w, anchor), l.axis.modulus! - displacementOn(layout, l.i, w, anchor))} round`, colors[l.i])
+                            : hi(`${Math.abs(l.d)} ${l.d > 0 ? l.axis.scale.direction[0] : l.axis.scale.direction[1]}`, colors[l.i]));
+                    return `${subj(w)} is ${legs.join(", ")} from ${subj(anchor)}: ${walkDistance(layout, anchor, w)} steps in all.`;
+                }),
+                `so ${subj(right)} is nearer`,
+            ];
+            return true;
+        }
+    }
+    return false;
 }
 
 /** "X's ring can have reached Y by the moment Y rang." */

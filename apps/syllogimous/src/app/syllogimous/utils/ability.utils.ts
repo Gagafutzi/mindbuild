@@ -125,6 +125,13 @@ export const RUNG_COST: Record<string, number> = {
      */
     kinds: 1.6,
     /*
+     * A subtraction across axes on top of a cut: cheaper than a bridge, because
+     * the other axes' gaps belong to the same pair. The cone owns the taxicab
+     * budget held against time, this the budget as a step count; an item
+     * carries one coupling at most, so the two are never charged together.
+     */
+    "walking-totals": 1.4,
+    /*
      * Two puzzles stacked: work out who is lying, then work out the
      * arrangement from what is left. Dearer than either alone because the
      * second cannot start until the first is finished.
@@ -409,6 +416,7 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     signals: 4,
     reach: 4,
     kinds: 4,
+    "walking-totals": 5,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,

@@ -20,7 +20,7 @@ import { createDistinction } from "../src/app/syllogimous/generators/distinction
 import { createNdSpace } from "../src/app/syllogimous/generators/ndspace";
 import { ND_LADDER_AT_SPLIT, ladderFor } from "../src/app/syllogimous/utils/progression.utils";
 import {
-    AXIS_CHOICES, AxisSpec, axesForDimensions, buildNdLayout, determinedOn, drawBridge, indeterminatePairs,
+    AXIS_CHOICES, AxisSpec, axesForDimensions, drawWalk, buildNdLayout, determinedOn, drawBridge, indeterminatePairs,
     isCircular, ndAxisColors, renderNdCoupling, renderNdPremises, withholdClauses,
 } from "../src/app/syllogimous/utils/ndspace.utils";
 
@@ -230,7 +230,7 @@ const subjectsOf = (html: string) =>
     [...html.matchAll(/<span class="subject">([^<]+)<\/span>/g)].map(m => m[1]);
 
 export interface Read {
-    kind: "edge" | "bridge" | "anchor";
+    kind: "edge" | "bridge" | "anchor" | "total";
     words: string[];
     /** Per clause: axis and the signed step it names (steps round, on a loop). */
     clauses: Array<{ axis: number; delta: number }>;
@@ -272,21 +272,30 @@ export function readPremise(html: string, axes: AxisSpec[]): Read {
         return { axis, delta: /date line/.test(plain) ? 0 : clauseValue(m[2], axes[axis]) };
     });
     return {
-        kind: /date line/.test(plain) ? "anchor" : /as many/.test(plain) ? "bridge" : "edge",
+        kind: /date line/.test(plain) ? "anchor" : /as many/.test(plain) ? "bridge"
+            : /steps in all/.test(plain) ? "total" : "edge",
         words: subjectsOf(html),
         clauses,
         local: /^By local clocks/.test(plain),
     };
 }
 
-/** How the reader takes a bridge: as written, or one of the misreadings. */
-export type Reading = "true" | "one-step" | "reversed" | "per-axis";
+/**
+ * How the reader takes a coupling premise: as written, or one of the
+ * misreadings. A bridge or a total read `one-step` is an ordinary premise;
+ * `reversed` turns a bridge round; `legs` counts each of a total's other named
+ * legs as one step; `whole` gives the total to the axis it closes.
+ */
+export type Reading = "true" | "one-step" | "reversed" | "per-axis" | "legs" | "whole";
+
+const totalOf = (html: string) => Number(/(\d+) steps in all/.exec(strip(html))![1]);
 
 export function solve(premises: string[], axes: AxisSpec[], reading: Reading = "true"): Solver {
     const sys = new Solver();
     for (const html of premises) {
         const r = readPremise(html, axes);
         if (r.kind === "anchor") continue;
+        if (r.kind === "total") continue;
         if (r.kind === "edge") {
             const [to, from] = r.words;
             for (const c of r.clauses) sys.add([[`${to}|${c.axis}`, 1], [`${from}|${c.axis}`, -1]], c.delta);
@@ -303,6 +312,41 @@ export function solve(premises: string[], axes: AxisSpec[], reading: Reading = "
         const flip = reading === "reversed" ? -1 : 1;
         sys.add([[`${R}|${x.axis}`, x.delta], [`${B}|${x.axis}`, -x.delta],
                  [`${G}|${y.axis}`, -flip * y.delta], [`${H}|${y.axis}`, flip * y.delta]], 0);
+    }
+    // Totals last, so the reader knows which axis each one has to close.
+    for (const html of premises) {
+        const r = readPremise(html, axes);
+        if (r.kind !== "total" || reading === "per-axis") continue;
+        const [a, b] = r.words;
+        const counted = axes.map((x, i) => (isCircular(x) || x.scale.parity ? -1 : i)).filter(i => i >= 0);
+        const sign = (i: number) => r.clauses.find(c => c.axis === i)!.delta;
+        for (const c of r.clauses) {
+            // A loop's or a kind's clause is settled only up to its size, and
+            // the cut is never on one, so the premises already settle it.
+            if (!counted.includes(c.axis)) continue;
+            if (c.delta === 0 || reading === "one-step") {
+                sys.add([[`${a}|${c.axis}`, 1], [`${b}|${c.axis}`, -1]], c.delta);
+            }
+        }
+        if (reading === "one-step") continue;
+        const N = totalOf(html);
+        const open = counted.find(i => sign(i) !== 0 && sys.gap(a, b, i) == null);
+        if (reading === "whole" && open != null) {
+            sys.add([[`${a}|${open}`, 1], [`${b}|${open}`, -1]], sign(open) * N);
+            continue;
+        }
+        if (reading === "legs" && open != null) {
+            const legs = counted.filter(i => i !== open && sign(i) !== 0).length;
+            sys.add([[`${a}|${open}`, 1], [`${b}|${open}`, -1]], sign(open) * (N - legs));
+            continue;
+        }
+        // Σ s_i (a_i − b_i) = N over the counted axes it names a direction on.
+        const terms: Array<[string, number]> = [];
+        for (const i of counted) {
+            if (sign(i) === 0) continue;
+            terms.push([`${a}|${i}`, sign(i)], [`${b}|${i}`, -sign(i)]);
+        }
+        sys.add(terms, N);
     }
     return sys;
 }
@@ -1234,4 +1278,179 @@ test("kinds: the rule is stated, kinds are on every premise, and the derivation 
     const converted = items.filter(q => q.explanation.some(l => /is the other kind from/.test(strip(l))));
     assert(converted.length > items.length * 0.5,
         `only ${converted.length}/${items.length} derivations show a premise being converted`);
+});
+
+/* ------------------------------------------------------------------ *
+ * Walking totals                                                       *
+ * ------------------------------------------------------------------ */
+
+const isWalked = (q: Question) => q.premises.some(p => /steps in all/.test(strip(p)));
+const isNearest = (q: Question) => /which is nearer/.test(strip(q.choicePrompt ?? ""));
+const totalPremise = (q: Question) => q.premises.find(p => /steps in all/.test(strip(p)))!;
+
+const WALK_FORMS: Record<string, string[]> = {
+    plain: ["branching", "indeterminate", "walking-totals"],
+    choice: ["branching", "indeterminate", "choose-conclusion", "walking-totals"],
+    construct: ["branching", "indeterminate", "construct-conclusion", "construct-distance", "walking-totals"],
+};
+
+function walkedItems(type: EnumQuestionType, held: string[], count: number, seed: number) {
+    const axes = axesForDimensions(dimsOf[type]).map(scale => ({ scale }) as AxisSpec);
+    return { axes, items: build(ctxHolding(held), type, 6, count, seed).filter(isWalked) };
+}
+
+test("walking totals: the marked answer is what the text solves to, the total's signs included", () => {
+    let checked = 0;
+    for (const [form, held] of Object.entries(WALK_FORMS)) {
+        for (const type of [EnumQuestionType.Direction, EnumQuestionType.Space3D,
+                            EnumQuestionType.Space4D, EnumQuestionType.Space7D]) {
+            const { axes, items } = walkedItems(type, held, 80, 5501);
+            assert(items.length >= 10, `${form} ${type}: only ${items.length} items with a total`);
+            for (const q of items) {
+                const sys = solve(q.premises, axes);
+                assert(!sys.inconsistent, `${form} ${type}: the premises contradict each other`);
+                // The total's own direction words hold where the solve put things.
+                const r = readPremise(totalPremise(q), axes);
+                for (const c of r.clauses) {
+                    if (isCircular(axes[c.axis]) || axes[c.axis].scale.parity) continue;
+                    equal(Math.sign(sys.gap(r.words[0], r.words[1], c.axis)!), c.delta,
+                        `${form} ${type}: the total's ${axes[c.axis].scale.name} word does not hold`);
+                }
+                equal(q.premises.length, 6, `${form} ${type}: the total came on top of the premise count`);
+                assert(readerAgrees(q, axes, "true"), `${form} ${type}: the reader disagrees with the key on\n  `
+                    + [...q.premises, String(q.conclusion), ...q.choices].map(strip).join("\n  "));
+                checked++;
+            }
+        }
+    }
+    assert(checked > 150, `only ${checked} items checked`);
+});
+
+test("walking totals: the total is load-bearing, and each misreading of it fails", () => {
+    for (const [form, held] of Object.entries(WALK_FORMS)) {
+        const { axes, items } = walkedItems(EnumQuestionType.Space4D, held, 100, 5502);
+        for (const q of items) {
+            const r = readPremise(totalPremise(q), axes);
+            const without = solve(q.premises, axes, "per-axis");
+            const open = askedPairs(q).filter(([a, b]) => axes.some((_, i) => without.gap(a, b, i) == null));
+            assert(open.length > 0, `${form}: no asked pair needs the total`);
+            assert(!q.premises.some(p => {
+                const w = subjectsOf(p);
+                return w.length === 2 && !/in all/.test(strip(p)) && w.includes(r.words[0]) && w.includes(r.words[1]);
+            }), `${form}: the total's pair is also stated directly`);
+        }
+        const share = (how: Reading) => items.filter(q => !readerAgrees(q, axes, how)).length / items.length;
+        const enforced = form === "plain" ? 0.4 : 1;
+        for (const how of ["per-axis", "one-step", "legs", "whole"] as Reading[]) {
+            assert(share(how) >= enforced,
+                `${form}: the ${how} reading fails only ${Math.round(share(how) * 100)}% of ${items.length}`);
+        }
+    }
+});
+
+test("walking totals: closeAxes agrees with Gaussian rank", () => {
+    let queries = 0, open = 0, built = 0;
+    seeded(5503, () => {
+        for (let n = 0; n < 600; n++) {
+            const dims = 2 + (n % 6);
+            const axes = axesForDimensions(dims).map(scale => ({ scale }) as AxisSpec);
+            const words = ["A", "B", "C", "D", "E", "F", "G"].slice(0, 5 + (n % 3));
+            const walked = drawWalk(buildNdLayout(words, axes, { branching: n % 2 === 0 }));
+            if (!walked) continue;
+            built++;
+            const layout = n % 3 === 0 ? withholdClauses(walked, 1) : walked;
+            const premises = [...renderNdPremises(layout), ...layout.couplings!.map(c => renderNdCoupling(layout, c))];
+            const sys = solve(premises, axes);
+            for (const a of words) for (const b of words) {
+                if (a >= b) continue;
+                axes.forEach((axis, ax) => {
+                    // A kind or a loop is settled mod its size, which the
+                    // integer solve does not model; only the lines are asked.
+                    if (isCircular(axis) || axis.scale.parity) return;
+                    const settled = sys.gap(a, b, ax) != null;
+                    if (!settled) open++;
+                    queries++;
+                    equal(determinedOn(layout, ax, a, b), settled,
+                        `determinedOn says ${a}–${b} on ${axis.scale.name} is ${settled ? "open" : "settled"}; `
+                        + "the equations say otherwise");
+                });
+            }
+        }
+    });
+    assert(built > 400 && queries > 15000 && open > 300, `too few checks: ${built} built, ${queries} queries, ${open} open`);
+});
+
+test("walking totals: the nearer is nearer by the total, and no per-axis stand-in finds it", () => {
+    let checked = 0;
+    for (const type of [EnumQuestionType.Space3D, EnumQuestionType.Space5D, EnumQuestionType.Space7D]) {
+        const axes = axesForDimensions(dimsOf[type]).map(scale => ({ scale }) as AxisSpec);
+        const items = build(ctxHolding(WALK_FORMS.plain), type, 6, 80, 5504).filter(isNearest);
+        assert(items.length >= 15, `${type}: only ${items.length} nearer items`);
+        for (const q of items) {
+            equal(q.choices.length, 2, `${type}: a nearer item offers ${q.choices.length} options`);
+            const sys = solve(q.premises, axes);
+            const anchor = subjectsOf(q.choicePrompt)[0];
+            const legs = (w: string) => axes.map((a, i) => a.scale.parity ? 0 : Math.abs(sys.gap(w, anchor, i)!));
+            const [right, wrong] = [q.choices[q.correctChoice], q.choices[1 - q.correctChoice]]
+                .map(c => subjectsOf(c)[0]);
+            const sum = (w: string) => legs(w).reduce((t, x) => t + x, 0);
+            assert(sum(right) < sum(wrong), `${type}: the keyed option is not nearer by the total`);
+            const hops = (w: string) => {
+                // Premises apart, from the card.
+                const seen = new Map([[anchor, 0]]), queue = [anchor];
+                while (queue.length) {
+                    const cur = queue.shift()!;
+                    for (const p of q.premises) {
+                        const [x, y] = subjectsOf(p);
+                        const next = x === cur ? y : y === cur ? x : null;
+                        if (next && !seen.has(next)) { seen.set(next, seen.get(cur)! + 1); queue.push(next); }
+                    }
+                }
+                return seen.get(w)!;
+            };
+            const prefers = (f: (w: string) => number) => Math.sign(f(right) - f(wrong));
+            const stand = [prefers(w => legs(w).filter(x => x).length), prefers(w => Math.max(...legs(w))), prefers(hops)];
+            assert(!stand.includes(-1), `${type}: a per-axis shortcut finds the nearer one`);
+            assert(stand.filter(x => x === 1).length >= 2, `${type}: fewer than two shortcuts commit to the wrong one`);
+            checked++;
+        }
+    }
+    assert(checked > 50, `only ${checked} nearer items`);
+});
+
+test("walking totals: delivered on every family, both forms, charged only where carried", () => {
+    for (const type of [EnumQuestionType.Direction, EnumQuestionType.Space3D,
+                        EnumQuestionType.Space4D, EnumQuestionType.Space7D]) {
+        assert(ladderFor(type).includes("walking-totals"), `${type} does not offer walking totals`);
+        const held = [...fullLadder(type), "bridges", "local-clocks", "cone", "signals", "reach", "kinds",
+            "walking-totals"].filter(r => ladderFor(type).includes(r));
+        const items = build(ctxHolding(held), type, 6, 240, 5505);
+        const carried = (q: Question) => isWalked(q) || isNearest(q);
+        // The nearer form is rare in two dimensions, where two shortcuts both
+        // pointing the wrong way leaves little room; it falls back and is not
+        // charged when it cannot be built, which the loop below checks.
+        assert(items.filter(isWalked).length > 5 && items.filter(isNearest).length > 2,
+            `${type}: ${items.filter(isWalked).length} totals and ${items.filter(isNearest).length} nearest of ${items.length}`);
+        for (const q of items) {
+            equal(q.undelivered.includes("walking-totals"), !carried(q), `${type}: walking totals charged wrongly`);
+        }
+        for (const q of items.filter(isNearest)) {
+            assert(q.undelivered.includes("analogy") && q.undelivered.includes("construct-conclusion"),
+                `${type}: a nearer item is charged for the conclusion forms it replaced`);
+        }
+    }
+});
+
+test("walking totals: the total and what it counts are stated on the card", () => {
+    const { items } = walkedItems(EnumQuestionType.Space7D, WALK_FORMS.plain, 60, 5506);
+    for (const q of items) {
+        const setup = q.setup.map(strip).join(" ");
+        assert(/counts every step on every dimension/.test(setup) && /not one step per dimension/.test(setup),
+            "the total's exception to the one-step rule is not stated");
+        assert(/A loop or a kind is stated as usual and not counted/.test(setup),
+            "a 7D total does not say the kind is not counted");
+        assert(/does not name is unknown/.test(setup), "the cut is not said to be unknown");
+    }
+    const crossed = items.filter(q => q.explanation.some(l => /remain for/.test(strip(l))));
+    assert(crossed.length > items.length * 0.3, `only ${crossed.length}/${items.length} derivations use the total`);
 });

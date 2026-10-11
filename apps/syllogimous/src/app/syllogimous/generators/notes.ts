@@ -118,6 +118,21 @@ export const KIND_NOTE = (exchange: string, same: string, opposite: string) =>
     + ` the two reckon directions differently: ${exchange}. Every relation is in the`
     + ` <b>reckoning of the one it is relative to</b>.`;
 
+/**
+ * A total breaks the one-step rule for its own premise, and has to say so —
+ * otherwise "6 steps in all" reads as a contradiction of the note above it.
+ */
+export const WALK_NOTE = (uncounted: boolean) =>
+    "\u201cN steps in all\u201d counts every step on every dimension, whichever way it goes;"
+    + " that premise is <b>not</b> one step per dimension, and gives each one\u2019s direction only."
+    + (uncounted ? " A loop or a kind is stated as usual and not counted in the total." : "");
+
+/** What the nearer question counts, where the stack has axes it does not. */
+export const NEAREST_NOTE = (parity: boolean, loop: boolean) =>
+    "Every step on every dimension counts towards being near, whichever way it goes."
+    + (loop ? " On a loop, count the short way round." : "")
+    + (parity ? " Kind is not a distance and does not count." : "");
+
 export const BRIDGE_NOTE =
     "A premise saying one pair is <b>as many steps</b> apart on one dimension as"
     + " another pair is on a different one means the two gaps are the same size"
