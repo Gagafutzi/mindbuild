@@ -254,6 +254,9 @@ function clauseValue(word: string, axis: AxisSpec): number {
         assert(!!n, `"${word}" is not a word of the looped ${s.name} axis`);
         return n![2] === c.direction[0] ? Number(n![1]) : mod(-Number(n![1]), m);
     }
+    // A counted clause, on an axis that states its unit: "3 min later".
+    const counted = /^(\d+) \S+ (\S+)$/.exec(word);
+    if (counted) return Number(counted[1]) * (counted[2] === s.direction[0] ? 1 : -1);
     const d = word === s.direction[0] ? 1 : word === s.direction[1] ? -1 : NaN;
     assert(!Number.isNaN(d), `"${word}" is not a word of the ${s.name} axis`);
     return d;
@@ -790,4 +793,445 @@ test("local clocks: the marks, the rule and the clock asked are all on the card"
         assert(walked.length > items.length * 0.3,
             `loops=${loops}: only ${walked.length}/${items.length} derivations correct a local reading`);
     }
+});
+
+/* ------------------------------------------------------------------ *
+ * The light cone                                                       *
+ * ------------------------------------------------------------------ */
+
+const TRAVEL = new Set(["east", "north", "up", "vertical", "horizontal"]);
+
+type ConeRead = {
+    gapsAt(slack: number[]): Solver;
+    reaches: number;
+    space: Solver;
+    travel: number[];
+    T: number;
+    route(a: string, b: string): number;
+    reads: Read[];
+    forms: Array<"exact" | "signal" | "reach">;
+};
+
+/**
+ * The cone's premises, from the card.
+ *
+ * Space from the clauses as written. Time: a stated clause is a fixed gap, a
+ * signal premise's gap is its own taxicab length on the hearer's side, and a
+ * reach premise's is that length plus some slack the card does not give —
+ * `gapsAt` solves for one choice of every slack.
+ */
+function readCone(q: Question, axes: AxisSpec[]): ConeRead {
+    const T = axes.findIndex(a => a.scale.id === "temporal");
+    const travel = axes.map((a, i) => (TRAVEL.has(a.scale.id) ? i : -1)).filter(i => i >= 0);
+    const reads = q.premises.map(p => readPremise(p, axes));
+    const forms = q.premises.map(p => /rang the moment/.test(strip(p)) ? "signal" as const
+        : /rang only after/.test(strip(p)) ? "reach" as const : "exact" as const);
+    const space = new Solver();
+    for (const r of reads) {
+        const [to, from] = r.words;
+        for (const c of r.clauses) if (c.axis !== T) space.add([[`${to}|${c.axis}`, 1], [`${from}|${c.axis}`, -1]], c.delta);
+    }
+    const len = (a: string, b: string) => travel.reduce((t, i) => t + Math.abs(space.gap(a, b, i)!), 0);
+    const gapsAt = (slack: number[]) => {
+        const time = new Solver();
+        let k = 0;
+        reads.forEach((r, i) => {
+            const [to, from] = r.words;
+            const gap = forms[i] === "exact" ? r.clauses.find(c => c.axis === T)!.delta
+                : forms[i] === "signal" ? len(to, from)
+                : len(to, from) + slack[k++];
+            time.add([[`${to}|${T}`, 1], [`${from}|${T}`, -1]], gap);
+        });
+        return time;
+    };
+    // Premise-by-premise steps along the one route the premises give.
+    const route = (a: string, b: string): number => {
+        const prev = new Map<string, [string, number]>([[a, [a, 0]]]);
+        const queue = [a];
+        while (queue.length) {
+            const cur = queue.shift()!;
+            for (const r of reads) {
+                const [to, from] = r.words;
+                const next = to === cur ? from : from === cur ? to : null;
+                if (!next || prev.has(next)) continue;
+                prev.set(next, [cur, prev.get(cur)![1] + len(to, from)]);
+                queue.push(next);
+            }
+        }
+        return prev.get(b)![1];
+    };
+    return { gapsAt, reaches: forms.filter(f => f === "reach").length, space, travel, T, route, reads, forms };
+}
+
+/**
+ * Whether `x`'s ring can have reached `y`: by necessity over every slack, so
+ * a reach item is true only if it holds however late the bounded bells rang.
+ * Brute force over each slack from 0 to 6 — wide enough that any pair the
+ * bounds leave open shows both answers.
+ */
+function coneAnswer(c: ConeRead, x: string, y: string,
+                    test: (dt: number, need: number) => boolean = (dt, need) => dt >= need): boolean | null {
+    const need = c.travel.reduce((t, i) => t + Math.abs(c.space.gap(x, y, i)!), 0);
+    const seen = new Set<boolean>();
+    const slack = Array(c.reaches).fill(0);
+    const visit = (k: number) => {
+        if (k === c.reaches) { seen.add(test(c.gapsAt(slack).gap(y, x, c.T)!, need)); return; }
+        for (let v = 0; v <= 6; v++) { slack[k] = v; visit(k + 1); }
+    };
+    visit(0);
+    // Necessity: true only if every slack agrees it is.
+    return !seen.has(false);
+}
+
+/** The pair a boolean cone claim names, and the select form's viewer and options. */
+const coneClaimOf = (q: Question) => {
+    const claim = q.answerMode === "select" ? q.choicePrompt : String(q.conclusion);
+    return subjectsOf(claim);
+};
+
+const isConed = (q: Question) => /ring can have reached/.test(strip(String(q.conclusion)))
+    || /ring can have reached/.test(strip(q.choicePrompt ?? ""));
+
+function conedItems(type: EnumQuestionType, held: string[], count: number, seed: number) {
+    const axes = axesForDimensions(dimsOf[type]).map(scale => ({ scale }) as AxisSpec);
+    const items = build(ctxHolding(held), type, 6, count, seed).filter(isConed);
+    return { axes, items };
+}
+
+const kindOf = (q: Question) => q.premises.some(p => /rang only after/.test(strip(p))) ? "reach"
+    : q.premises.some(p => /rang the moment/.test(strip(p))) ? "signal" : "cone";
+
+/** Every answer the item asks for, as [viewer, target, keyed answer]. */
+function coneQuestions(q: Question): Array<[string, string, boolean]> {
+    if (q.answerMode === "select") {
+        const [x] = coneClaimOf(q);
+        return q.choices.map((ch, i) => [x, subjectsOf(ch)[0], q.selectAnswer.includes(i)]);
+    }
+    const [x, y] = coneClaimOf(q);
+    return [[x, y, q.isValid]];
+}
+
+const CONE_HELD = {
+    boolean: ["branching", "cone", "signals", "reach"],
+    select: ["branching", "cone", "signals", "reach", "choose-conclusion"],
+};
+
+test("cone: the marked answer is what the rule gives, read from the card alone", () => {
+    const kinds = { cone: 0, signal: 0, reach: 0 };
+    let checked = 0;
+    for (const [form, held] of Object.entries(CONE_HELD)) {
+        for (const type of [EnumQuestionType.Space4D, EnumQuestionType.Space5D, EnumQuestionType.Space7D]) {
+            const { axes, items } = conedItems(type, held, 60, 5301);
+            assert(items.length >= 15, `${form} ${type}: only ${items.length} cone items`);
+            for (const q of items) {
+                kinds[kindOf(q)]++;
+                const c = readCone(q, axes);
+                assert(!c.space.inconsistent, `${form} ${type}: the spatial premises contradict each other`);
+                for (const [x, y, keyed] of coneQuestions(q)) {
+                    const solved = coneAnswer(c, x, y);
+                    equal(solved, keyed, `${form} ${type}: ${x}'s ring reaching ${y} is keyed ${keyed} on\n  `
+                        + [...q.premises, q.choicePrompt, String(q.conclusion)].map(t => strip(t ?? "")).join("\n  "));
+                    checked++;
+                }
+            }
+        }
+    }
+    assert(checked > 300 && kinds.cone > 20 && kinds.signal > 20 && kinds.reach > 20,
+        `too little checked: ${checked} answers, kinds ${JSON.stringify(kinds)}`);
+});
+
+test("cone: every shortcut is right about half the time, and no more", () => {
+    const { axes, items } = conedItems(EnumQuestionType.Space4D, CONE_HELD.boolean, 300, 5302);
+    const shortcut = {
+        "per-axis": 0, "route": 0, "time-only": 0, "wrong direction": 0, "bound as equality": 0,
+    } as Record<string, number>;
+    const tried = { ...shortcut };
+    for (const q of items) {
+        const c = readCone(q, axes);
+        const [x, y] = coneClaimOf(q);
+        const dx = c.travel.map(i => Math.abs(c.space.gap(x, y, i)!));
+        const lie = (name: string, answer: boolean | null) => {
+            tried[name]++;
+            if (answer !== q.isValid) shortcut[name]++;
+        };
+        // Each travel axis held against the time on its own.
+        lie("per-axis", coneAnswer(c, x, y, dt => dt >= Math.max(...dx)));
+        lie("route", coneAnswer(c, x, y, dt => dt >= c.route(x, y)));
+        lie("time-only", coneAnswer(c, x, y, dt => dt >= 0));
+        if (kindOf(q) === "signal") {
+            // The gap's sign taken from the speaker rather than the hearer.
+            const flipped = { ...c, gapsAt: () => {
+                const time = new Solver();
+                c.reads.forEach((r, i) => {
+                    const [to, from] = r.words;
+                    const len = c.travel.reduce((t, k) => t + Math.abs(c.space.gap(to, from, k)!), 0);
+                    const gap = c.forms[i] === "signal" ? -len : r.clauses.find(cl => cl.axis === c.T)!.delta;
+                    time.add([[`${to}|${c.T}`, 1], [`${from}|${c.T}`, -1]], gap);
+                });
+                return time;
+            } };
+            lie("wrong direction", coneAnswer(flipped, x, y));
+        }
+        if (kindOf(q) === "reach") lie("bound as equality", coneAnswer({ ...c, reaches: 0, gapsAt: () => c.gapsAt(Array(c.reaches).fill(0)) }, x, y));
+    }
+    for (const name of ["per-axis", "route"]) {
+        const share = shortcut[name] / tried[name];
+        assert(share > 0.35 && share < 0.65,
+            `the ${name} shortcut is wrong on ${Math.round(share * 100)}% of ${tried[name]} — a giveaway, or a trap gone`);
+    }
+    for (const name of ["time-only", "wrong direction", "bound as equality"]) {
+        const share = shortcut[name] / tried[name];
+        assert(tried[name] > 20 && share > 0.2,
+            `the ${name} shortcut is wrong on only ${Math.round(share * 100)}% of ${tried[name]}`);
+    }
+});
+
+test("cone: the select form's shortcuts each pick a wrong subset", () => {
+    const { axes, items } = conedItems(EnumQuestionType.Space5D, CONE_HELD.select, 80, 5303);
+    const selects = items.filter(q => q.answerMode === "select");
+    assert(selects.length > 15, `only ${selects.length} select items`);
+    for (const q of selects) {
+        const c = readCone(q, axes);
+        const asked = coneQuestions(q);
+        const subset = (test: (dt: number, need: number, x: string, y: string) => boolean) =>
+            asked.map(([x, y]) => coneAnswer(c, x, y, (dt, need) => test(dt, need, x, y)));
+        const truth = asked.map(a => a[2]);
+        assert(truth.some(t => t) && truth.some(t => !t), "a select item where every option or none is right");
+        const lures = {
+            "per-axis": subset((dt, _n, x, y) => dt >= Math.max(...c.travel.map(i => Math.abs(c.space.gap(x, y, i)!)))),
+            "route": subset((dt, _n, x, y) => dt >= c.route(x, y)),
+            "time-only": subset(dt => dt >= 0),
+        };
+        for (const [name, set] of Object.entries(lures)) {
+            assert(JSON.stringify(set) !== JSON.stringify(truth), `the ${name} shortcut picks the right subset`);
+        }
+    }
+});
+
+test("cone: delivered on 4D–7D when the stack allows it, each form charged only where used", () => {
+    for (const type of [EnumQuestionType.Space4D, EnumQuestionType.Space7D]) {
+        const held = [...fullLadder(type), "bridges", "local-clocks", "cone", "signals", "reach"];
+        const items = build(ctxHolding(held), type, 6, 200, 5304);
+        const coned = items.filter(isConed);
+        assert(coned.length > items.length * 0.1, `${type}: ${coned.length}/${items.length} cone items`);
+        for (const q of items) {
+            equal(q.undelivered.includes("cone"), !isConed(q), `${type}: cone charged wrongly`);
+            const kind = isConed(q) ? kindOf(q) : null;
+            equal(q.undelivered.includes("signals"), kind !== "signal", `${type}: signals charged wrongly`);
+            equal(q.undelivered.includes("reach"), kind !== "reach", `${type}: reach charged wrongly`);
+        }
+        for (const q of coned) {
+            assert(q.undelivered.includes("analogy") && q.undelivered.includes("construct-conclusion"),
+                `${type}: a cone item is still charged for the conclusion forms it replaced`);
+            equal(q.undelivered.includes("choose-conclusion"), q.answerMode !== "select",
+                `${type}: choice charged on a cone item that ${q.answerMode === "select" ? "is" : "is not"} a select`);
+        }
+    }
+    for (const type of [EnumQuestionType.Direction, EnumQuestionType.Space3D]) {
+        assert(!ladderFor(type).includes("cone"), `${type} offers the cone with no time axis`);
+    }
+    // A looped east axis has no taxicab distance to speak of.
+    const looped = build(ctxHolding(["cone"], {}, 1), EnumQuestionType.Space4D, 6, 40, 5305);
+    assert(looped.length > 30 && looped.every(q => !isConed(q) && q.undelivered.includes("cone")),
+        "the cone is served, or charged, on a looped travel axis");
+});
+
+test("cone: rule, minutes and forms are on the card, and forms lie on the asked route", () => {
+    const { axes, items } = conedItems(EnumQuestionType.Space6D, CONE_HELD.boolean, 80, 5306);
+    for (const q of items) {
+        const setup = q.setup.map(strip).join(" ");
+        assert(/arriving exactly then counts/.test(setup), "the boundary case is not stated");
+        assert(/except time, which it gives in minutes/.test(setup), "the one-step note has no minutes exception");
+        assert(/cost no travel/.test(setup), "the axes that cost no travel are not named");
+        const kind = kindOf(q);
+        if (kind === "signal") assert(/rang exactly when/.test(setup), "signal premises with no note");
+        if (kind === "reach") assert(/however much later/.test(setup), "reach premises with no note");
+        const c = readCone(q, axes);
+        q.premises.forEach((p, i) => {
+            if (c.forms[i] === "exact") {
+                assert(/\d+ min (later|earlier)|same time/.test(strip(p)), `a cone premise without minutes: ${strip(p)}`);
+                return;
+            }
+            // Said from the hearer's side: the subject rang later.
+            const [to, from] = c.reads[i].words;
+            const t = c.gapsAt(Array(c.reaches).fill(0)).gap(to, from, c.T)!;
+            assert(t > 0, `a ${c.forms[i]} premise whose subject did not ring later: ${strip(p)}`);
+        });
+        if (kind !== "cone") {
+            // The form has to be on the route asked about, or it is decoration.
+            const [x, y] = coneClaimOf(q);
+            const onRoute = (() => {
+                const prev = new Map<string, number>([[x, -1]]);
+                const queue = [x];
+                while (queue.length) {
+                    const cur = queue.shift()!;
+                    c.reads.forEach((r, i) => {
+                        const [to, from] = r.words;
+                        const next = to === cur ? from : from === cur ? to : null;
+                        if (next && !prev.has(next)) { prev.set(next, i); queue.push(next); }
+                    });
+                }
+                const used: number[] = [];
+                for (let w = y; w !== x;) {
+                    const i = prev.get(w)!;
+                    used.push(i);
+                    const [to, from] = c.reads[i].words;
+                    w = to === w ? from : to;
+                }
+                return used.some(i => c.forms[i] === kind);
+            })();
+            assert(onRoute, `a ${kind} item whose ${kind} premises are all off the asked route`);
+        }
+    }
+});
+
+/* ------------------------------------------------------------------ *
+ * Kind frames                                                          *
+ * ------------------------------------------------------------------ */
+
+export type KindReading = "true" | "face-value" | "convert-all" | "wrong-end";
+
+/**
+ * The setup's rule applied exactly: kind carried by parity from any one
+ * object (relative kind is all there is, and all that matters), each premise
+ * decoded through the frame change when its reference is the other kind, and
+ * each claim read in its own reference's reckoning.
+ */
+export function readKinds(q: Question, axes: AxisSpec[], how: KindReading = "true"): Gaps {
+    const note = q.setup.find(l => /two kinds/.test(strip(l)))!;
+    const said = [...note.matchAll(/<span class="relation ">([^<]+)<\/span>/g)].map(m => m[1]);
+    // "what one kind calls X the other calls Y": X's axis, and Y's.
+    const axisOf = (w: string) => axes.findIndex(a => a.scale.direction.includes(w) || a.scale.tie === w);
+    const [x, y] = [axisOf(said[2]), axisOf(said[3])];
+    const P = (d: number[]) => {
+        const out = [...d];
+        if (x === y) out[x] = -d[x];
+        else { out[x] = d[y]; out[y] = d[x]; }
+        return out;
+    };
+    const parity = axes.findIndex(a => a.scale.parity);
+    const reads = q.premises.map(p => readPremise(p, axes));
+    // Relative kind, by parity from the first object named.
+    const kinds = new Solver();
+    for (const r of reads) {
+        const c = r.clauses.find(c => c.axis === parity)!;
+        kinds.add([[`${r.words[0]}|${parity}`, 1], [`${r.words[1]}|${parity}`, -1]], c.delta);
+    }
+    const root = reads[0].words[0];
+    const kindOf = (w: string) =>
+        how === "face-value" || how === "convert-all" ? 0 : mod(kinds.gap(w, root, parity)!, 2);
+    const pos = new Solver();
+    for (const r of reads) {
+        const [S, R] = r.words;
+        const d = axes.map((_, i) => r.clauses.find(c => c.axis === i)?.delta ?? 0);
+        const abs = kindOf(how === "wrong-end" ? S : R) ? P(d) : d;
+        axes.forEach((_, i) => {
+            if (i !== parity) pos.add([[`${S}|${i}`, 1], [`${R}|${i}`, -1]], abs[i]);
+        });
+    }
+    return {
+        inconsistent: pos.inconsistent,
+        gap(a, b, axis) {
+            if (axis === parity) return kinds.gap(a, b, parity);
+            const d = axes.map((_, i) => (i === parity ? 0 : pos.gap(a, b, i) ?? 0));
+            const inB = how === "convert-all" || kindOf(b) ? P(d) : d;
+            return inB[axis];
+        },
+    };
+}
+
+const isKinded = (q: Question) => q.setup.some(l => /two kinds/.test(strip(l)));
+
+function kindedItems(type: EnumQuestionType, held: string[], count: number, seed: number) {
+    const items = build(ctxHolding(held), type, 6, count, seed).filter(isKinded);
+    // The stack as drawn: the default one, with Distinction appended if absent.
+    const axesFor = (q: Question) => {
+        const base = axesForDimensions(dimsOf[type]).map(scale => ({ scale }) as AxisSpec);
+        return (q.axisNames ?? []).length > base.length
+            ? [...base, { scale: AXIS_CHOICES.find(a => a.id === "distinction")! }]
+            : base;
+    };
+    return { items, axesFor };
+}
+
+const KIND_FORMS: Record<string, string[]> = {
+    plain: ["branching", "kinds"],
+    choice: ["branching", "choose-conclusion", "kinds"],
+    construct: ["branching", "construct-conclusion", "construct-distance", "kinds"],
+};
+
+test("kinds: the marked answer is what decoding each premise by its reference's kind gives", () => {
+    let checked = 0;
+    for (const [form, held] of Object.entries(KIND_FORMS)) {
+        for (const type of [EnumQuestionType.Direction, EnumQuestionType.Space3D,
+                            EnumQuestionType.Space4D, EnumQuestionType.Space7D]) {
+            const { items, axesFor } = kindedItems(type, held, 40, 5401);
+            assert(items.length >= 12, `${form} ${type}: only ${items.length} kinds items`);
+            for (const q of items) {
+                assert(judge(q, axesFor(q), readKinds(q, axesFor(q))),
+                    `${form} ${type}: decoded by the wrong end of the premise, or not at all — the `
+                    + `rule disagrees with the key on\n  `
+                    + [...q.setup, ...q.premises, String(q.conclusion), ...q.choices].map(strip).join("\n  "));
+                checked++;
+            }
+        }
+    }
+    assert(checked > 150, `only ${checked} items checked`);
+});
+
+test("kinds: face value and converting everything both fail; so does decoding by the subject", () => {
+    for (const [form, held] of Object.entries(KIND_FORMS)) {
+        const { items, axesFor } = kindedItems(EnumQuestionType.Space4D, held, 80, 5402);
+        const fails = (how: KindReading) =>
+            items.filter(q => !judge(q, axesFor(q), readKinds(q, axesFor(q), how))).length / items.length;
+        const enforced = form === "plain" ? 0.4 : 1;
+        for (const how of ["face-value", "convert-all"] as KindReading[]) {
+            assert(fails(how) >= enforced,
+                `${form}: the ${how} reading fails only ${Math.round(fails(how) * 100)}% of ${items.length}`);
+        }
+        assert(fails("wrong-end") >= 0.25,
+            `${form}: decoding by the subject's kind fails only ${Math.round(fails("wrong-end") * 100)}%`);
+    }
+});
+
+test("kinds: delivered on every family, the added axis priced, analogy and facing kept off", () => {
+    for (const type of [EnumQuestionType.Direction, EnumQuestionType.Space3D,
+                        EnumQuestionType.Space4D, EnumQuestionType.Space7D]) {
+        assert(ladderFor(type).includes("kinds"), `${type} does not offer kinds`);
+        const held = [...fullLadder(type), "bridges", "local-clocks", "cone", "signals", "reach", "kinds"]
+            .filter(r => ladderFor(type).includes(r));
+        const items = build(ctxHolding(held), type, 6, 200, 5403);
+        const kinded = items.filter(isKinded);
+        assert(kinded.length > items.length * 0.08, `${type}: ${kinded.length}/${items.length} kinds items`);
+        const appended = type !== EnumQuestionType.Space7D;
+        for (const q of items) {
+            equal(q.undelivered.includes("kinds"), !isKinded(q), `${type}: kinds charged wrongly`);
+            equal(q.surcharge, isKinded(q) && appended ? 1.2 : 0,
+                `${type}: surcharge ${q.surcharge} on a${isKinded(q) ? "" : " non"}-kinds item`);
+            equal((q.axisNames ?? []).includes("Distinction"), type === EnumQuestionType.Space7D || isKinded(q),
+                `${type}: the parity axis is ${(q.axisNames ?? []).includes("Distinction") ? "added where it should not be" : "missing"}`);
+        }
+        for (const q of kinded) {
+            assert(!hasFacing(q) && !/pair-to/.test(JSON.stringify(q.conclusion)),
+                `${type}: a kinds item also carries a facing or an analogy`);
+            if (held.includes("analogy")) assert(q.undelivered.includes("analogy"),
+                `${type}: a kinds item is charged for the analogy it set aside`);
+        }
+    }
+});
+
+test("kinds: the rule is stated, kinds are on every premise, and the derivation converts", () => {
+    const { items, axesFor } = kindedItems(EnumQuestionType.Space5D, KIND_FORMS.plain, 60, 5404);
+    for (const q of items) {
+        assert(q.setup.some(l => /reckoning of the one it is relative to/.test(strip(l))),
+            "the reckoning convention is not stated");
+        const parity = axesFor(q).findIndex(a => a.scale.parity);
+        for (const p of q.premises) {
+            assert(readPremise(p, axesFor(q)).clauses.some(c => c.axis === parity),
+                `a premise that does not say its kind: ${strip(p)}`);
+        }
+    }
+    const converted = items.filter(q => q.explanation.some(l => /is the other kind from/.test(strip(l))));
+    assert(converted.length > items.length * 0.5,
+        `only ${converted.length}/${items.length} derivations show a premise being converted`);
 });

@@ -104,6 +104,27 @@ export const RUNG_COST: Record<string, number> = {
      */
     "local-clocks": 1.4,
     /*
+     * The light cone. Every travel axis carried with its size, as a distance
+     * construction demands, then summed and held against a different axis.
+     * The cone owns the taxicab budget: Walking Totals, which spends one step
+     * budget across every dimension, is priced as marginal where this is held,
+     * so the one skill is not charged twice.
+     */
+    cone: 1.5,
+    // Time derived from distance one premise at a time, direction from who heard whom.
+    signals: 1.2,
+    // Bounds rather than values, settled from one side; dearer than
+    // under-specification because the bounds come from distances.
+    reach: 1.6,
+    /*
+     * One frame decode per premise, chosen by a kind carried on another axis.
+     * Cheaper than a facing, because the frame is a fixed involution rather
+     * than a bearing derived from a target. Where the rung has to append the
+     * parity axis it reads kind from, that width is charged separately, per
+     * premise, through `Question.surcharge`.
+     */
+    kinds: 1.6,
+    /*
      * Two puzzles stacked: work out who is lying, then work out the
      * arrangement from what is left. Dearer than either alone because the
      * second cannot start until the first is finished.
@@ -383,6 +404,11 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     bridges: 5,
     // A marked premise and an unmarked one on a path at least two long.
     "local-clocks": 4,
+    cone: 3,
+    // A signal or reach premise on the asked route, and a stated time beside it.
+    signals: 4,
+    reach: 4,
+    kinds: 4,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,
@@ -914,6 +940,8 @@ export interface ItemSpec {
      * much of the item it actually took.
      */
     depth?: number;
+    /** Levels the generator added for structure the mode's price omits. */
+    surcharge?: number;
 }
 
 /**
@@ -951,7 +979,8 @@ export function levelOf(spec: ItemSpec, config = DEFAULT_ABILITY): number {
     const weight = MODE_SCALE[spec.type]?.weight ?? 1;
     const structural = weight * spec.premises
         + spec.rungs.reduce((a, r) => a + (RUNG_COST[r] ?? 0.8), 0)
-        + dialsCost(spec.dials);
+        + dialsCost(spec.dials)
+        + (spec.surcharge ?? 0);
     /*
      * Width, once it has been measured. Zero until then, and zero for every
      * mode that has no such quantity, so this is a no-op rather than a guess
@@ -1728,6 +1757,8 @@ export interface Trial {
     timedOut?: boolean;
     /** Bits wider or narrower than typical for the configuration, or 0. */
     widthDelta?: number;
+    /** Levels the generator added beyond mode and rungs; see `Question.surcharge`. */
+    surcharge?: number;
     /**
      * How much had to be held at once, and how much one premise joined.
      *
@@ -1904,7 +1935,7 @@ function levelWith(t: Trial, table: Record<string, number>, config: AbilityConfi
     const scale = MODE_SCALE[t.type];
     const weight = scale?.weight ?? 1;
     const rungCost = t.rungs.reduce((a, r) => a + (table[r] ?? 0.8), 0);
-    return weight * t.premises + rungCost + timeCost(t.seconds, config);
+    return weight * t.premises + rungCost + (t.surcharge ?? 0) + timeCost(t.seconds, config);
 }
 
 export interface WidthFit {
@@ -1959,7 +1990,8 @@ export function fitWidthCoefficient(
     if (sd < minSd) return null;
 
     const base = usable.map(t => levelOf(
-        { type: t.type, premises: t.premises, rungs: t.rungs, seconds: t.seconds }, config));
+        { type: t.type, premises: t.premises, rungs: t.rungs, seconds: t.seconds,
+          surcharge: t.surcharge }, config));
 
     const logLikelihood = (k: number) => {
         let total = 0;
@@ -2036,7 +2068,7 @@ export function fitDepthCoefficient(
 
     const base = usable.map(t => levelOf(
         { type: t.type, premises: t.premises, rungs: t.rungs, seconds: t.seconds,
-          widthDelta: t.widthDelta }, config));
+          widthDelta: t.widthDelta, surcharge: t.surcharge }, config));
 
     const logLikelihood = (k: number) => {
         let total = 0;

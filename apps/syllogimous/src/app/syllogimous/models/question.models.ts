@@ -498,6 +498,17 @@ export class Question {
     undelivered: string[] = [];
 
     /**
+     * Levels this item is worth beyond its mode and rungs, for structure a
+     * rung added that the mode's own price does not cover.
+     *
+     * Kind frames need a parity axis, and only Space 7D has one; elsewhere the
+     * rung appends it, which makes the item one axis wider than its mode. The
+     * mode's price is per premise, so the width is priced the same way —
+     * `MODE_SCALE`'s step from 6D to 7D, per premise.
+     */
+    surcharge = 0;
+
+    /**
      * How much of the item the conclusion needs: the number of relations that
      * have to be composed to reach it.
      *

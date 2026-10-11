@@ -84,6 +84,40 @@ export const CLOCK_NOTE = (east: string, later: string) =>
     + ` one step ${later}. Premises marked <b>by local clocks</b> give each time as read where`
     + ` that thing is; the rest use the station clock.`;
 
+/**
+ * The light cone's rule, with the travel directions passed in marked as
+ * relations. The boundary case is stated because it decides items: arriving
+ * exactly on time is the commonest near miss, and either reading of it is
+ * defensible until one is written down.
+ */
+export const CONE_NOTE = (travel: string, inert: string) =>
+    "Each name is a bell ringing at a place and a moment. A ring travels <b>one step a"
+    + ` minute</b>, only ${travel}, one step at a time${inert}. A ring reaches a bell if`
+    + " it gets there by the moment that bell rings \u2014 <b>arriving exactly then counts</b>.";
+
+/** The one-step convention, with the cone's minutes excepted. */
+export const ONE_STEP_MINUTES_NOTE =
+    "Each premise is <b>one step</b> on every dimension it names, except time, which it gives"
+    + " in <b>minutes</b>.";
+
+export const SIGNAL_NOTE =
+    "\u201cRang the moment X\u2019s ring reached it\u201d means it rang exactly when a ring"
+    + " from X, travelling as above, would arrive.";
+
+export const REACH_NOTE =
+    "\u201cRang only after X\u2019s ring had reached it\u201d means it rang then or later"
+    + " \u2014 how much later is not said. A claim counts as true only if it holds"
+    + " <b>however much later</b>.";
+
+/**
+ * Kind frames: the rule, with the words it exchanges passed in marked as
+ * relations, and the reckoning convention without which the rule is moot.
+ */
+export const KIND_NOTE = (exchange: string, same: string, opposite: string) =>
+    `Everything is one of two kinds \u2014 the premises say ${same} or ${opposite} \u2014 and`
+    + ` the two reckon directions differently: ${exchange}. Every relation is in the`
+    + ` <b>reckoning of the one it is relative to</b>.`;
+
 export const BRIDGE_NOTE =
     "A premise saying one pair is <b>as many steps</b> apart on one dimension as"
     + " another pair is on a different one means the two gaps are the same size"
