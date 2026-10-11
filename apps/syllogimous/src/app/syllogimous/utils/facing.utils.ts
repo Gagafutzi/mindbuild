@@ -128,3 +128,48 @@ export const FACING_NOTE =
     + " when it is stated — it points where the other thing was at that moment,"
     + " and does not follow it afterwards. <b>Left</b> and <b>right</b> are judged"
     + " from that facing.";
+
+/* ------------------------------------------------------------------ *
+ * Heading: a facing with a head                                       *
+ * ------------------------------------------------------------------ */
+
+/**
+ * The three axes a body frame is taken in: east, north and up, by identity,
+ * all straight. A facing alone fixes a frame in a plane; in space it needs
+ * the head too, and "up" has to be an axis of the stack for the reading that
+ * assumes the head points up — the planar one — to mean anything.
+ */
+export function bearingSpace(axes: AxisSpec[]): [number, number, number] | null {
+    const at = (id: string) => axes.findIndex(a => a.scale.id === id && !isCircular(a) && !isParity(a));
+    const [e, n, u] = ["east", "north", "up"].map(at);
+    return e >= 0 && n >= 0 && u >= 0 ? [e, n, u] : null;
+}
+
+/**
+ * Left or right of someone facing along `f` with their head along `h`.
+ *
+ * The sign of det[h, f, v] = h · (f × v). Every coordinate of all three
+ * vectors enters it, which is the point: no one axis says anything. With the
+ * head straight up it is exactly the planar cross product, so the facing rung
+ * is this one's special case. Null when there is no frame (head along the
+ * facing) or the target lies in the plane of facing and head, where only
+ * ahead, behind, overhead or underfoot could be said.
+ */
+export function headedSide(
+    f: [number, number, number], h: [number, number, number], v: [number, number, number],
+): "left" | "right" | null {
+    const hf = [h[1] * f[2] - h[2] * f[1], h[2] * f[0] - h[0] * f[2], h[0] * f[1] - h[1] * f[0]];
+    if (hf.every(x => x === 0)) return null;
+    const d = hf[0] * v[0] + hf[1] * v[1] + hf[2] * v[2];
+    return d > 0 ? "left" : d < 0 ? "right" : null;
+}
+
+/** "Cole's head points toward Ash." */
+export function describeHead(viewer: string, head: string): string {
+    return `${subj(viewer)}'s head ${hi("points toward")} ${subj(head)}`;
+}
+
+export const HEADING_NOTE =
+    "A head is fixed when it is stated, as a facing is. <b>Left</b> and <b>right</b> are"
+    + " judged from both together — as for someone lying on their side or hanging upside"
+    + " down, whose left is not where it would be standing up.";

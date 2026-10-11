@@ -19,7 +19,7 @@ import { EnumQuestionType } from "../constants/question.constants";
 import { hi, rel, subj } from "../utils/phrasing";
 import { SPEAKERS_NOTE, TESTIMONY_NOTE, describeStatement, drawClaims, solve } from "../utils/knaves.utils";
 import {
-    Egocentric, FACING_NOTE, MIRRORED, MIRROR_NOTE, OPPOSITE, bearingPlane,
+    Egocentric, FACING_NOTE, HEADING_NOTE, MIRRORED, MIRROR_NOTE, OPPOSITE, bearingPlane, bearingSpace, describeHead, headedSide,
     describeBearing, describeEgocentric, describeTwin,
     describeFacing, egocentric,
 } from "../utils/facing.utils";
@@ -228,7 +228,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         ? { ...base, edits: 0, transforms: 0, speakers: false, testimony: false }
         : base;
     const displaced = coupling
-        ? ["speakers", "testimony", "facing", "mirror-twins", "checkpoint",
+        ? ["speakers", "testimony", "facing", "mirror-twins", "heading", "checkpoint",
            ...(wantClocks || wantCone ? ["indeterminate"] : []),
            /*
             * A cone item asks its own question, so the conclusion forms that
@@ -699,6 +699,12 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
         && edits === 0 && transforms === 0;
     /* Mirror twins are a way of *reading* a facing, so they need one to read. */
     const twins = facing && ladder("mirror-twins");
+    /*
+     * Facing with a head: the same reading in three dimensions, where a facing
+     * alone fixes no frame. Whether the stack has east, north and up to take it
+     * in is decided per item, where the axes are.
+     */
+    const heading = facing && ladder("heading");
 
     /*
      * Reported relations, some of them by liars. Same exclusions as
@@ -767,6 +773,7 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
         speakers: speakers && !testimony,
         facing,
         twins,
+        heading,
         indeterminate,
         branching: pick("branching", "branching"),
         compact,
@@ -967,13 +974,17 @@ export function fillNdConclusion(ctx: GeneratorContext,
      * form is not priced as though it carried a facing.
      */
     if (feat.facing) {
-        question.undelivered.push("facing", ...(feat.twins ? ["mirror-twins"] : []));
+        question.undelivered.push("facing", ...(feat.twins ? ["mirror-twins"] : []),
+            ...(feat.heading ? ["heading"] : []));
         const rivals = feat.analogy || feat.chooseConclusion || feat.constructConclusion
             || (feat.checkpoint && canCheckpoint);
-        if ((!rivals || coinFlip()) && !mutated
-            && fillFacingConclusion(question, layout, extraPremises, feat.twins)) {
+        const built = (!rivals || coinFlip()) && !mutated
+            ? fillFacingConclusion(question, layout, extraPremises, feat.twins, feat.heading)
+            : false;
+        if (built) {
+            // A heading item is a facing item too; a planar one leaves heading uncharged.
             question.undelivered = question.undelivered
-                .filter(r => r !== "facing" && r !== "mirror-twins");
+                .filter(r => r !== "facing" && r !== "mirror-twins" && (r !== "heading" || built !== "heading"));
             return true;
         }
         // Falling through rather than failing: a layout can simply have no
@@ -1586,7 +1597,9 @@ function fillFacingConclusion(
     layout: NdLayout,
     extraPremises: string[],
     twins = false,
-): boolean {
+    heading = false,
+): "heading" | "planar" | false {
+    if (heading && fillHeadingConclusion(question, layout, extraPremises, twins)) return "heading";
     const plane = bearingPlane(layout.axes);
     if (!plane || layout.words.length < 3) return false;
 
@@ -1661,7 +1674,7 @@ function fillFacingConclusion(
                `so ${describeEgocentric(chosen.target, chosen.viewer, spoken)}`]
             : [`so ${describeEgocentric(chosen.target, chosen.viewer, chosen.rel)}`]),
     ];
-    return true;
+    return "planar";
 }
 
 /**
@@ -1960,6 +1973,84 @@ function explainCone(layout: NdLayout, kind: "cone" | "signal" | "reach", x: str
         ? `so ${gap} min is enough for ${steps(v.need)}, and the ring can have arrived in time`
         : `so ${gap} min is not enough for ${steps(v.need)}, and the ring cannot have arrived in time`);
     return lines;
+}
+
+/**
+ * "Bell is on Cole's left", where Cole faces Dell and Cole's head points
+ * toward Ash: left and right taken in three dimensions.
+ *
+ * Facing and head are both axis-aligned for now — east, north, up and their
+ * opposites — so the frame is one a person can take: lying on a side, hanging
+ * upside down. Oblique frames are a determinant puzzle more than a
+ * perspective, and are left for a later step.
+ *
+ * Only left or right is asked, which needs no convention: the determinant is
+ * unchanged by taking the head's forward part off. And only where the planar
+ * reading — today's facing skill, the same as assuming the head points up —
+ * gets it wrong or cannot answer at all: an item it answers is a facing item.
+ */
+function fillHeadingConclusion(
+    question: Question,
+    layout: NdLayout,
+    extraPremises: string[],
+    twins: boolean,
+): boolean {
+    const space = bearingSpace(layout.axes);
+    if (!space || layout.words.length < 4) return false;
+    type V3 = [number, number, number];
+    const vec = (a: string, b: string): V3 => space.map(i => layout.coords[b][i] - layout.coords[a][i]) as V3;
+    const aligned = (d: V3) => d.filter(x => x !== 0).length === 1;
+    const settled = (a: string, b: string) => space.every(ax => determinedOn(layout, ax, a, b));
+
+    const options: Array<{ viewer: string; faced: string; head: string; target: string; side: "left" | "right" }> = [];
+    for (const viewer of layout.words) {
+        for (const faced of layout.words) {
+            if (faced === viewer) continue;
+            const f = vec(viewer, faced);
+            if (!aligned(f) || !settled(viewer, faced)) continue;
+            for (const head of layout.words) {
+                if (head === viewer || head === faced) continue;
+                const h = vec(viewer, head);
+                if (!aligned(h) || f.some((x, k) => x !== 0 && h[k] !== 0) || !settled(viewer, head)) continue;
+                for (const target of layout.words) {
+                    if (target === viewer || target === faced || target === head) continue;
+                    const v = vec(viewer, target);
+                    const side = headedSide(f, h, v);
+                    if (!side || !settled(viewer, target)) continue;
+                    // The planar reading: the head taken to point up.
+                    const planar = headedSide(f, [0, 0, 1], v);
+                    if (planar === side) continue;
+                    options.push({ viewer, faced, head, target, side });
+                }
+            }
+        }
+    }
+    if (!options.length) return false;
+
+    const o = options[Math.floor(Math.random() * options.length)];
+    const spoken = twins ? MIRRORED[o.side] : o.side;
+    const claimTrue = coinFlip();
+    const claimed = claimTrue ? spoken : OPPOSITE[spoken];
+
+    const word = (d: V3) => d.map((x, k) => (x === 0 ? "" : `${Math.abs(x)} ${layout.axes[space[k]].scale.direction[x > 0 ? 0 : 1]}`))
+        .filter(Boolean).join(", ") || "nowhere";
+    const way = (d: V3) => { const k = d.findIndex(x => x !== 0); return layout.axes[space[k]].scale.direction[d[k] > 0 ? 0 : 1]; };
+    extraPremises.push(describeFacing(o.viewer, o.faced));
+    extraPremises.push(describeHead(o.viewer, o.head));
+    if (twins) extraPremises.push(describeTwin(o.viewer));
+    question.conclusion = describeEgocentric(o.target, o.viewer, claimed);
+    question.isValid = claimTrue;
+    question.setup.push(HEADING_NOTE);
+    question.explanation = [
+        `From ${subj(o.viewer)}, ${subj(o.faced)} lies ${hi(way(vec(o.viewer, o.faced)))} \u2014 the way ${subj(o.viewer)} faces.`,
+        `${subj(o.viewer)}'s head points toward ${subj(o.head)}, which lies ${hi(way(vec(o.viewer, o.head)))}.`,
+        `From ${subj(o.viewer)}, ${subj(o.target)} lies ${hi(word(vec(o.viewer, o.target)))}.`,
+        ...(twins
+            ? [`so ${describeEgocentric(o.target, o.viewer, o.side)} \u2014 but ${subj(o.viewer)} is a mirror twin, and calls that side the other one`,
+               `so ${describeEgocentric(o.target, o.viewer, spoken)}`]
+            : [`so, facing ${way(vec(o.viewer, o.faced))} with the head ${way(vec(o.viewer, o.head))}, ${describeEgocentric(o.target, o.viewer, o.side)}`]),
+    ];
+    return true;
 }
 
 const sub = (a: [number, number], b: [number, number]): [number, number] => [a[0] - b[0], a[1] - b[1]];

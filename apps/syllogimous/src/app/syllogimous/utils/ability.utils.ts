@@ -139,6 +139,13 @@ export const RUNG_COST: Record<string, number> = {
      */
     ranked: 1.7,
     /*
+     * A facing and a head: one more relational premise and a frame in three
+     * dimensions, read off a determinant no single axis carries. Dearer than
+     * mirror twins, which only exchange a word at the end. Charged on top of
+     * the facing it extends, as the twins are, and only on items that use it.
+     */
+    heading: 2.4,
+    /*
      * Two puzzles stacked: work out who is lying, then work out the
      * arrangement from what is left. Dearer than either alone because the
      * second cannot start until the first is finished.
@@ -425,6 +432,8 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     kinds: 4,
     "walking-totals": 5,
     ranked: 5,
+    // A viewer, what it faces, where its head points, and a target.
+    heading: 4,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,

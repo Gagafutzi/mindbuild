@@ -1591,3 +1591,87 @@ test("ranked: delivered on all six spaces, charged only where carried, the rule 
         }
     }
 });
+
+/* ------------------------------------------------------------------ *
+ * Heading                                                              *
+ * ------------------------------------------------------------------ */
+
+const isHeaded = (q: Question) => q.premises.some(p => /head points toward/.test(strip(p)));
+
+/** The card's facing, head, twin and claim, by name. */
+function readHeading(q: Question) {
+    const find = (re: RegExp) => q.premises.map(strip).map(p => re.exec(p)).find(Boolean)!;
+    const [, viewer, faced] = find(/^(\S+) faces (\S+)$/);
+    const [, , head] = find(/^(\S+)'s head points toward (\S+)$/);
+    const twin = q.premises.some(p => /mirror twin/.test(strip(p)));
+    const [, target, , said] = /^(\S+) is on (\S+)'s (left|right)$/.exec(strip(String(q.conclusion)))!;
+    return { viewer, faced, head, twin, target, said };
+}
+
+/**
+ * Left or right by a different method from the generator's determinant: a
+ * floating-point Gram–Schmidt frame — forward, then the head with its forward
+ * part taken off, then left as up × forward — from the arrangement's positions.
+ */
+function gramSchmidtSide(at: Record<string, number[]>, r: ReturnType<typeof readHeading>, head?: number[]) {
+    const v3 = (a: string, b: string) => [0, 1, 2].map(i => at[b][i] - at[a][i]);
+    const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const unit = (a: number[]) => { const n = Math.hypot(...a); return a.map(x => x / n); };
+    const F = unit(v3(r.viewer, r.faced));
+    const h = head ?? v3(r.viewer, r.head);
+    const U = unit(h.map((x, i) => x - dot(h, F) * F[i]));
+    const L = [U[1] * F[2] - U[2] * F[1], U[2] * F[0] - U[0] * F[2], U[0] * F[1] - U[1] * F[0]];
+    const d = dot(L, v3(r.viewer, r.target));
+    return Math.abs(d) < 1e-9 ? null : d > 0 ? "left" : "right";
+}
+
+test("heading: the claim is what a body frame from the card's names gives", () => {
+    let checked = 0;
+    for (const [type, twins] of [[EnumQuestionType.Space3D, false], [EnumQuestionType.Space4D, true],
+                                 [EnumQuestionType.Space7D, false]] as Array<[EnumQuestionType, boolean]>) {
+        const held = ["branching", "facing", "heading", ...(twins ? ["mirror-twins"] : [])];
+        const items = build(ctxHolding(held), type, 6, 80, 5701).filter(isHeaded);
+        assert(items.length >= 25, `${type}: only ${items.length} heading items`);
+        for (const q of items) {
+            const r = readHeading(q);
+            const side = gramSchmidtSide(q.wordCoordMap!, r);
+            assert(side != null, `${type}: a target in the plane of facing and head`);
+            const spoken = r.twin ? (side === "left" ? "right" : "left") : side;
+            equal(spoken === r.said, q.isValid,
+                `${type}: the frame from facing and head says ${spoken}, and the key disagrees on\n  `
+                + [...q.premises, String(q.conclusion)].map(strip).join("\n  "));
+            // Axis-aligned facing and head, at right angles: a frame a person can take.
+            const v3 = (a: string, b: string) => [0, 1, 2].map(i => q.wordCoordMap![b][i] - q.wordCoordMap![a][i]);
+            const f = v3(r.viewer, r.faced), h = v3(r.viewer, r.head);
+            equal(f.filter(x => x).length, 1, `${type}: an oblique facing`);
+            equal(h.filter(x => x).length, 1, `${type}: an oblique head`);
+            equal(f[0] * h[0] + f[1] * h[1] + f[2] * h[2], 0, `${type}: the head is not at right angles to the facing`);
+            // The planar reading — the head taken to point up — never gets it.
+            // Facing straight up or down, it has no frame to answer from at all.
+            const planar = f[2] !== 0 ? null : gramSchmidtSide(q.wordCoordMap!, r, [0, 0, 1]);
+            assert(planar !== side,
+                `${type}: assuming the head points up gives the right answer, so this is a facing item`);
+            checked++;
+        }
+    }
+    assert(checked > 80, `only ${checked} items checked`);
+});
+
+test("heading: delivered on 3D and up when held, charged only on heading items", () => {
+    for (const type of [EnumQuestionType.Space3D, EnumQuestionType.Space6D]) {
+        assert(ladderFor(type).includes("heading"), `${type} does not offer heading`);
+        const items = build(ctxHolding(["branching", "facing", "heading"]), type, 6, 80, 5702);
+        const headed = items.filter(isHeaded);
+        assert(headed.length > items.length * 0.3, `${type}: ${headed.length}/${items.length} heading items`);
+        for (const q of items) {
+            equal(q.undelivered.includes("heading"), !isHeaded(q), `${type}: heading charged wrongly`);
+            if (isHeaded(q)) assert(q.setup.some(l => /head is fixed/.test(strip(l))), `${type}: no heading note`);
+        }
+    }
+    assert(!ladderFor(EnumQuestionType.Direction).includes("heading"), "Direction offers heading with no third axis");
+    // A stack the picker left without up has no head to point.
+    const flat = build(ctxHolding(["branching", "facing", "heading"], {}, null, ["east", "north", "temporal"]),
+        EnumQuestionType.Space3D, 6, 40, 5703);
+    assert(flat.length > 30 && flat.every(q => !isHeaded(q) && q.undelivered.includes("heading")),
+        "heading served, or charged, on a stack with no up axis");
+});
