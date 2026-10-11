@@ -362,8 +362,30 @@ export interface NdBridge {
     sign: 1 | -1;
 }
 
-/** Every premise kind that couples axes. One so far; the rest reuse the layer. */
-export type NdCoupling = NdBridge;
+/**
+ * "A is same longitude, south, above and earlier relative to B, 6 steps in
+ * all": a direction on every axis and one total across the straight ones.
+ *
+ * The signs are stated and the sizes are not, so the total is one linear
+ * equation, Σ |a_i − b_i| = total over the straight axes. Once every straight
+ * axis but one is settled between the pair, the last is what the total has
+ * left — so `axis` (the one the item cuts) is closed through all the others.
+ */
+export interface NdTotal {
+    kind: "total";
+    a: string;
+    b: string;
+    total: number;
+    axis: number;
+}
+
+/** Every premise kind that couples axes; `closeAxes` reads them all. */
+export type NdCoupling = NdBridge | NdTotal;
+
+/** Axes a total counts: ordered, unbounded lines. */
+export function countedAxes(axes: AxisSpec[]): number[] {
+    return axes.map((a, i) => (isCircular(a) || isParity(a) ? -1 : i)).filter(i => i >= 0);
+}
 
 const pick = <T>(xs: T[]): T => xs[Math.floor(Math.random() * xs.length)];
 
@@ -788,8 +810,21 @@ export function closeAxes(layout: NdLayout): AxisGroups[] {
     for (let changed = true; changed;) {
         changed = false;
         for (const c of layout.couplings ?? []) {
-            if (groups[c.via].find(c.g) !== groups[c.via].find(c.h)) continue;
-            if (groups[c.axis].join(c.r, c.b)) changed = true;
+            if (c.kind === "bridge") {
+                if (groups[c.via].find(c.g) !== groups[c.via].find(c.h)) continue;
+                if (groups[c.axis].join(c.r, c.b)) changed = true;
+                continue;
+            }
+            // A total: its stated facts first — a tie on a counted axis is a
+            // gap of nothing, and a loop's or a kind's clause is stated whole —
+            // then whichever counted axis alone is left open.
+            const counted = countedAxes(layout.axes);
+            layout.axes.forEach((_, i) => {
+                const level = relDelta(layout, c.a, c.b)[i] === 0;
+                if ((!counted.includes(i) || level) && groups[i].join(c.a, c.b)) changed = true;
+            });
+            const open = counted.filter(i => groups[i].find(c.a) !== groups[i].find(c.b));
+            if (open.length === 1 && groups[open[0]].join(c.a, c.b)) changed = true;
         }
     }
     return groups;
@@ -948,7 +983,7 @@ export function drawBridge(layout: NdLayout): NdLayout | null {
  * of question need the bridge rather than only the one that names its pair.
  */
 export function bridgeReading(layout: NdLayout, how: "one-step" | "reversed"): NdLayout {
-    const bridge = layout.couplings?.find(c => c.kind === "bridge");
+    const bridge = layout.couplings?.find((c): c is NdBridge => c.kind === "bridge");
     if (!bridge) return layout;
     const X = bridge.axis;
     const d = layout.coords[bridge.r][X] - layout.coords[bridge.b][X];
@@ -974,6 +1009,11 @@ export function bridgeReading(layout: NdLayout, how: "one-step" | "reversed"): N
  */
 export function renderNdCoupling(layout: NdLayout, coupling: NdCoupling): string {
     const colors = ndAxisColors(layout.axes);
+    if (coupling.kind === "total") {
+        // The relation as a premise words it, every axis named, then the total.
+        return `${subj(coupling.a)} is ${relationClauses(layout, coupling.a, coupling.b).join(", ")}`
+            + ` relative to ${subj(coupling.b)}, <b>${coupling.total} steps in all</b>`;
+    }
     const x = layout.axes[coupling.axis].scale;
     const y = layout.axes[coupling.via].scale;
     const linked = (scale: LinearScale, word: string, color: string) =>
@@ -1006,10 +1046,16 @@ export function ndPairDepth(layout: NdLayout, a: string, b: string, axis?: numbe
         }
         for (const c of layout.couplings ?? []) {
             if (c.axis !== axis) continue;
-            const other = c.r === w ? c.b : c.b === w ? c.r : null;
+            const [p, q] = c.kind === "bridge" ? [c.r, c.b] : [c.a, c.b];
+            const other = p === w ? q : q === w ? p : null;
             if (!other) continue;
-            const source = ndPairDepth({ ...layout, couplings: layout.couplings!.filter(k => k !== c) },
-                c.g, c.h, c.via);
+            const without = { ...layout, couplings: layout.couplings!.filter(k => k !== c) };
+            // A bridge needs its source gap first; a total needs every other
+            // counted axis between the same pair.
+            const source = c.kind === "bridge"
+                ? ndPairDepth(without, c.g, c.h, c.via)
+                : Math.max(0, ...countedAxes(layout.axes).filter(i => i !== axis)
+                    .map(i => ndPairDepth(without, c.a, c.b, i)));
             if (Number.isFinite(source)) out.push([other, 1 + source]);
         }
         return out;
@@ -1346,6 +1392,122 @@ export function kindsFaceValue(layout: NdLayout, fixed: 0 | 1): NdLayout {
     });
     const faced = { ...layout, edges, frames: { ...layout.frames!, fixed } };
     return { ...faced, coords: coordsFromEdges(faced, edges) };
+}
+
+/* ------------------------------------------------------------------ *
+ * Walking totals — one step budget across every dimension             *
+ * ------------------------------------------------------------------ */
+
+/** A relation as a premise words it, every axis named: a's relation to b. */
+export function relationClauses(layout: NdLayout, a: string, b: string): string[] {
+    const colors = ndAxisColors(layout.axes);
+    const d = relDelta(layout, a, b);
+    return layout.axes.map((axis, i) => hi(
+        isCircular(axis)
+            ? displacementClause(displacementOn(layout, i, a, b), axis.modulus!, axis.scale.cyclic!, axis.scale.tie)
+            : axisClause(axis, isParity(axis) ? mod(d[i], 2) : Math.sign(d[i])),
+        colors[i]));
+}
+
+/**
+ * Cut one straight axis and close it again with a total.
+ *
+ * As a bridge does, but through the same pair's other gaps rather than a
+ * different axis between a different pair: the cut axis's gap is whatever the
+ * total leaves once every other straight gap is subtracted. The pair crosses
+ * the cut and differs on the cut axis — a level pair would read its gap off
+ * the tie word — and on some other straight axis too, or the total is just the
+ * gap restated.
+ */
+export function drawWalk(layout: NdLayout): NdLayout | null {
+    const counted = countedAxes(layout.axes);
+    if (counted.length < 2) return null;
+    const c = layout.coords;
+
+    for (const X of shuffled(counted)) {
+        const edges = layout.edges.map(e => ({
+            ...e,
+            deltas: [...e.deltas],
+            stated: e.stated ? [...e.stated] : layout.axes.map(() => true),
+        }));
+        for (const cut of shuffled(edges.filter(e => e.deltas[X] !== 0 && e.stated[X]))) {
+            cut.stated[X] = false;
+            const groups = closeAxes({ ...layout, edges, couplings: [] })[X];
+            const side = (w: string) => groups.find(w) === groups.find(cut.from);
+            const near = layout.words.filter(side);
+            const far = layout.words.filter(w => !side(w));
+            if (near.length < 2 || far.length < 2) { cut.stated[X] = true; continue; }
+
+            const options: NdTotal[] = [];
+            for (const a of layout.words) {
+                for (const b of side(a) ? far : near) {
+                    if (graphDistance(a, b, layout.neighbors) < 2 || c[a][X] === c[b][X]) continue;
+                    const others = counted.filter(i => i !== X).reduce((t, i) => t + Math.abs(c[a][i] - c[b][i]), 0);
+                    if (others === 0) continue;
+                    options.push({ kind: "total", a, b, axis: X, total: others + Math.abs(c[a][X] - c[b][X]) });
+                }
+            }
+            if (!options.length) { cut.stated[X] = true; continue; }
+            return { ...layout, edges, couplings: [pick(options)] };
+        }
+    }
+    return null;
+}
+
+/**
+ * The walked layout as a reader would build it who misread the total.
+ *
+ * `one-step` takes the premise as an ordinary one: one step on every axis it
+ * names. `legs` counts each named leg as one step and gives the cut axis the
+ * rest. `whole` hands the cut axis the entire total. Each sets the pair's gap
+ * on the cut axis and moves the far side of the cut with it.
+ */
+export function walkReading(layout: NdLayout, how: "one-step" | "legs" | "whole"): NdLayout {
+    const walk = layout.couplings?.find((c): c is NdTotal => c.kind === "total");
+    if (!walk) return layout;
+    const X = walk.axis;
+    const d = layout.coords[walk.a][X] - layout.coords[walk.b][X];
+    const others = countedAxes(layout.axes).filter(i => i !== X)
+        .map(i => layout.coords[walk.a][i] - layout.coords[walk.b][i]);
+    const size = how === "one-step" ? 1
+        : how === "whole" ? walk.total
+        : walk.total - others.filter(g => g !== 0).length;
+    const shift = Math.sign(d) * size - d;
+    const groups = closeAxes({ ...layout, couplings: [] })[X];
+    const coords: Record<string, number[]> = {};
+    for (const w of layout.words) {
+        coords[w] = [...layout.coords[w]];
+        if (groups.find(w) === groups.find(walk.a)) coords[w][X] += shift;
+    }
+    return { ...layout, coords };
+}
+
+/**
+ * Counting every step on every dimension: straight gaps in full, a loop the
+ * short way round. A kind is not a distance and is not counted.
+ */
+export function walkDistance(layout: NdLayout, a: string, b: string): number {
+    return layout.axes.reduce((t, axis, i) => {
+        if (isParity(axis)) return t;
+        if (isCircular(axis)) {
+            const m = axis.modulus!, s = displacementOn(layout, i, a, b);
+            return t + Math.min(s, m - s);
+        }
+        return t + Math.abs(layout.coords[a][i] - layout.coords[b][i]);
+    }, 0);
+}
+
+/** The per-axis stand-ins: dimensions differing, and the longest one leg. */
+export function walkLures(layout: NdLayout, a: string, b: string): { hamming: number; widest: number } {
+    const legs = layout.axes.map((axis, i) => {
+        if (isParity(axis)) return 0;
+        if (isCircular(axis)) {
+            const m = axis.modulus!, s = displacementOn(layout, i, a, b);
+            return Math.min(s, m - s);
+        }
+        return Math.abs(layout.coords[a][i] - layout.coords[b][i]);
+    });
+    return { hamming: legs.filter(l => l !== 0).length, widest: Math.max(...legs) };
 }
 
 function shuffled<T>(xs: T[]): T[] {
@@ -2123,10 +2285,16 @@ function pathBetween(layout: NdLayout, a: string, b: string, axis?: number): str
      * that could not take it would have nothing to show.
      */
     const bridged = (w: string) => axis == null ? [] : (layout.couplings ?? [])
-        .filter(c => c.axis === axis && (c.r === w || c.b === w))
-        .filter(c => determinedOn({ ...layout, couplings: layout.couplings!.filter(k => k !== c) },
-            c.via, c.g, c.h))
-        .map(c => (c.r === w ? c.b : c.r));
+        .filter(c => c.axis === axis)
+        .map(c => (c.kind === "bridge" ? { c, p: c.r, q: c.b } : { c, p: c.a, q: c.b }))
+        .filter(({ p, q }) => p === w || q === w)
+        .filter(({ c }) => {
+            const without = { ...layout, couplings: layout.couplings!.filter(k => k !== c) };
+            return c.kind === "bridge"
+                ? determinedOn(without, c.via, c.g, c.h)
+                : countedAxes(layout.axes).filter(i => i !== axis).every(i => determinedOn(without, i, c.a, c.b));
+        })
+        .map(({ p, q }) => (p === w ? q : p));
 
     const prev: Record<string, string> = {};
     const seen = new Set([a]);
@@ -2205,9 +2373,34 @@ export function explainNdAxis(
              * the other axis finished before this one can continue — is the
              * whole of what the item asks.
              */
-            const bridge = (layout.couplings ?? []).find(c => c.axis === axisIndex
-                && ((c.r === path[i] && c.b === path[i + 1]) || (c.b === path[i] && c.r === path[i + 1])));
-            if (!bridge) return [];
+            const ends = (c: NdCoupling) => (c.kind === "bridge" ? [c.r, c.b] : [c.a, c.b]);
+            const crossing = (layout.couplings ?? []).find(c => c.axis === axisIndex
+                && ends(c).includes(path[i]) && ends(c).includes(path[i + 1]));
+            if (!crossing) return [];
+            if (crossing.kind === "total") {
+                /*
+                 * Across a total: the other dimensions' gaps between the pair,
+                 * each derived, and what the total leaves for this one.
+                 */
+                const others = countedAxes(layout.axes).filter(k => k !== axisIndex);
+                const colors = ndAxisColors(layout.axes);
+                const spent = others.map(k => ({ k, d: relDelta(layout, crossing.a, crossing.b)[k] }));
+                const used = spent.reduce((t, x) => t + Math.abs(x.d), 0);
+                const delta = layout.coords[path[i + 1]][axisIndex] - layout.coords[path[i]][axisIndex];
+                total += delta;
+                const legs = spent.filter(x => x.d !== 0)
+                    .map(x => hi(`${Math.abs(x.d)} ${axisClause(layout.axes[x.k], x.d)}`, colors[x.k]));
+                lines.push(
+                    `No premise joins ${subj(path[i])} and ${subj(path[i + 1])} on ${hi(axis.scale.name, color)}`
+                    + ` except the total: ${subj(crossing.a)} is ${crossing.total} steps in all from`
+                    + ` ${subj(crossing.b)}, and on the other dimensions it is`
+                    + ` ${legs.length ? legs.join(", ") : "level"} \u2014 ${used} of them`,
+                    `so ${crossing.total - used} remain for ${hi(axis.scale.name, color)}:`
+                    + ` ${subj(path[i + 1])} is ${hi(`${Math.abs(delta)} ${axisClause(axis, delta)}`, color)}`
+                    + ` relative to ${subj(path[i])} \u2014 ${rel(runningTotal())}`);
+                continue;
+            }
+            const bridge = crossing;
             const via = layout.axes[bridge.via];
             const viaColor = ndAxisColors(layout.axes)[bridge.via];
             const gap = layout.coords[bridge.g][bridge.via] - layout.coords[bridge.h][bridge.via];
