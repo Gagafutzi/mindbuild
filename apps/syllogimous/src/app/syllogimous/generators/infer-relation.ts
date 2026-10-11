@@ -143,7 +143,14 @@ export function createInferRelation(ctx: GeneratorContext, numOfPremises: number
          * they stop checking one claim early, which is the mistake this mode is
          * built to catch.
          */
-        const candidates = usable(axes).filter(a => a !== axes[hidden]);
+        /*
+         * Shuffled before the sort, so a tie for most claims survived is broken
+         * at random. The sort is stable, and ties broken in stack order put
+         * east and north up as the wrong answer far more than their share —
+         * the longest relation words in the stack, so the shorter option was
+         * right about 60% of the time, a rule learnable without reading.
+         */
+        const candidates = shuffle(usable(axes).filter(a => a !== axes[hidden]));
         const runnerUp = candidates
             .map(a => ({
                 axis: a,
