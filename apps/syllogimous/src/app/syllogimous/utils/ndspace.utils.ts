@@ -275,7 +275,37 @@ export interface NdLayout {
     edges: NdEdge[];
     neighbors: Record<string, string[]>;
     branching: boolean;
+    /**
+     * Premises that tie one axis to another. Absent on every layout that is
+     * not built for a coupling rung, which is what keeps the axes independent
+     * — and what anything reasoning about determinacy must read, or it will
+     * call a coupled pair open.
+     */
+    couplings?: NdCoupling[];
 }
+
+/**
+ * "R is as many steps east of B as G is later than H."
+ *
+ * The gap on `axis` between `r` and `b` equals, in size, the gap on `via`
+ * between `g` and `h`, with `g` always on the positive side of `h`. So
+ * x_r − x_b = sign · (y_g − y_h). The size is never stated: it is whatever the
+ * `via` axis accumulates to, so that axis has to be finished before this one
+ * can use it.
+ */
+export interface NdBridge {
+    kind: "bridge";
+    r: string;
+    b: string;
+    axis: number;
+    g: string;
+    h: string;
+    via: number;
+    sign: 1 | -1;
+}
+
+/** Every premise kind that couples axes. One so far; the rest reuse the layer. */
+export type NdCoupling = NdBridge;
 
 const pick = <T>(xs: T[]): T => xs[Math.floor(Math.random() * xs.length)];
 
@@ -645,32 +675,66 @@ export function describeNdAxes(axes: AxisSpec[]): string {
  * ties together, and — the axes being unbounded, or a ring with no stated
  * offset — every relation between them is satisfiable by some arrangement.
  *
- * So the whole question is per-axis connectivity, which is why this needs no
- * model enumeration. Under-specification is usually expensive to reason about;
- * here the structure of the premise set does the work.
+ * So the whole question is connectivity, which is why this needs no model
+ * enumeration. Under-specification is usually expensive to reason about; here
+ * the structure of the premise set does the work. It is per-axis connectivity
+ * *plus the couplings*: a bridge joins two groups on one axis through a gap on
+ * another, and `closeAxes` is where that is read.
  */
 export function determinedOn(layout: NdLayout, axis: number, a: string, b: string): boolean {
     if (a === b) return true;
+    const closed = closeAxes(layout)[axis];
+    return closed.find(a) === closed.find(b);
+}
 
-    const near: Record<string, string[]> = {};
-    for (const e of layout.edges) {
-        if (e.stated && !e.stated[axis]) continue;
-        (near[e.from] ??= []).push(e.to);
-        (near[e.to] ??= []).push(e.from);
+/** Union-find over one axis's objects. */
+export class AxisGroups {
+    private parent = new Map<string, string>();
+    constructor(words: string[]) { for (const w of words) this.parent.set(w, w); }
+    find(w: string): string {
+        let p = this.parent.get(w) ?? w;
+        while (p !== (this.parent.get(p) ?? p)) p = this.parent.get(p) ?? p;
+        this.parent.set(w, p);
+        return p;
     }
+    /** True when this joined two groups that were apart. */
+    join(a: string, b: string): boolean {
+        const ra = this.find(a), rb = this.find(b);
+        if (ra === rb) return false;
+        this.parent.set(ra, rb);
+        return true;
+    }
+}
 
-    const seen = new Set([a]);
-    const queue = [a];
-    while (queue.length) {
-        const cur = queue.shift()!;
-        for (const n of near[cur] ?? []) {
-            if (n === b) return true;
-            if (seen.has(n)) continue;
-            seen.add(n);
-            queue.push(n);
+/**
+ * Which objects each axis ties together, couplings included.
+ *
+ * Per axis first: a premise that names the axis joins its two objects on it.
+ * Then a fixpoint over the couplings, because a bridge is conditional — it
+ * joins `r` and `b` on its axis only once `g` and `h` are joined on `via`, and
+ * that may itself depend on another bridge (the cascade form). Loop until
+ * nothing changes; each pass joins at least two groups or stops, so it ends.
+ *
+ * The one reader of determinacy. `determinedOn`, and through it
+ * `indeterminatePairs` and the strict conclusion pickers, all ask this — a
+ * second copy that ignored couplings would call a bridged pair open and grade
+ * a true claim false under the indeterminate rung.
+ */
+export function closeAxes(layout: NdLayout): AxisGroups[] {
+    const groups = layout.axes.map(() => new AxisGroups(layout.words));
+    for (const e of layout.edges) {
+        layout.axes.forEach((_, ax) => {
+            if (!e.stated || e.stated[ax]) groups[ax].join(e.from, e.to);
+        });
+    }
+    for (let changed = true; changed;) {
+        changed = false;
+        for (const c of layout.couplings ?? []) {
+            if (groups[c.via].find(c.g) !== groups[c.via].find(c.h)) continue;
+            if (groups[c.axis].join(c.r, c.b)) changed = true;
         }
     }
-    return false;
+    return groups;
 }
 
 /**
@@ -717,15 +781,201 @@ export function withholdClauses(layout: NdLayout, count: number): NdLayout {
 /** Pairs and axes this layout leaves open, and those it pins down. */
 export function indeterminatePairs(layout: NdLayout): Array<{ a: string; b: string; axis: number }> {
     const out: Array<{ a: string; b: string; axis: number }> = [];
+    // Closed once rather than per pair; `determinedOn` is the same reading.
+    const closed = closeAxes(layout);
     for (let i = 0; i < layout.words.length; i++) {
         for (let j = i + 1; j < layout.words.length; j++) {
             layout.axes.forEach((_, ax) => {
-                if (!determinedOn(layout, ax, layout.words[i], layout.words[j])) {
+                if (closed[ax].find(layout.words[i]) !== closed[ax].find(layout.words[j])) {
                     out.push({ a: layout.words[i], b: layout.words[j], axis: ax });
                 }
             });
         }
     }
+    return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Bridges — one axis's gap given by another's                         *
+ * ------------------------------------------------------------------ */
+
+/** Axes a bridge may use at either end: ordered, unbounded lines. */
+function bridgeableAxes(layout: NdLayout): number[] {
+    return layout.axes
+        .map((a, i) => (isCircular(a) || isParity(a) ? -1 : i))
+        .filter(i => i >= 0);
+}
+
+/**
+ * Cut one axis in two and join it again through another axis.
+ *
+ * The cut is one withheld clause — the indeterminate rung's machinery, put to
+ * the opposite use: the axis *looks* open to anyone carrying it on its own, and
+ * is in fact closed through a second axis. Both sides keep at least two
+ * objects, or there is no pair across the cut except the bridge's own.
+ *
+ * The bridge spans at least two steps on its own axis, so that reading it as
+ * one ordinary step gives a different answer, and its source gap is at least
+ * two premises long, so that gap has to be derived rather than read off one
+ * sentence. Circular and parity axes are excluded at both ends: a ring has no
+ * size of gap to equal and a parity axis has no gap at all.
+ *
+ * Returns null when this layout has no such bridge; the caller draws another.
+ */
+export function drawBridge(layout: NdLayout): NdLayout | null {
+    const straight = bridgeableAxes(layout);
+    if (straight.length < 2) return null;
+    const c = layout.coords;
+
+    for (const X of shuffled(straight)) {
+        const edges = layout.edges.map(e => ({
+            ...e,
+            deltas: [...e.deltas],
+            stated: e.stated ? [...e.stated] : layout.axes.map(() => true),
+        }));
+        const cuttable = shuffled(edges.filter(e => e.deltas[X] !== 0 && e.stated[X]));
+
+        for (const cut of cuttable) {
+            cut.stated[X] = false;
+            const groups = closeAxes({ ...layout, edges, couplings: [] })[X];
+            const side = (w: string) => groups.find(w) === groups.find(cut.from);
+            const near = layout.words.filter(side);
+            const far = layout.words.filter(w => !side(w));
+            // A tree loses exactly one link on X, so exactly two sides — unless
+            // the layout had withheld something already, which this does not
+            // stack on.
+            const roots = new Set(layout.words.map(w => groups.find(w)));
+            if (roots.size !== 2 || near.length < 2 || far.length < 2) {
+                cut.stated[X] = true;
+                continue;
+            }
+
+            const options: NdBridge[] = [];
+            for (const r of layout.words) {
+                for (const b of side(r) ? far : near) {
+                    const d = c[r][X] - c[b][X];
+                    if (Math.abs(d) < 2) continue;
+                    for (const Y of straight) {
+                        if (Y === X) continue;
+                        for (const g of layout.words) {
+                            for (const h of layout.words) {
+                                if (g === h || c[g][Y] - c[h][Y] !== Math.abs(d)) continue;
+                                if (graphDistance(g, h, layout.neighbors) < 2) continue;
+                                if (new Set([r, b, g, h]).size < 3) continue;
+                                options.push({ kind: "bridge", r, b, axis: X, g, h, via: Y,
+                                    sign: d > 0 ? 1 : -1 });
+                            }
+                        }
+                    }
+                }
+            }
+            if (!options.length) {
+                cut.stated[X] = true;
+                continue;
+            }
+            return { ...layout, edges, couplings: [pick(options)] };
+        }
+    }
+    return null;
+}
+
+/**
+ * The layout as a reader would build it who misread the bridge.
+ *
+ * `one-step` takes the bridge as an ordinary premise — one step in the
+ * direction it names — and `reversed` takes its direction the wrong way round.
+ * Either moves the far side of the cut as a block, so every pair across it
+ * comes out shifted and every pair within a side is untouched. These are what
+ * the conclusion is required to disagree with, which is what makes every form
+ * of question need the bridge rather than only the one that names its pair.
+ */
+export function bridgeReading(layout: NdLayout, how: "one-step" | "reversed"): NdLayout {
+    const bridge = layout.couplings?.find(c => c.kind === "bridge");
+    if (!bridge) return layout;
+    const X = bridge.axis;
+    const d = layout.coords[bridge.r][X] - layout.coords[bridge.b][X];
+    const shift = how === "one-step" ? bridge.sign - d : -2 * d;
+
+    // The side of the cut `r` is on, by the stated premises alone.
+    const groups = closeAxes({ ...layout, couplings: [] })[X];
+    const coords: Record<string, number[]> = {};
+    for (const w of layout.words) {
+        coords[w] = [...layout.coords[w]];
+        if (groups.find(w) === groups.find(bridge.r)) coords[w][X] += shift;
+    }
+    return { ...layout, coords };
+}
+
+/**
+ * A coupling premise, each half painted in its own axis's colour.
+ *
+ * The direction words sit in spans of their own, exactly as a premise clause
+ * does, so a reader finds the two axes by colour and the relabelling pass
+ * rewrites them like any other — "as many steps" is the one new phrase, and it
+ * names no axis.
+ */
+export function renderNdCoupling(layout: NdLayout, coupling: NdCoupling): string {
+    const colors = ndAxisColors(layout.axes);
+    const x = layout.axes[coupling.axis].scale;
+    const y = layout.axes[coupling.via].scale;
+    const linked = (scale: LinearScale, word: string, color: string) =>
+        hi(word, color) + (scale.link ? ` ${scale.link}` : "");
+    const xWord = x.direction[coupling.sign > 0 ? 0 : 1];
+    return `${subj(coupling.r)} is as many ${x.unit}s `
+        + `${linked(x, xWord, colors[coupling.axis])} ${subj(coupling.b)}`
+        + ` as ${subj(coupling.g)} is ${linked(y, y.direction[0], colors[coupling.via])} ${subj(coupling.h)}`;
+}
+
+/**
+ * How many relations the derivation of `a` against `b` composes, on one axis
+ * or — with none named — the deepest axis.
+ *
+ * On an uncoupled layout this is the tree distance. A bridge is one premise,
+ * but using it means first deriving its source gap, so crossing it costs one
+ * plus that gap's own derivation: the X path, the bridge, and the Y path.
+ */
+export function ndPairDepth(layout: NdLayout, a: string, b: string, axis?: number): number {
+    if (axis == null) {
+        return Math.max(...layout.axes.map((_, i) => ndPairDepth(layout, a, b, i)));
+    }
+    if (a === b) return 0;
+    const links = (w: string): Array<[string, number]> => {
+        const out: Array<[string, number]> = [];
+        for (const e of layout.edges) {
+            if (e.stated && !e.stated[axis]) continue;
+            if (e.from === w) out.push([e.to, 1]);
+            if (e.to === w) out.push([e.from, 1]);
+        }
+        for (const c of layout.couplings ?? []) {
+            if (c.axis !== axis) continue;
+            const other = c.r === w ? c.b : c.b === w ? c.r : null;
+            if (!other) continue;
+            const source = ndPairDepth({ ...layout, couplings: layout.couplings!.filter(k => k !== c) },
+                c.g, c.h, c.via);
+            if (Number.isFinite(source)) out.push([other, 1 + source]);
+        }
+        return out;
+    };
+
+    // Dijkstra over a handful of objects; a linear scan for the minimum is fine.
+    const dist = new Map<string, number>([[a, 0]]);
+    const done = new Set<string>();
+    while (true) {
+        let cur: string | null = null;
+        for (const [w, d] of dist) if (!done.has(w) && (cur == null || d < dist.get(cur)!)) cur = w;
+        if (cur == null) return Infinity;
+        if (cur === b) return dist.get(b)!;
+        done.add(cur);
+        for (const [n, cost] of links(cur)) {
+            const via = dist.get(cur)! + cost;
+            if (via < (dist.get(n) ?? Infinity)) dist.set(n, via);
+        }
+    }
+}
+
+function shuffled<T>(xs: T[]): T[] {
+    const out = [...xs];
+    shuffleInPlace(out);
     return out;
 }
 
@@ -1041,6 +1291,14 @@ export function buildNdWideConclusion(
     b: string,
     wantValid: boolean,
     mustBeDetermined: boolean,
+    /**
+     * Where a false claim may lie, and what it may say there. Absent, any axis
+     * and any wrong value. A bridged item passes the misreadings' own values on
+     * the bridged axis, so the claim is false exactly where a misreader would
+     * call it true — a lie on an axis the bridge never touched is caught
+     * without the bridge, and the item would not need it.
+     */
+    lies?: Array<{ axis: number; value: number }>,
 ): NdConclusion | null {
     if (mustBeDetermined
         && layout.axes.some((_, i) => !determinedOn(layout, i, a, b))) return null;
@@ -1066,7 +1324,11 @@ export function buildNdWideConclusion(
      * sign — including zero, which reads as "the same" — is a different claim.
      */
     let flipped = -1;
-    if (!wantValid) {
+    if (!wantValid && lies?.length) {
+        const lie = pick(lies);
+        flipped = lie.axis;
+        claim[flipped] = lie.value;
+    } else if (!wantValid) {
         const candidates = layout.axes.map((_, i) => i);
         flipped = pick(candidates);
         const axis = layout.axes[flipped];
@@ -1276,6 +1538,12 @@ export function buildNdAnalogySet(
     layout: NdLayout,
     wantValid: boolean[],
     accept?: (candidate: { pairs: [string, string, string, string]; claimSame: boolean }) => boolean,
+    /**
+     * A condition per claim, by position, replacing `accept`. A coupled item
+     * needs it: the set is true only if every claim is, so which claims must
+     * need the bridge depends on which one is false — see the caller.
+     */
+    acceptAt?: (index: number) => ((candidate: { pairs: [string, string, string, string]; claimSame: boolean }) => boolean) | undefined,
 ): NdAnalogy[] {
     const used = new Set<string>();
     const out: NdAnalogy[] = [];
@@ -1285,7 +1553,7 @@ export function buildNdAnalogySet(
         // requiring it of every claim in a set is a much stronger demand than
         // the item needs, and one that most layouts cannot meet.
         const claim = buildNdAnalogy(layout, wantValid[out.length], undefined,
-            out.length === 0 ? accept : undefined);
+            acceptAt ? acceptAt(out.length) : out.length === 0 ? accept : undefined);
         if (!claim) break;
         const key = claim.pairs.join(" ") + "#" + claim.claimSame;
         if (used.has(key)) continue;
@@ -1456,15 +1724,27 @@ function pathBetween(layout: NdLayout, a: string, b: string, axis?: number): str
         return !found || !found.edge.stated || found.edge.stated[axis];
     };
 
+    /*
+     * A bridge on this axis is a route too, once its source gap is settled —
+     * on a bridged item it is the only route across the cut, and a derivation
+     * that could not take it would have nothing to show.
+     */
+    const bridged = (w: string) => axis == null ? [] : (layout.couplings ?? [])
+        .filter(c => c.axis === axis && (c.r === w || c.b === w))
+        .filter(c => determinedOn({ ...layout, couplings: layout.couplings!.filter(k => k !== c) },
+            c.via, c.g, c.h))
+        .map(c => (c.r === w ? c.b : c.r));
+
     const prev: Record<string, string> = {};
     const seen = new Set([a]);
     const queue = [a];
 
     while (queue.length) {
         const cur = queue.shift()!;
-        for (const n of layout.neighbors[cur] ?? []) {
+        const across = bridged(cur);
+        for (const n of [...(layout.neighbors[cur] ?? []), ...across]) {
             if (seen.has(n)) continue;
-            if (!usable(cur, n)) continue;
+            if (!usable(cur, n) && !across.includes(n)) continue;
             seen.add(n);
             prev[n] = cur;
             if (n === b) {
@@ -1517,21 +1797,54 @@ export function explainNdAxis(
     const lines: string[] = [];
     let total = 0;
 
+    const runningTotal = () => isParity(axis)
+        ? `now ${mod(total, 2) === 0 ? "the same" : "opposite"}`
+        : isCircular(axis)
+        ? `running total ${mod(total, axis.modulus!)}`
+        : `running total ${total > 0 ? "+" : ""}${total}`;
+
     for (let i = 0; i < path.length - 1; i++) {
         const found = edgeBetween(layout, path[i], path[i + 1]);
-        if (!found) return [];
+        if (!found || (found.edge.stated && !found.edge.stated[axisIndex])) {
+            /*
+             * Across a bridge: its source gap is derived first, on its own
+             * axis, and then carried over. Shown in full, because that order —
+             * the other axis finished before this one can continue — is the
+             * whole of what the item asks.
+             */
+            const bridge = (layout.couplings ?? []).find(c => c.axis === axisIndex
+                && ((c.r === path[i] && c.b === path[i + 1]) || (c.b === path[i] && c.r === path[i + 1])));
+            if (!bridge) return [];
+            const via = layout.axes[bridge.via];
+            const viaColor = ndAxisColors(layout.axes)[bridge.via];
+            const gap = layout.coords[bridge.g][bridge.via] - layout.coords[bridge.h][bridge.via];
+            const source = explainNdAxis(
+                { ...layout, couplings: layout.couplings!.filter(c => c !== bridge) },
+                bridge.h, bridge.g, bridge.via);
+            lines.push(
+                `No premise joins ${subj(path[i])} and ${subj(path[i + 1])} on ${hi(axis.scale.name, color)}`
+                + ` except the bridge, so first ${subj(bridge.g)} against ${subj(bridge.h)}`
+                + ` on ${hi(via.scale.name, viaColor)}:`,
+                ...source.slice(0, -1));
+
+            const delta = layout.coords[path[i + 1]][axisIndex] - layout.coords[path[i]][axisIndex];
+            total += delta;
+            const steps = (n: number) => `${n} ${n === 1 ? axis.scale.unit : axis.scale.unit + "s"}`;
+            lines.push(
+                `so ${subj(bridge.g)} is ${hi(`${gap} ${via.scale.direction[0]}`, viaColor)}`
+                + `${via.scale.link ? " " + via.scale.link : ""} ${subj(bridge.h)}, and by the bridge`
+                + ` ${subj(path[i + 1])} is ${hi(`${steps(Math.abs(delta))} ${axisClause(axis, delta)}`, color)}`
+                + `${axis.scale.link ? " " + axis.scale.link : ""} ${subj(path[i])}`
+                + ` — ${rel(runningTotal())}`);
+            continue;
+        }
         const delta = found.sign * found.edge.deltas[axisIndex];
         total += delta;
 
         const word = delta === 0 ? axis.scale.tie : axisClause(axis, delta);
-        const running = isParity(axis)
-            ? `now ${mod(total, 2) === 0 ? "the same" : "opposite"}`
-            : isCircular(axis)
-            ? `running total ${mod(total, axis.modulus!)}`
-            : `running total ${total > 0 ? "+" : ""}${total}`;
         lines.push(
             `${subj(path[i + 1])} is ${hi(word, color)} relative to ${subj(path[i])}`
-            + ` — ${rel(running)}`);
+            + ` — ${rel(runningTotal())}`);
     }
 
     /*

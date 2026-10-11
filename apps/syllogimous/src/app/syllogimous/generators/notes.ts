@@ -54,6 +54,29 @@ export const ONE_STEP_NOTE =
     "Each premise is <b>one step</b> on every dimension it names.";
 
 /**
+ * Stated wherever a premise can leave a dimension out without meaning "level".
+ *
+ * `COMPACT_NOTE` says the opposite, and the two never share an item. Without
+ * one of them a missing clause is ambiguous, and on a bridged item the reading
+ * matters: the cut is a clause left out, and taking it as "same" makes the
+ * bridge look redundant.
+ */
+export const UNNAMED_NOTE =
+    "A dimension a premise does <b>not name</b> is unknown.";
+
+/**
+ * Stated on every bridged item.
+ *
+ * "As many steps east as later" is the one premise shape that compares sizes
+ * across dimensions, and its size is not written anywhere: it is the gap the
+ * second pair turns out to have.
+ */
+export const BRIDGE_NOTE =
+    "A premise saying one pair is <b>as many steps</b> apart on one dimension as"
+    + " another pair is on a different one means the two gaps are the same size"
+    + " \u2014 however large the second one turns out to be.";
+
+/**
  * Stated whenever operations move objects around a composed space.
  *
  * Distinct from EDIT_NOTE on purpose — the two look similar and mean opposite

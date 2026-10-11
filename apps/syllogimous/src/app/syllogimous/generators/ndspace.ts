@@ -10,7 +10,7 @@ import { buildConstructClaims } from "./context";
 import { Question } from "../models/question.models";
 import { coinFlip, getRandomSymbols, pickUniqueItems, shuffle } from "../utils/question.utils";
 import { describeTransform } from "../utils/transformations.utils";
-import { AxisSpec, NdConclusion, NdLayout, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, mod, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
+import { AxisSpec, NdConclusion, NdLayout, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
 import { orderPremises, scrambleBlocks, scrambleByFactor, scrambleLeading } from "../utils/premise-order.utils";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
 import { LinearFeatureFlags } from "../services/settings-override.service";
@@ -23,7 +23,7 @@ import {
     describeFacing, egocentric,
 } from "../utils/facing.utils";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../constants/settings.constants";
-import { COMPACT_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE } from "./notes";
+import { BRIDGE_NOTE, COMPACT_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
 
 /** How many dimensions each composed-space mode asks for. */
 export function dimensionsOf(ctx: GeneratorContext, type: EnumQuestionType): number {
@@ -100,10 +100,30 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
      * which would delete a form of item that works — it is the scale family's
      * top rung and fires there.
      */
-    const wantCheckpoint = base.checkpoint && numOfPremises > 4 && coinFlip();
-    const feat = wantCheckpoint
+    /*
+     * A bridged item, decided before anything else is.
+     *
+     * A bridge is a premise about the arrangement as stated, so it shares an
+     * item with nothing that rewrites, replaces or reinterprets the premises:
+     * reports and testimony replace them, a facing re-reads them from inside,
+     * and a checkpoint needs a prefix that already settles something — which a
+     * cut axis never does until the bridge is read. Those step aside for this
+     * item, and are recorded as not delivered so it is not priced as though it
+     * carried them.
+     *
+     * Half the time when held, the way analogy and construction share: a rung
+     * that took every item would stop the ones it displaces from ever being
+     * served, which is the facing bug again from the other side.
+     */
+    const wantBridge = base.bridges && numOfPremises >= 4 && coinFlip();
+    const wantCheckpoint = !wantBridge && base.checkpoint && numOfPremises > 4 && coinFlip();
+    const feat = wantBridge
+        ? { ...base, speakers: false, testimony: false, facing: false, twins: false, checkpoint: false }
+        : wantCheckpoint
         ? { ...base, edits: 0, transforms: 0, speakers: false, testimony: false }
         : base;
+    const displacedByBridge = ["speakers", "testimony", "facing", "mirror-twins", "checkpoint"]
+        .filter(r => ctx.hasRung(type, r));
 
     /*
      * Loops are applied to the axes that have cyclic wording — a ring of
@@ -146,11 +166,19 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         feat.transforms,
         Math.max(0, numOfPremises - 3 - editCount),
         Math.max(0, numOfPremises + 1 - objectFloor - editCount));
-    const objectCount = Math.max(4, numOfPremises + 1 - editCount - transformCount);
+    // The bridge is a premise too, and comes out of the objects as edits do.
+    const objectCount = Math.max(4, numOfPremises + 1 - editCount - transformCount - (wantBridge ? 1 : 0));
     const vocab = ndTransformVocab(axes);
 
     for (let attempt = 0; attempt < 300; attempt++) {
-        const words = getRandomSymbols(settings, objectCount);
+        /*
+         * A bridge that cannot be found in two hundred layouts is not found in
+         * the last hundred either; those build an ordinary item, one object
+         * richer so the premise count still holds, and say the bridge was not
+         * delivered.
+         */
+        const bridging = wantBridge && attempt < 200;
+        const words = getRandomSymbols(settings, bridging || !wantBridge ? objectCount : objectCount + 1);
 
         /*
          * Nine draws, and keep one by width.
@@ -202,9 +230,17 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         // configuration usually is" rather than an absolute figure.
         const widthDelta = ndWidth(drawn, scope) - ndWidth(pickByWidth(batch, 50, scope), scope);
 
-        const layout = feat.indeterminate
-            ? withholdClauses(drawn, 1 + Math.floor(Math.random() * 2))
-            : drawn;
+        /*
+         * The bridge's cut is the item's withheld clause. Nothing else is
+         * withheld on a bridged item: a second gap could leave the bridge's own
+         * source open, and then nothing on the item would be decidable.
+         */
+        const bridged = bridging ? drawBridge(drawn) : null;
+        if (bridging && !bridged) continue;
+        const layout = bridged
+            ?? (feat.indeterminate
+                ? withholdClauses(drawn, 1 + Math.floor(Math.random() * 2))
+                : drawn);
 
         /*
          * Edits rewrite the stated relations; transformations move objects
@@ -255,10 +291,26 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
          * alongside meta: a checkpoint the reader cannot answer at the
          * checkpoint is not one.
          */
-        const canCheckpoint = !editCount && !transformCount && !reported && !told;
+        const canCheckpoint = !editCount && !transformCount && !reported && !told && !bridged;
+        /*
+         * On a bridged item the "before" layout is the bridge misread as one
+         * ordinary step, and the reversed reading is a second lure. Every
+         * conclusion form already refuses a claim whose answer survives the
+         * reading it is handed, so this makes all of them — analogy and
+         * construction included — need the bridge, rather than only a pair
+         * chosen to cross it.
+         */
         if (!fillNdConclusion(
-            ctx, question, layout, final, feat, numOfPremises, attempt >= 250,
-            extraPremises, asked, canCheckpoint)) continue;
+            ctx, question, bridged ? bridgeReading(bridged, "one-step") : layout, final, feat,
+            // A bridged item gives up on analogy sooner: a matching pair that
+            // also crosses the cut is rare at six axes, and the bridge is the
+            // rung this item exists to deliver.
+            numOfPremises, attempt >= (bridging ? 150 : 250), extraPremises, asked, canCheckpoint,
+            bridged ? [bridgeReading(bridged, "reversed")] : [])) continue;
+
+        if (!bridged && base.bridges) question.undelivered.push("bridges");
+        // Set aside for the bridge whether or not one was found in the end.
+        if (wantBridge) question.undelivered.push(...displacedByBridge);
 
         /*
          * The testimony has to be load-bearing.
@@ -279,6 +331,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             ? [...reported.premises, ...extraPremises]
             : [
                 ...renderNdPremises(layout, { compact: feat.compact }),
+                ...(layout.couplings ?? []).map(c => renderNdCoupling(layout, c)),
                 ...extraPremises,
             ];
         const mutations = [
@@ -381,7 +434,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         question.wordCoordMap = { ...final.coords };
         question.axisNames = axes.map(a => a.scale.name);
         question.setup = [
-            ...ndSetup(ctx, axes, feat, edits.length > 0, transforms.length > 0),
+            ...ndSetup(ctx, axes, feat, edits.length > 0, transforms.length > 0, !!bridged),
             ...question.setup,
         ];
         return question;
@@ -474,8 +527,17 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
          */
         && !compact;
 
+    /*
+     * Bridges are premises about the arrangement as stated, so the same
+     * exclusions as under-specification: nothing that rewrites or moves it, and
+     * never compact, where a missing clause would mean "level" rather than
+     * "cut".
+     */
+    const bridges = ladder("bridges") && edits === 0 && transforms === 0 && !compact;
+
     return {
         testimony,
+        bridges,
         speakers: speakers && !testimony,
         facing,
         twins,
@@ -533,6 +595,12 @@ export function fillNdConclusion(ctx: GeneratorContext,
      * prefix.
      */
     canCheckpoint = false,
+    /**
+     * Further wrong readings the answer must also disagree with, beside
+     * `initial`. A bridged item hands in the bridge read backwards; the one-step
+     * reading is `initial` itself.
+     */
+    lures: NdLayout[] = [],
 ): boolean {
     /*
      * Mutations have to matter. A conclusion whose truth survives the edits
@@ -560,8 +628,9 @@ export function fillNdConclusion(ctx: GeneratorContext,
      * them. Operations can also cancel on an axis, which the pair-level test
      * cannot see either.
      */
+    const readings = [initial, ...lures];
     const axisBites = (a: string, b: string, i: number) => !mutated
-        || axisAnswer(initial, a, b, i) !== axisAnswer(layout, a, b, i);
+        || readings.every(r => axisAnswer(r, a, b, i) !== axisAnswer(layout, a, b, i));
 
     /** Construction states every axis at once, so the pair is the right unit. */
     const pairBites = (a: string, b: string) => !mutated
@@ -573,20 +642,69 @@ export function fillNdConclusion(ctx: GeneratorContext,
      * they moved the same way. The only honest question is whether the
      * claim's truth value is different before and after.
      */
-    const analogyBites = (c: { pairs: [string, string, string, string]; claimSame: boolean }) => {
-        if (!mutated) return true;
-        const held = (l: NdLayout) => {
-            const key = (x: string, y: string) => l.axes.map((axis, i) => isCircular(axis)
-                ? displacementOn(l, i, y, x)
-                : Math.sign(l.coords[y][i] - l.coords[x][i])).join(",");
-            const [a, b, x, y] = c.pairs;
-            const first = key(a, b);
-            const second = key(x, y);
-            const wanted = c.claimSame ? first : first.split(",").map((v, i) =>
-                isCircular(l.axes[i]) ? mod(-Number(v), l.axes[i].modulus!) : -Number(v)).join(",");
-            return second === wanted;
-        };
-        return held(initial) !== held(layout);
+    const analogyHeld = (l: NdLayout, c: { pairs: [string, string, string, string]; claimSame: boolean }) => {
+        const key = (x: string, y: string) => l.axes.map((axis, i) => isCircular(axis)
+            ? displacementOn(l, i, y, x)
+            : Math.sign(l.coords[y][i] - l.coords[x][i])).join(",");
+        const [a, b, x, y] = c.pairs;
+        const first = key(a, b);
+        const second = key(x, y);
+        const wanted = c.claimSame ? first : first.split(",").map((v, i) =>
+            isCircular(l.axes[i]) ? mod(-Number(v), l.axes[i].modulus!) : -Number(v)).join(",");
+        return second === wanted;
+    };
+    const analogyBites = (c: { pairs: [string, string, string, string]; claimSame: boolean }) =>
+        !mutated || readings.every(r => analogyHeld(r, c) !== analogyHeld(layout, c));
+    /** The same claim's truth under every misreading as under the real one. */
+    const analogyStays = (c: { pairs: [string, string, string, string]; claimSame: boolean }) =>
+        readings.every(r => analogyHeld(r, c) === analogyHeld(layout, c));
+
+    /*
+     * Positions are the sum of the stated steps on a bridged layout too — the
+     * bridge is one more step, of a derived size — so its derivation can be
+     * shown. Only operations that set coordinates directly make a walk lie.
+     */
+    const coupled = !!layout.couplings?.length;
+
+    /*
+     * Where a false wide claim may lie on a coupled item: on an axis the
+     * bridge decides, saying what a misreading of it would say. Undefined on
+     * every other item, which keeps the lie anywhere.
+     */
+    const liesFor = (a: string, b: string) => coupled
+        ? layout.axes.flatMap((_, i) => axisBites(a, b, i)
+            ? readings.map(r => ({ axis: i, value: r.coords[a][i] - r.coords[b][i] }))
+                // A claim states a direction, so a misreading that differs only
+                // in distance would print the true clause and call it a lie.
+                .filter(l => Math.sign(l.value) !== Math.sign(layout.coords[a][i] - layout.coords[b][i]))
+            : [])
+        : undefined;
+    const rewritten = mutated && !coupled;
+
+    /** Relations the answer composes: the tree distance, or through a bridge. */
+    const depthOf = (a: string, b: string, axis?: number) => coupled
+        ? ndPairDepth(layout, a, b, axis)
+        : graphDistance(a, b, layout.neighbors);
+
+    /*
+     * A pair to ask about. On a coupled layout only a pair the bridge decides
+     * can carry the item, and those are few enough that drawing from the
+     * diameter and hoping finds none; so the biting pairs are listed, and the
+     * deepest of them taken, widening by `slack` as the diameter draw does.
+     */
+    const pickPair = (slack: number): [string, string] | null => {
+        if (!coupled) return pickDistantPairNd(layout, 2, slack, legacy);
+        const live: Array<[string, string]> = [];
+        for (const a of layout.words) {
+            for (const b of layout.words) {
+                if (a < b && graphDistance(a, b, layout.neighbors) >= 2 && pairBites(a, b)) live.push([a, b]);
+            }
+        }
+        if (!live.length) return null;
+        const deepest = Math.max(...live.map(p => depthOf(p[0], p[1])));
+        const band = live.filter(p => depthOf(p[0], p[1]) >= deepest - slack);
+        const chosen = band[Math.floor(Math.random() * band.length)];
+        return coinFlip() ? chosen : [chosen[1], chosen[0]];
     };
 
     /*
@@ -676,7 +794,18 @@ export function fillNdConclusion(ctx: GeneratorContext,
             const buildSet = (allTrue: boolean) => {
                 const wants = Array(count).fill(true);
                 if (!allTrue) wants[Math.floor(Math.random() * count)] = false;
-                const set = buildNdAnalogySet(layout, wants, analogyBites);
+                /*
+                 * On a coupled item the set's answer must turn on the bridge
+                 * for every misreading. True set: one claim the bridge decides
+                 * is enough, as anywhere. False set: the false claim must be
+                 * one the bridge decides, and the true ones must *not* be —
+                 * otherwise a misreader sees some true claim go false, calls
+                 * the set false, and is right without having read the bridge.
+                 */
+                const set = buildNdAnalogySet(layout, wants, analogyBites, coupled
+                    ? i => (!wants[i] || (allTrue && i === 0) ? analogyBites
+                        : allTrue ? undefined : analogyStays)
+                    : undefined);
                 return set.length === count ? set : null;
             };
             const yes = buildSet(true), no = buildSet(false);
@@ -777,10 +906,9 @@ export function fillNdConclusion(ctx: GeneratorContext,
         // why the minimum rather than the maximum.
         let shallowest = Infinity;
         const claims = buildConstructClaims(ctx, slack => {
-            const pair = pickDistantPairNd(layout, 2, slack, legacy);
+            const pair = pickPair(slack);
             if (!pair || !pairBites(pair[0], pair[1])) return null;
-            shallowest = Math.min(
-                shallowest, graphDistance(pair[0], pair[1], layout.neighbors));
+            shallowest = Math.min(shallowest, depthOf(pair[0], pair[1]));
             return buildNdConstructClaim(layout, pair[0], pair[1], feat.constructDistance);
         }, numOfPremises);
         if (!claims.length) return false;
@@ -807,17 +935,18 @@ export function fillNdConclusion(ctx: GeneratorContext,
          * premises. The ability model reads the option count, so it scores these
          * as the weaker evidence they are.
          */
-        const pair = pickDistantPairNd(layout, 2, 0, legacy);
+        const pair = pickPair(0);
         if (!pair || !pairBites(pair[0], pair[1])) return false;
 
         const strictPick = feat.indeterminate || feat.speakers || feat.testimony;
         const right = buildNdWideConclusion(layout, pair[0], pair[1], true, strictPick)
             ?? buildNdConclusion(layout, pair[0], pair[1], 0, true);
-        const wrong = buildNdWideConclusion(layout, pair[0], pair[1], false, strictPick)
+        const wrong = buildNdWideConclusion(layout, pair[0], pair[1], false, strictPick,
+            liesFor(pair[0], pair[1]))
             ?? buildNdConclusion(layout, pair[0], pair[1], 0, false);
         if (!right || !wrong || right.text === wrong.text) return false;
 
-        question.depth = graphDistance(pair[0], pair[1], layout.neighbors);
+        question.depth = depthOf(pair[0], pair[1]);
         const order = shuffle([right.text, wrong.text]);
         question.choices = order;
         question.correctChoice = order.indexOf(right.text);
@@ -858,19 +987,21 @@ export function fillNdConclusion(ctx: GeneratorContext,
         const claims: NdConclusion[] = [];
         const used = new Set<string>();
 
-        if (legacy) {
+        // Not on a coupled item, whose claims must each need the bridge — the
+        // legacy draw takes any pair on any axis.
+        if (legacy && !coupled) {
             // Off, this is what it was: one axis per claim, chosen at random.
             claims.push(...buildNdConclusionSet(layout, count, wants, true));
         } else {
             for (let guard = 0; claims.length < count && guard < count * 40; guard++) {
-                const pair = pickDistantPairNd(layout, 2, claims.length, false);
+                const pair = coupled ? pickPair(claims.length) : pickDistantPairNd(layout, 2, claims.length, false);
                 if (!pair || !pairBites(pair[0], pair[1])) continue;
 
                 const key = [...pair].sort().join(" ");
                 if (used.has(key)) continue;
 
                 const wide = buildNdWideConclusion(
-                    layout, pair[0], pair[1], wants[claims.length], strictSet);
+                    layout, pair[0], pair[1], wants[claims.length], strictSet, liesFor(pair[0], pair[1]));
                 if (!wide) continue;
 
                 used.add(key);
@@ -892,7 +1023,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
             // Every claim has to be answered, so the cheapest is what the item
             // can be answered from at its easiest.
             question.depth = Math.min(
-                ...claims.map(c => graphDistance(c.a, c.b, layout.neighbors)));
+                ...claims.map(c => depthOf(c.a, c.b)));
             question.series = claims.map((c, i) => ({ text: c.text, isValid: wants[i] }));
             question.conclusion = claims[0].text;
             question.isValid = wants[0];
@@ -902,9 +1033,12 @@ export function fillNdConclusion(ctx: GeneratorContext,
              * premises no longer describe where things ended up, so a walk
              * through them would be confidently wrong.
              */
-            if (!mutated) {
+            if (!rewritten) {
                 question.explanation = claims.flatMap((c, i) => [
-                    ...explainNdAxis(layout, c.b, c.a, Math.max(0, c.axis)),
+                    // A true claim turns on every axis; on a bridged item the
+                    // one worth walking is the one the bridge decides.
+                    ...explainNdAxis(layout, c.b, c.a,
+                        c.axis >= 0 ? c.axis : coupled ? layout.couplings![0].axis : 0),
                     wants[i] ? `so claim ${i + 1} holds.`
                         : `so claim ${i + 1} does ${hi("not")} hold.`,
                 ]);
@@ -959,7 +1093,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
     let axisIndex = -1;
     for (let slack = 0; slack <= 2 && axisIndex < 0; slack++) {
         for (let attempt = 0; attempt < 8 && axisIndex < 0; attempt++) {
-            const candidate = pickDistantPairNd(layout, 2, slack, legacy);
+            const candidate = pickPair(slack);
             if (!candidate) break;
             /*
              * Draw the axis from the ones the operations actually reached,
@@ -994,9 +1128,10 @@ export function fillNdConclusion(ctx: GeneratorContext,
     const strict = feat.indeterminate || feat.speakers || feat.testimony;
     // Off, the claim names one axis of however many — which is the other half
     // of what the switch turns off, and the half a player would notice first.
-    const c = (legacy ? null : buildNdWideConclusion(layout, pair[0], pair[1], coinFlip(), strict))
+    const c = (legacy && !coupled ? null
+        : buildNdWideConclusion(layout, pair[0], pair[1], coinFlip(), strict, liesFor(pair[0], pair[1])))
         ?? buildNdConclusion(layout, pair[0], pair[1], axisIndex, coinFlip());
-    question.depth = graphDistance(pair[0], pair[1], layout.neighbors);
+    question.depth = depthOf(pair[0], pair[1], c.axis >= 0 ? c.axis : axisIndex);
     asked.a = c.a;
     asked.b = c.b;
     // A wide claim turns on the axis it lies about; a true one turns on all of
@@ -1011,7 +1146,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
      * transformations set coordinates directly, so the same walk would
      * produce a confident and wrong derivation. Silence beats that.
      */
-    if (!mutated) question.explanation = explainNdAxis(layout, c.b, c.a, axisIndex);
+    if (!rewritten) question.explanation = explainNdAxis(layout, c.b, c.a, axisIndex);
     return true;
 }
 
@@ -1028,6 +1163,7 @@ export function ndSetup(ctx: GeneratorContext,
     feat: ReturnType<typeof ndFeatures>,
     edited: boolean,
     transformed: boolean,
+    bridged = false,
 ): string[] {
     const loops = axes.filter(a => isCircular(a));
     const lines: string[] = [];
@@ -1045,6 +1181,12 @@ export function ndSetup(ctx: GeneratorContext,
      */
     if (feat.compact) lines.push(COMPACT_NOTE);
     if (feat.indeterminate) lines.push(INDETERMINATE_NOTE);
+    /*
+     * A bridged item leaves a clause out whether or not the indeterminate rung
+     * is held, so the reading of an omission is stated with it either way.
+     */
+    if (feat.indeterminate || bridged) lines.push(UNNAMED_NOTE);
+    if (bridged) lines.push(BRIDGE_NOTE);
     if (feat.facing) lines.push(FACING_NOTE);
     if (feat.twins) lines.push(MIRROR_NOTE);
     if (feat.speakers) lines.push(SPEAKERS_NOTE);

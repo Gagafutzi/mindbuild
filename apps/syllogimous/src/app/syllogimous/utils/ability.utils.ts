@@ -90,6 +90,13 @@ export const RUNG_COST: Record<string, number> = {
      */
     "mirror-twins": 2.0,
     /*
+     * Between under-specification and a facing. One axis has to wait for
+     * another's finished accumulation before it can continue, and "can't tell"
+     * — the answer per-axis connectivity gives — has to be resisted rather
+     * than noticed. A guess until trials exist; refit with `fitRungCosts`.
+     */
+    bridges: 1.6,
+    /*
      * Two puzzles stacked: work out who is lying, then work out the
      * arrangement from what is left. Dearer than either alone because the
      * second cannot start until the first is finished.
@@ -362,6 +369,11 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     // The halfway claim only exists above four premises, so granting the rung
     // below that hands out something that silently does nothing.
     checkpoint: 5,
+    /*
+     * It builds at four, but asking a pair at least two premises apart across
+     * the cut is cramped there. Space 6D and 7D, capped at six, only just fit.
+     */
+    bridges: 5,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,

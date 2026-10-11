@@ -307,6 +307,7 @@ const DIRECTION_LADDER: string[] = Object.freeze([
     "retired-multi-conclusion", "choose-conclusion", "construct-conclusion", "construct-distance",
     "checkpoint",
     "mirror-twins",
+    "bridges",
 ]) as string[];
 
 const SPACE_3D_LADDER: string[] = Object.freeze([
@@ -316,6 +317,7 @@ const SPACE_3D_LADDER: string[] = Object.freeze([
     "retired-multi-conclusion", "choose-conclusion", "construct-conclusion", "construct-distance",
     "checkpoint",
     "mirror-twins",
+    "bridges",
 ]) as string[];
 
 /** Space 4D to 7D: the spaces with a time axis to couple through. */
@@ -326,6 +328,7 @@ const SPACE_ND_LADDER: string[] = Object.freeze([
     "retired-multi-conclusion", "choose-conclusion", "construct-conclusion", "construct-distance",
     "checkpoint",
     "mirror-twins",
+    "bridges",
 ]) as string[];
 
 /**
