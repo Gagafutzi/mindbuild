@@ -68,6 +68,12 @@ export interface AxisSpec {
      * so no global change of basis separates them. See `zoneOf`.
      */
     local?: { source: number; rate: number };
+    /**
+     * Steps on this axis are stated as counts of `unit` rather than as one
+     * step each: "3 min later". The light cone needs it — time is a budget
+     * the spatial steps are paid out of, and a budget of one is no budget.
+     */
+    stride?: { unit: string };
 }
 
 export function isCircular(axis: AxisSpec): boolean {
@@ -283,6 +289,13 @@ export interface NdEdge {
      * depth — is unchanged; only what is printed differs.
      */
     local?: boolean;
+    /**
+     * A light-cone premise whose time is not stated but derived from the
+     * distance: `signal` rang the moment the other's ring arrived (the gap is
+     * the distance exactly), `reach` rang only after it had (the gap is at
+     * least the distance). The hearer is whichever end rang later.
+     */
+    form?: "signal" | "reach";
 }
 
 export interface NdLayout {
@@ -1123,6 +1136,127 @@ export function renderZoneAnchor(layout: NdLayout, source: number): string {
         + ` counting ${hi(axis.scale.cyclic!.direction[0], color)} from the date line`;
 }
 
+/* ------------------------------------------------------------------ *
+ * The light cone — time as a travel budget                            *
+ * ------------------------------------------------------------------ */
+
+/** Axes a ring travels along. Height counts; size, amount and kind do not. */
+const TRAVEL_IDS = new Set(["east", "north", "up", "vertical", "horizontal"]);
+
+/**
+ * The time axis and the axes a ring travels along, if this stack has a cone.
+ *
+ * A straight time axis and at least two straight travel axes. Any travel axis
+ * bent into a loop rules it out: distance on a ring is the short way round,
+ * and a rule stated in steps east would then be wrong on the item it governs.
+ */
+export function coneAxes(axes: AxisSpec[]): { time: number; space: number[] } | null {
+    const time = axes.findIndex(a => a.scale.id === "temporal" && !isCircular(a) && !isParity(a));
+    const travel = axes.map((a, i) => (TRAVEL_IDS.has(a.scale.id) ? i : -1)).filter(i => i >= 0);
+    if (time < 0 || travel.length < 2 || travel.some(i => isCircular(axes[i]))) return null;
+    return { time, space: travel };
+}
+
+/** Steps a ring needs from `a` to `b`: taxicab, one travel axis at a time. */
+export function travelSteps(layout: NdLayout, a: string, b: string): number {
+    const cone = coneAxes(layout.axes)!;
+    return cone.space.reduce((t, i) => t + Math.abs(layout.coords[b][i] - layout.coords[a][i]), 0);
+}
+
+/** The objects along the route the premises give, ends included. */
+export function routePath(layout: NdLayout, a: string, b: string): string[] {
+    return pathBetween(layout, a, b) ?? [];
+}
+
+/** Steps summed premise by premise along the route the premises give. */
+export function routeSteps(layout: NdLayout, a: string, b: string): number {
+    const path = pathBetween(layout, a, b) ?? [];
+    let total = 0;
+    for (let i = 0; i < path.length - 1; i++) total += edgeSteps(layout, edgeBetween(layout, path[i], path[i + 1])!.edge);
+    return total;
+}
+
+/** The premise forms on that route. */
+export function routeForms(layout: NdLayout, a: string, b: string): Array<NdEdge["form"]> {
+    const path = pathBetween(layout, a, b) ?? [];
+    return path.slice(1).map((w, i) => edgeBetween(layout, path[i], w)!.edge.form);
+}
+
+/** The same along one premise, from its own steps. */
+export function edgeSteps(layout: NdLayout, edge: NdEdge): number {
+    const cone = coneAxes(layout.axes)!;
+    return cone.space.reduce((t, i) => t + Math.abs(edge.deltas[i]), 0);
+}
+
+/**
+ * A layout re-timed for the cone.
+ *
+ * Time steps are drawn from −1 to 4 minutes rather than ±1, so a gap sits near
+ * the distance it is compared with and the answers are not all "no". Then
+ * `kind` turns some premises into signal or reach premises, whose time is the
+ * distance exactly or at least the distance, on the hearer's side. Those need
+ * a premise that actually moves along a travel axis; a ring arriving from the
+ * same spot says nothing.
+ *
+ * A reach premise's time clause is withheld (`stated` false on time), which is
+ * exactly what makes it a bound: `closeAxes` then reads time across it as
+ * open, and the conclusion has to be settled from one side.
+ */
+export function coneLayout(
+    drawn: NdLayout, kind: "cone" | "signal" | "reach", count: number,
+): NdLayout | null {
+    const cone = coneAxes(drawn.axes);
+    if (!cone) return null;
+    const axes = drawn.axes.map((a, i) => (i === cone.time ? { ...a, stride: { unit: "min" } } : a));
+    const edges: NdEdge[] = drawn.edges.map(e => {
+        const deltas = [...e.deltas];
+        deltas[cone.time] = Math.floor(Math.random() * 6) - 1;
+        return { ...e, deltas, stated: e.stated ? [...e.stated] : undefined };
+    });
+    if (kind !== "cone") {
+        const movers = shuffled(edges.filter(e => cone.space.some(i => e.deltas[i] !== 0)));
+        // Never every premise: one stated time at least, or the item has no
+        // clock to read anything against.
+        const take = Math.min(count, movers.length, edges.length - 1);
+        if (take < 1) return null;
+        for (const e of movers.slice(0, take)) {
+            const len = cone.space.reduce((t, i) => t + Math.abs(e.deltas[i]), 0);
+            const gap = kind === "signal" ? len : len + Math.floor(Math.random() * 3);
+            e.deltas[cone.time] = Math.random() < 0.5 ? gap : -gap;
+            e.form = kind;
+            if (kind === "reach") {
+                e.stated = (e.stated ?? axes.map(() => true)).map((v, i) => (i === cone.time ? false : v));
+            }
+        }
+    }
+    const layout: NdLayout = { ...drawn, axes, edges };
+    return { ...layout, coords: coordsFromEdges(layout, edges) };
+}
+
+/**
+ * How much later `b` rang than `a`, as far as the premises say: a range.
+ *
+ * Along the one route the premises give, a stated or signal time adds a fixed
+ * amount, and a reach premise adds "at least its distance" when the route runs
+ * towards its hearer and "at most minus it" when it runs away. So a route with
+ * reach premises all one way round has one finite end; one with both ways has
+ * none, and nothing about the pair's timing is settled.
+ */
+export function timeBounds(layout: NdLayout, a: string, b: string): { lo: number; hi: number } {
+    const cone = coneAxes(layout.axes)!;
+    const path = pathBetween(layout, a, b);
+    if (!path) return { lo: -Infinity, hi: Infinity };
+    let lo = 0, hi = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+        const found = edgeBetween(layout, path[i], path[i + 1])!;
+        const dt = found.sign * found.edge.deltas[cone.time];
+        if (found.edge.form !== "reach") { lo += dt; hi += dt; continue; }
+        const len = edgeSteps(layout, found.edge);
+        if (dt > 0) { lo += len; hi = Infinity; } else { hi -= len; lo = -Infinity; }
+    }
+    return { lo, hi };
+}
+
 function shuffled<T>(xs: T[]): T[] {
     const out = [...xs];
     shuffleInPlace(out);
@@ -1221,7 +1355,8 @@ function axisClause(axis: AxisSpec, delta: number): string {
         return delta > 0 ? c.direction[0] : c.direction[1];
     }
     if (delta === 0) return axis.scale.tie;
-    return delta > 0 ? axis.scale.direction[0] : axis.scale.direction[1];
+    const word = delta > 0 ? axis.scale.direction[0] : axis.scale.direction[1];
+    return axis.stride ? `${Math.abs(delta)} ${axis.stride.unit} ${word}` : word;
 }
 
 export interface NdRenderOptions {
@@ -1248,6 +1383,10 @@ export function renderNdPremise(
     flip: boolean,
     options: NdRenderOptions = {},
 ): string {
+    const cone = edge.form ? coneAxes(layout.axes) : null;
+    // A signal or reach premise is said from the hearer's side, so its
+    // subject is always the one that rang later.
+    if (cone) flip = edge.deltas[cone.time] < 0;
     const [from, to] = flip ? [edge.to, edge.from] : [edge.from, edge.to];
     const sign = flip ? -1 : 1;
     const colors = ndAxisColors(layout.axes);
@@ -1266,6 +1405,9 @@ export function renderNdPremise(
     const clauses = layout.axes
         .map((axis, i) => ({ axis, i, delta: sign * statedDelta(layout, edge, i) }))
         .filter(c => edge.stated ? edge.stated[c.i] : true)
+        // The time a signal or reach premise implies is not printed; it is
+        // what the reader derives from the distance.
+        .filter(c => !cone || c.i !== cone.time)
         .filter(c => !options.compact || c.delta !== 0)
         .map(c => hi(axisClause(c.axis, c.delta), colors[c.i]));
 
@@ -1275,7 +1417,12 @@ export function renderNdPremise(
 
     // Named in front, so the reading is known before any clause is.
     const by = edge.local ? `<b>By local clocks</b>, ` : "";
-    return `${by}${subj(to)} is ${clauses.join(", ")} relative to ${subj(from)}`;
+    const heard = edge.form === "signal"
+        ? `, and rang the moment ${subj(from)}'s ring reached it`
+        : edge.form === "reach"
+        ? `, and rang only after ${subj(from)}'s ring had reached it`
+        : "";
+    return `${by}${subj(to)} is ${clauses.join(", ")} relative to ${subj(from)}${heard}`;
 }
 
 /**
@@ -1992,6 +2139,17 @@ export function explainNdAxis(
         }
         const delta = found.sign * found.edge.deltas[axisIndex];
         total += delta;
+
+        if (found.edge.form === "signal" && coneAxes(layout.axes)?.time === axisIndex) {
+            // A signal's time is its distance, on the hearer's side.
+            lines.push(
+                `${subj(found.sign * found.edge.deltas[axisIndex] > 0 ? path[i + 1] : path[i])} rang the moment`
+                + ` ${subj(found.sign * found.edge.deltas[axisIndex] > 0 ? path[i] : path[i + 1])}'s ring reached it,`
+                + ` ${edgeSteps(layout, found.edge)} step${edgeSteps(layout, found.edge) === 1 ? "" : "s"} away,`
+                + ` so ${subj(path[i + 1])} is`
+                + ` ${hi(axisClause(axis, delta), color)} relative to ${subj(path[i])} — ${rel(runningTotal())}`);
+            continue;
+        }
 
         if (found.edge.local && axis.local) {
             /*

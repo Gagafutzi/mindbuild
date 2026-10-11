@@ -104,6 +104,19 @@ export const RUNG_COST: Record<string, number> = {
      */
     "local-clocks": 1.4,
     /*
+     * The light cone. Every travel axis carried with its size, as a distance
+     * construction demands, then summed and held against a different axis.
+     * The cone owns the taxicab budget: Walking Totals, which spends one step
+     * budget across every dimension, is priced as marginal where this is held,
+     * so the one skill is not charged twice.
+     */
+    cone: 1.5,
+    // Time derived from distance one premise at a time, direction from who heard whom.
+    signals: 1.2,
+    // Bounds rather than values, settled from one side; dearer than
+    // under-specification because the bounds come from distances.
+    reach: 1.6,
+    /*
      * Two puzzles stacked: work out who is lying, then work out the
      * arrangement from what is left. Dearer than either alone because the
      * second cannot start until the first is finished.
@@ -383,6 +396,10 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     bridges: 5,
     // A marked premise and an unmarked one on a path at least two long.
     "local-clocks": 4,
+    cone: 3,
+    // A signal or reach premise on the asked route, and a stated time beside it.
+    signals: 4,
+    reach: 4,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,
