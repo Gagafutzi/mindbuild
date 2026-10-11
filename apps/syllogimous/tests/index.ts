@@ -118,5 +118,6 @@ import "./missing-premise.test";
 import "./possibility.test";
 import "./hidden-algebra.test";
 import "./minimal-premises.test";
+import "./coupling.test";
 
 run();

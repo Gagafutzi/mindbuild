@@ -483,6 +483,21 @@ export class Question {
     widthDelta = 0;
 
     /**
+     * Rungs the player holds that this item did not carry.
+     *
+     * A rung that changes *what is asked* competes with the other question
+     * forms, so an item can hold it and still be built without it — a facing
+     * item and an analogy item cannot be the same item. Charging the rung
+     * anyway prices a reading the player was never given, which is the
+     * "charged but never delivered" bug class: facing was billed on every
+     * Space item from the analogy rung on and delivered on none.
+     *
+     * Written by the generator, which is the only place that knows which form
+     * the item ended up in, and subtracted wherever the item is priced.
+     */
+    undelivered: string[] = [];
+
+    /**
      * How much of the item the conclusion needs: the number of relations that
      * have to be composed to reach it.
      *

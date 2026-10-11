@@ -590,6 +590,34 @@ export function fillNdConclusion(ctx: GeneratorContext,
     };
 
     /*
+     * Facing is asked first, or it is never asked at all.
+     *
+     * It sat below analogy, the checkpoint, construction and choice, and every
+     * one of those returns before reaching it — so from the analogy rung on, a
+     * player holding facing was charged 1.8 for it on every item and shown it on
+     * none (measured: 300/300 items carried a facing premise up to testimony,
+     * 0/300 from analogy on). The facing claim is a question form of its own and
+     * cannot share an item with those, so where any of them is live the two take
+     * turns; where none is, facing is what the item asks.
+     *
+     * Whether it landed is recorded either way, so an item that went to another
+     * form is not priced as though it carried a facing.
+     */
+    if (feat.facing) {
+        question.undelivered.push("facing", ...(feat.twins ? ["mirror-twins"] : []));
+        const rivals = feat.analogy || feat.chooseConclusion || feat.constructConclusion
+            || (feat.checkpoint && canCheckpoint);
+        if ((!rivals || coinFlip()) && !mutated
+            && fillFacingConclusion(question, layout, extraPremises, feat.twins)) {
+            question.undelivered = question.undelivered
+                .filter(r => r !== "facing" && r !== "mirror-twins");
+            return true;
+        }
+        // Falling through rather than failing: a layout can simply have no
+        // pair the bearing plane separates, and that is not an error.
+    }
+
+    /*
      * Analogy stands in for the axis claim rather than replacing an answer
      * mode, so it composes with choice and multi. Construction is the one
      * it cannot share an item with — you cannot build a relation and judge
@@ -801,23 +829,13 @@ export function fillNdConclusion(ctx: GeneratorContext,
 
 
     /*
-     * Egocentric items re-express the layout from inside it, so they are their
-     * own branch: the claim is not about an axis at all.
-     */
-    if (feat.facing) {
-        const built = fillFacingConclusion(question, layout, extraPremises, feat.twins);
-        if (built) return true;
-        // Falling through rather than failing: a layout can simply have no
-        // pair the bearing plane separates, and that is not an error.
-    }
-
-    /*
      * Several claims, each of them about every axis.
      *
-     * Placed here rather than above `facing` and `indeterminate` on purpose.
-     * Those two change *what is asked* — a bearing from inside the layout, a
-     * claim of necessity over a pair nothing settles — and running before them
-     * meant an item that had earned either simply never got it. Several claims
+     * Placed here rather than above `indeterminate` on purpose, and below
+     * `facing` for the same reason. Those change *what is asked* — a bearing
+     * from inside the layout, a claim of necessity over a pair nothing settles
+     * — and running before them meant an item that had earned either simply
+     * never got it. Several claims
      * changes *how many* are asked, which composes with the plain form and with
      * nothing else, so it sits with the plain form.
      *
@@ -1013,7 +1031,13 @@ export function ndSetup(ctx: GeneratorContext,
 ): string[] {
     const loops = axes.filter(a => isCircular(a));
     const lines: string[] = [];
-    if (feat.constructDistance) lines.push(ONE_STEP_NOTE);
+    /*
+     * Always, not only when a distance is asked for. Judging a direction never
+     * needed it, but every coupling rung turns on magnitudes — a bridge's size
+     * is a derived gap, the shear adds a position to a time — and none of that
+     * is derivable unless each premise is known to be worth exactly one step.
+     */
+    lines.push(ONE_STEP_NOTE);
     /*
      * The compact convention has to be stated or the item is not derivable:
      * without it, an axis left out is indistinguishable from an axis with
@@ -1111,8 +1135,16 @@ function fillFacingConclusion(
             if (faced === viewer) continue;
             const f = sub(at(faced), at(viewer));
             if (!f[0] && !f[1]) continue;
+            /*
+             * Only bearings the reader can actually take. Under-specification
+             * and the speaker rungs leave some pairs unsettled on purpose, and a
+             * facing toward an object whose position is open names a direction
+             * nobody can derive.
+             */
+            if (!plane.every(ax => determinedOn(layout, ax, viewer, faced))) continue;
             for (const target of layout.words) {
                 if (target === viewer || target === faced) continue;
+                if (!plane.every(ax => determinedOn(layout, ax, viewer, target))) continue;
                 const rel = egocentric(f, sub(at(target), at(viewer)));
                 if (rel) options.push({ viewer, faced, target, rel });
             }

@@ -1403,6 +1403,8 @@ export class ProgressionService {
              * one. Read only with `perClaimCredit` on.
              */
             claims?: Array<{ correct: boolean; slots: number; fromPremises?: number }>;
+            /** Rungs held but not carried by this item; see `Question.undelivered`. */
+            undelivered?: string[];
         },
     ): LadderEvent[] {
         if (!this.config.enabled) { this.lastEvents = []; return []; }
@@ -1446,9 +1448,17 @@ export class ProgressionService {
          */
         const wasProbe = this.isProbeTurn(type);
         const before = this.configFor(type, wasProbe);
+        /*
+         * The rungs the item carried, not the ones it was allowed. A rung that
+         * competes for the question form is held on every item and delivered
+         * on some, and pricing the rest at it credits a right answer as harder
+         * than it was.
+         */
+        const carried = ladderFor(type).slice(0, before.rungs)
+            .filter(r => !item?.undelivered?.includes(r));
         const level = levelOf({
             type, premises: before.premises,
-            rungs: ladderFor(type).slice(0, before.rungs),
+            rungs: carried,
             // The dials are part of the configuration, so they are part of what
             // the item was worth. Leaving them out under-prices every item that
             // turned one, which is the same fault as pricing the printed
@@ -1487,7 +1497,7 @@ export class ProgressionService {
         this.pushTrial({
             type,
             premises: before.premises,
-            rungs: ladderFor(type).slice(0, before.rungs),
+            rungs: carried,
             dials: before.dials,
             seconds: before.seconds,
             estimate,
@@ -1552,7 +1562,7 @@ export class ProgressionService {
                     levelOf({
                         type,
                         premises: claim.fromPremises ?? before.premises,
-                        rungs: ladderFor(type).slice(0, before.rungs),
+                        rungs: carried,
                         dials: before.dials,
                         seconds: before.seconds,
                         widthDelta: item?.widthDelta ?? 0,
