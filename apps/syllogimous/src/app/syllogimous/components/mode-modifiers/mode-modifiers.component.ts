@@ -131,6 +131,8 @@ export class ModeModifiersComponent {
             "kinds": "Two kinds reckon directions differently — east for one is west for the other",
             "walking-totals": "Totals of steps across every dimension — “6 steps in all”, and which is nearer",
             "ranked": "One sorted list — “listed before” means height only for things at the same time",
+            "level": "The hour is set by one direction, and the answer read on another",
+            "meet": "Whether two movers ever share a place, not just a line",
             "heading": "Facing with a head — left and right for someone lying down or upside down",
             "speakers": "Premises reported by speakers, and some of them lie",
             "testimony": "Reports that have to be checked against each other",

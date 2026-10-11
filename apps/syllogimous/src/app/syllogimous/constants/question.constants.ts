@@ -95,6 +95,7 @@ export enum EnumQuestionType {
     CrossAnalogy = "Cross-System Analogy",
     Rcc8 = "Region Connection",
     ConcaveRegions = "Concave Regions",
+    Worldlines = "Worldlines",
 }
 
 export enum EnumArrangements {

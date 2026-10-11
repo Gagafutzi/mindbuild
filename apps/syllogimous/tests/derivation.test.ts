@@ -70,6 +70,7 @@ import { createContextShifts } from "../src/app/syllogimous/generators/context-s
 import { createCrossAnalogy } from "../src/app/syllogimous/generators/cross-analogy";
 import { createRcc8 } from "../src/app/syllogimous/generators/rcc8";
 import { createConcaveRegions } from "../src/app/syllogimous/generators/concave-regions";
+import { createWorldlines } from "../src/app/syllogimous/generators/worldlines";
 import { createBinary } from "../src/app/syllogimous/generators/binary";
 import { createSyllogism } from "../src/app/syllogimous/generators/syllogism";
 import { createInferRelation } from "../src/app/syllogimous/generators/infer-relation";
@@ -144,6 +145,7 @@ const MODES: Array<[EnumQuestionType, (c: GeneratorContext, n: number) => Questi
     [EnumQuestionType.CrossAnalogy, createCrossAnalogy],
     [EnumQuestionType.Rcc8, createRcc8],
     [EnumQuestionType.ConcaveRegions, createConcaveRegions],
+    [EnumQuestionType.Worldlines, createWorldlines],
     [EnumQuestionType.Deictic, createDeictic],
     [EnumQuestionType.Transformation, createTransformation],
     [EnumQuestionType.AnchorSpace, createAnchorSpace],

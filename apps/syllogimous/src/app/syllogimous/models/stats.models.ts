@@ -46,6 +46,7 @@ export class TypeBasedStats {
     [EnumQuestionType.CrossAnalogy] = new TypeBasedStatsInner(EnumQuestionType.CrossAnalogy);
     [EnumQuestionType.Rcc8] = new TypeBasedStatsInner(EnumQuestionType.Rcc8);
     [EnumQuestionType.ConcaveRegions] = new TypeBasedStatsInner(EnumQuestionType.ConcaveRegions);
+    [EnumQuestionType.Worldlines] = new TypeBasedStatsInner(EnumQuestionType.Worldlines);
     [EnumQuestionType.Binary] = new TypeBasedStatsInner(EnumQuestionType.Binary);
     [EnumQuestionType.Deictic] = new TypeBasedStatsInner(EnumQuestionType.Deictic);
     [EnumQuestionType.Transformation] = new TypeBasedStatsInner(EnumQuestionType.Transformation);

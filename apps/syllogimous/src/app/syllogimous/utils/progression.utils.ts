@@ -672,6 +672,14 @@ export const RUNG_LADDERS: Record<string, string[]> = {
     "Cross-System Analogy":     [],
     "Region Connection":        [],
     "Concave Regions":           [],
+    /*
+     * The base form, "how do they stand at hour T", still decomposes axis by
+     * axis once the stamps are applied — it is the on-ramp. Both rungs make one
+     * axis's reading depend on another: `level` reads one axis at the hour a
+     * second decides, and `meet` asks whether every axis's level hour is the
+     * same one.
+     */
+    "Worldlines":                ["level", "meet"],
     "Binary":                    ["negation", "retired-meta"],
     /*
      * Empty, and for a different reason from the two above.

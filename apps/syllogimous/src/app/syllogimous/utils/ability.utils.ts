@@ -131,6 +131,11 @@ export const RUNG_COST: Record<string, number> = {
      * carries one coupling at most, so the two are never charged together.
      */
     "walking-totals": 1.4,
+    // Worldlines. Solve one axis for the hour, then read another at it: two
+    // chains in sequence.
+    level: 1.6,
+    // Every axis's level hour, then a comparison of them.
+    meet: 1.3,
     /*
      * Just under a facing, and for the same reason: one premise costs two
      * steps — compare on the key, then read the tiebreak or decide there is
@@ -434,6 +439,9 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     ranked: 5,
     // A viewer, what it faces, where its head points, and a target.
     heading: 4,
+    // An event axis, an asked axis, and a pair two placements apart.
+    level: 4,
+    meet: 3,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,
