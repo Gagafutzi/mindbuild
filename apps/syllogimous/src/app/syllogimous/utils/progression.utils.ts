@@ -308,6 +308,7 @@ const DIRECTION_LADDER: string[] = Object.freeze([
     "checkpoint",
     "mirror-twins",
     "bridges",
+    "kinds",
 ]) as string[];
 
 const SPACE_3D_LADDER: string[] = Object.freeze([
@@ -318,6 +319,7 @@ const SPACE_3D_LADDER: string[] = Object.freeze([
     "checkpoint",
     "mirror-twins",
     "bridges",
+    "kinds",
 ]) as string[];
 
 /** Space 4D to 7D: the spaces with a time axis to couple through. */
@@ -331,6 +333,7 @@ const SPACE_ND_LADDER: string[] = Object.freeze([
     "bridges",
     "local-clocks",
     "cone", "signals", "reach",
+    "kinds",
 ]) as string[];
 
 /**

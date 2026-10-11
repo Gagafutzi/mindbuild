@@ -296,6 +296,13 @@ export interface NdEdge {
      * least the distance). The hearer is whichever end rang later.
      */
     form?: "signal" | "reach";
+    /**
+     * Which end the premise is said relative to, when that has to be fixed at
+     * build time rather than drawn as it is printed: under kind frames the
+     * reference's reckoning decides what the words mean, and the derivation
+     * has to name the same reference the card did.
+     */
+    flip?: boolean;
 }
 
 export interface NdLayout {
@@ -320,6 +327,19 @@ export interface NdLayout {
      * answered from.
      */
     reading?: "station" | "local";
+    /**
+     * Two kinds that reckon directions differently. Every relation is in the
+     * reckoning of the object it is relative to, and an object of kind 1 reads
+     * every displacement through `rule` — `mirror` reverses `axes[0]`, `swap`
+     * exchanges `axes[0]` and `axes[1]`. Kind is the object's class on the
+     * `parity` axis. `fixed` makes every reference that kind, which is how a
+     * reader who ignores kinds is modelled.
+     *
+     * Coordinates and edges stay in kind 0's reckoning throughout, so width,
+     * colours, determinacy and the map are untouched; only what a relation
+     * *says* passes through `relDelta`.
+     */
+    frames?: { parity: number; rule: "mirror" | "swap"; axes: number[]; fixed?: 0 | 1 };
 }
 
 /**
@@ -1257,6 +1277,77 @@ export function timeBounds(layout: NdLayout, a: string, b: string): { lo: number
     return { lo, hi };
 }
 
+/* ------------------------------------------------------------------ *
+ * Kind frames — a direction word read by its speaker's kind           *
+ * ------------------------------------------------------------------ */
+
+/** An object's kind under frames: its class on the parity axis. */
+export function kindOf(layout: NdLayout, w: string): 0 | 1 {
+    const f = layout.frames!;
+    return f.fixed ?? (mod(layout.coords[w][f.parity], 2) as 0 | 1);
+}
+
+/** The frame change itself: an involution, so applying it twice is nothing. */
+function frameMap(f: NonNullable<NdLayout["frames"]>, d: number[]): number[] {
+    const out = [...d];
+    if (f.rule === "mirror") out[f.axes[0]] = -d[f.axes[0]];
+    else { out[f.axes[0]] = d[f.axes[1]]; out[f.axes[1]] = d[f.axes[0]]; }
+    return out;
+}
+
+/** A displacement as `ref` would state it. */
+export function reckon(layout: NdLayout, ref: string, d: number[]): number[] {
+    if (!layout.frames) return d;
+    return kindOf(layout, ref) ? frameMap(layout.frames, d) : d;
+}
+
+/**
+ * Where `a` is relative to `b`, as `b` reckons it — what any claim "a is …
+ * relative to b" is checked against. On a layout without frames, simply the
+ * difference of positions. Every conclusion builder reads through this, so a
+ * claim, a construction slot and an analogy key can never disagree about
+ * whose reckoning they are in.
+ */
+export function relDelta(layout: NdLayout, a: string, b: string): number[] {
+    return reckon(layout, b, layout.coords[a].map((v, i) => v - layout.coords[b][i]));
+}
+
+/**
+ * Kind frames over a drawn layout that already has a parity axis.
+ *
+ * Each premise is said from a fixed end, in that end's reckoning. The frame
+ * axes must be straight lines: a ring has no east to mirror into west, and a
+ * swap between a line and a loop would carry a position onto an axis that
+ * wraps.
+ */
+export function kindsLayout(drawn: NdLayout, rule: "mirror" | "swap"): NdLayout | null {
+    const parity = drawn.axes.findIndex(a => isParity(a));
+    const straight = drawn.axes.map((a, i) => (isCircular(a) || isParity(a) ? -1 : i)).filter(i => i >= 0);
+    if (parity < 0 || straight.length < (rule === "swap" ? 2 : 1)) return null;
+    const axes = shuffled(straight).slice(0, rule === "swap" ? 2 : 1);
+    const edges = drawn.edges.map(e => ({ ...e, flip: Math.random() < 0.5 }));
+    return { ...drawn, edges, frames: { parity, rule, axes } };
+}
+
+/**
+ * The layout a reader would build who took every premise at face value.
+ *
+ * Positions are the stated words summed as though every reference were kind
+ * 0; `fixed` then says how that reader reads a claim — at face value (0), or
+ * with the frame change applied to the whole result (1), the two kind-blind
+ * readings the item has to defeat.
+ */
+export function kindsFaceValue(layout: NdLayout, fixed: 0 | 1): NdLayout {
+    const edges = layout.edges.map(e => {
+        // What the card says, from its reference, turned back into from → to.
+        const sign = e.flip ? -1 : 1;
+        const said = reckon(layout, e.flip ? e.to : e.from, e.deltas.map(d => sign * d));
+        return { ...e, deltas: said.map(d => sign * d) };
+    });
+    const faced = { ...layout, edges, frames: { ...layout.frames!, fixed } };
+    return { ...faced, coords: coordsFromEdges(faced, edges) };
+}
+
 function shuffled<T>(xs: T[]): T[] {
     const out = [...xs];
     shuffleInPlace(out);
@@ -1271,7 +1362,7 @@ function shuffleInPlace<T>(xs: T[]) {
 }
 
 export function compareOn(layout: NdLayout, axis: number, a: string, b: string): -1 | 0 | 1 {
-    const d = layout.coords[a][axis] - layout.coords[b][axis];
+    const d = relDelta(layout, a, b)[axis];
     return d === 0 ? 0 : (d > 0 ? 1 : -1);
 }
 
@@ -1402,8 +1493,10 @@ export function renderNdPremise(
      * instead of by re-reading. Position cannot do this job once the order is
      * configurable, and `compact` already removes clauses from the middle.
      */
+    // In the reference's reckoning, which is only ever not kind 0's under frames.
+    const said = reckon(layout, from, layout.axes.map((_, i) => sign * statedDelta(layout, edge, i)));
     const clauses = layout.axes
-        .map((axis, i) => ({ axis, i, delta: sign * statedDelta(layout, edge, i) }))
+        .map((axis, i) => ({ axis, i, delta: said[i] }))
         .filter(c => edge.stated ? edge.stated[c.i] : true)
         // The time a signal or reach premise implies is not printed; it is
         // what the reader derives from the distance.
@@ -1450,7 +1543,7 @@ export function renderNdDirection(axes: AxisSpec[], axis: number, delta: number)
 }
 
 export function renderNdPremises(layout: NdLayout, options: NdRenderOptions = {}): string[] {
-    return layout.edges.map(e => renderNdPremise(layout, e, Math.random() > 0.5, options));
+    return layout.edges.map(e => renderNdPremise(layout, e, e.flip ?? Math.random() > 0.5, options));
 }
 
 /**
@@ -1610,9 +1703,10 @@ export function buildNdWideConclusion(
      * step apart — and mixing them up would state the long way round as though
      * it were the short one.
      */
+    const said = relDelta(layout, a, b);
     const truth = layout.axes.map((axis, i) => isCircular(axis)
         ? displacementOn(layout, i, a, b)
-        : layout.coords[a][i] - layout.coords[b][i]);
+        : said[i]);
     const claim = [...truth];
 
     /*
@@ -1749,7 +1843,7 @@ export function relationKey(layout: NdLayout, a: string, b: string): string {
         ? (sameClass(layout, i, a, b) ? 0 : 1)
         : isCircular(axis)
         ? displacementOn(layout, i, b, a)
-        : Math.sign(layout.coords[b][i] - layout.coords[a][i])).join(",");
+        : Math.sign(relDelta(layout, b, a)[i])).join(",");
 }
 
 /** The key a relation would have if every direction were reversed. */
@@ -1916,7 +2010,7 @@ export function buildNdConstructClaim(
             };
         }
 
-        const delta = layout.coords[a][i] - layout.coords[b][i];
+        const delta = relDelta(layout, a, b)[i];
         return {
             label: scale.name,
             colorClass: colors[i],
@@ -2137,6 +2231,37 @@ export function explainNdAxis(
                 + ` — ${rel(runningTotal())}`);
             continue;
         }
+        if (layout.frames && !isParity(axis)) {
+            /*
+             * Under kind frames the walk is in the claim reference's reckoning.
+             * A premise said from a reference of the other kind is shown as the
+             * card says it and then converted, because that conversion, premise
+             * by premise, is the item.
+             */
+            const v = layout.axes.map((_, k) => found.sign * found.edge.deltas[k]);
+            const step = reckon(layout, a, v)[axisIndex];
+            total += step;
+            const ref = found.edge.flip ? found.edge.to : found.edge.from;
+            const other = ref === found.edge.from ? found.edge.to : found.edge.from;
+            const word = step === 0 ? axis.scale.tie : axisClause(axis, step);
+            if (kindOf(layout, ref) !== kindOf(layout, a) && layout.frames.axes.includes(axisIndex)) {
+                const said = reckon(layout, ref, ref === path[i] ? v : v.map(x => -x));
+                const colors = ndAxisColors(layout.axes);
+                const words = layout.frames.axes
+                    .map(k => hi(axisClause(layout.axes[k], said[k]), colors[k])).join(", ");
+                lines.push(
+                    `${subj(other)} is ${words} relative to ${subj(ref)} as ${subj(ref)} reckons it;`
+                    + ` ${subj(ref)} is the other kind from ${subj(a)}, so for ${subj(a)}`
+                    + ` ${subj(path[i + 1])} is ${hi(word, color)} relative to ${subj(path[i])}`
+                    + ` — ${rel(runningTotal())}`);
+            } else {
+                lines.push(
+                    `${subj(path[i + 1])} is ${hi(word, color)} relative to ${subj(path[i])}`
+                    + ` — ${rel(runningTotal())}`);
+            }
+            continue;
+        }
+
         const delta = found.sign * found.edge.deltas[axisIndex];
         total += delta;
 

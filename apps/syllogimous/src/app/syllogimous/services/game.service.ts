@@ -1083,6 +1083,7 @@ export class GameService implements GeneratorContext {
                 carousel,
                 widthDelta: this.question.widthDelta,
                 depth: this.question.depth,
+                surcharge: this.question.surcharge,
             };
             this.question.difficulty = {
                 level: this.progressionService.levelFor(spec),
@@ -1225,6 +1226,7 @@ export class GameService implements GeneratorContext {
                     // What the item held and did not carry, so it is not
                     // charged for it.
                     undelivered: this.question.undelivered,
+                    surcharge: this.question.surcharge,
                     /*
                      * How each claim went, for an item that asks more than one.
                      *

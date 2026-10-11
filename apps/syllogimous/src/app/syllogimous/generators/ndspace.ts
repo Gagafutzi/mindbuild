@@ -6,11 +6,12 @@
  */
 
 import { GeneratorContext, deepConclusions } from "./context";
+import { LINEAR_SCALES } from "../utils/linear.utils";
 import { buildConstructClaims } from "./context";
 import { Question } from "../models/question.models";
 import { coinFlip, getRandomSymbols, pickUniqueItems, shuffle } from "../utils/question.utils";
 import { describeTransform } from "../utils/transformations.utils";
-import { AxisSpec, NdConclusion, NdLayout, ndAxisColors, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, coneAxes, coneLayout, edgeSteps, routeForms, routePath, routeSteps, timeBounds, travelSteps, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
+import { AxisSpec, NdConclusion, NdLayout, ndAxisColors, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, coneAxes, coneLayout, edgeSteps, routeForms, routePath, routeSteps, timeBounds, travelSteps, kindsFaceValue, kindsLayout, relDelta, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
 import { orderPremises, scrambleBlocks, scrambleByFactor, scrambleLeading } from "../utils/premise-order.utils";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
 import { LinearFeatureFlags } from "../services/settings-override.service";
@@ -23,7 +24,7 @@ import {
     describeFacing, egocentric,
 } from "../utils/facing.utils";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../constants/settings.constants";
-import { BRIDGE_NOTE, CLOCK_NOTE, COMPACT_NOTE, CONE_NOTE, ONE_STEP_MINUTES_NOTE, REACH_NOTE, SIGNAL_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
+import { BRIDGE_NOTE, CLOCK_NOTE, COMPACT_NOTE, CONE_NOTE, KIND_NOTE, ONE_STEP_MINUTES_NOTE, REACH_NOTE, SIGNAL_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
 
 /** How many dimensions each composed-space mode asks for. */
 export function dimensionsOf(ctx: GeneratorContext, type: EnumQuestionType): number {
@@ -108,6 +109,9 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
     const dateLine = clockable && isCircular(axes[eastAxis]);
     // The cone, likewise, needs time and two travel axes that are all straight.
     const coneable = !!coneAxes(axes);
+    // Kind frames need a straight axis to reframe; the parity axis that
+    // carries kind is added where the stack has none.
+    const frameable = axes.some(a => !isCircular(a) && !isParity(a));
 
     /*
      * One coupling per item, decided before anything else is.
@@ -130,16 +134,29 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         ...(base.bridges ? ["bridges"] : []),
         ...(base.localClocks ? ["local-clocks"] : []),
         ...(base.cone ? ["cone"] : []),
+        ...(base.kinds ? ["kinds"] : []),
     ];
     const offered = heldCouplings
         .filter(r => r !== "local-clocks" || clockable)
-        .filter(r => r !== "cone" || coneable);
+        .filter(r => r !== "cone" || coneable)
+        .filter(r => r !== "kinds" || frameable);
     const coupling = offered.length && numOfPremises >= 4 && coinFlip()
         ? offered[Math.floor(Math.random() * offered.length)]
         : null;
     const wantBridge = coupling === "bridges";
     const wantClocks = coupling === "local-clocks";
     const wantCone = coupling === "cone";
+    const wantKinds = coupling === "kinds";
+    /*
+     * A kinds item reads kind off a parity axis, and only the seven-axis stack
+     * has one. Elsewhere it is appended for the item — one axis wider than the
+     * mode, so priced as such, per premise, at MODE_SCALE's 6D-to-7D step —
+     * rather than the rung being held and never delivered on 2D to 6D.
+     */
+    const appendParity = wantKinds && !axes.some(a => isParity(a));
+    const kindAxes: AxisSpec[] = appendParity ? [...axes, { scale: LINEAR_SCALES["distinction"] }] : axes;
+    const kindRule: "mirror" | "swap" = axes.filter(a => !isCircular(a) && !isParity(a)).length >= 2 && coinFlip()
+        ? "swap" : "mirror";
     /*
      * Which premise form a cone item is built around: plain stated times, or
      * the signal or reach premises a later rung adds. One per item, from those
@@ -185,6 +202,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
              * usable; so nothing is withheld on a clocked item.
              */
             indeterminate: base.indeterminate && !wantClocks,
+            analogy: base.analogy && !wantKinds,
         }
         : wantCheckpoint
         ? { ...base, edits: 0, transforms: 0, speakers: false, testimony: false }
@@ -199,6 +217,12 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             */
            ...(wantCone ? ["analogy", "construct-conclusion", "construct-distance",
                ...(coneSelect ? [] : ["choose-conclusion"])] : []),
+           /*
+            * An analogy compares two relations' sign vectors, which depend on
+            * whose reckoning each is read in — two references, two frames. Kept
+            * off a kinds item rather than given a rule nobody has stated.
+            */
+           ...(wantKinds ? ["analogy"] : []),
           ].filter(r => ctx.hasRung(type, r))
         : [];
     // The cone's later rungs ride on it, and are charged only on the item
@@ -269,7 +293,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             : undefined;
 
         const batch = Array.from({ length: 9 }, () =>
-            buildNdLayout(words, axes, { branching: feat.branching }));
+            buildNdLayout(words, coupling_ === "kinds" ? kindAxes : axes, { branching: feat.branching }));
         const scope = scoped?.length ? scoped : undefined;
 
         /*
@@ -320,7 +344,9 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             ? coneLayout(drawn, coneKind, 1 + Math.floor(numOfPremises / 4))
             : null;
         if (coupling_ === "cone" && !coned) continue;
-        const layout = bridged ?? clocked ?? coned
+        const kinded = coupling_ === "kinds" ? kindsLayout(drawn, kindRule) : null;
+        if (coupling_ === "kinds" && !kinded) continue;
+        const layout = bridged ?? clocked ?? coned ?? kinded
             ?? (feat.indeterminate
                 ? withholdClauses(drawn, 1 + Math.floor(Math.random() * 2))
                 : drawn);
@@ -407,6 +433,14 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
                         ...(dateLine ? [asRead(clockModel(clocked, "no-date-line"))] : [])],
                     axis: timeAxis, balance: timeAxis,
                 } }
+            /*
+             * Face value is `initial`, and the frame change applied to the whole
+             * result is a lure: an item either kind-blind reading gets right is
+             * not a kinds item.
+             */
+            : kinded
+            ? { initial: kindsFaceValue(kinded, 0), final,
+                coupling: { lures: [kindsFaceValue(kinded, 1)], axis: kinded.frames!.axes[0] } }
             : { initial: layout, final, coupling: {} };
         if (coned) {
             if (!fillConeConclusion(question, coned, coneKind, coneSelect, coneWant)) continue;
@@ -418,7 +452,8 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             numOfPremises, attempt >= (coupling_ ? 150 : 250), extraPremises, asked, canCheckpoint,
             fill.coupling)) continue;
 
-        const delivered = bridged ? "bridges" : clocked ? "local-clocks" : coned ? "cone" : null;
+        const delivered = bridged ? "bridges" : clocked ? "local-clocks" : coned ? "cone" : kinded ? "kinds" : null;
+        if (kinded && appendParity) question.surcharge = Math.round(0.2 * numOfPremises * 100) / 100;
         question.undelivered.push(...heldCouplings.filter(r => r !== delivered));
         question.undelivered.push(...heldConeForms.filter(r =>
             !coned || coneKind === "cone" || r !== coneRungs[coneKind]));
@@ -548,11 +583,11 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         // By the station clock on a clocked item: the picture is of where and
         // when things are, not of what some clock said.
         question.wordCoordMap = { ...(clocked ?? final).coords };
-        question.axisNames = axes.map(a => a.scale.name);
+        question.axisNames = layout.axes.map(a => a.scale.name);
         question.setup = [
-            ...ndSetup(ctx, axes, feat, edits.length > 0, transforms.length > 0,
+            ...ndSetup(ctx, layout.axes, feat, edits.length > 0, transforms.length > 0,
                 { bridged: !!bridged, clocked: clocked ? { layout: clocked, reading } : undefined,
-                  coned: coned ?? undefined }),
+                  coned: coned ?? undefined, kinded: kinded ?? undefined }),
             ...question.setup,
         ];
         return question;
@@ -662,6 +697,8 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
      * cone item, so they are live only with it.
      */
     const cone = ladder("cone") && edits === 0 && transforms === 0 && !compact;
+    // Kind frames re-read every premise, so the same exclusions again.
+    const kinds = ladder("kinds") && edits === 0 && transforms === 0 && !compact;
 
     return {
         testimony,
@@ -670,6 +707,7 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
         cone,
         signals: cone && ladder("signals"),
         reach: cone && ladder("reach"),
+        kinds,
         speakers: speakers && !testimony,
         facing,
         twins,
@@ -754,7 +792,8 @@ export function fillNdConclusion(ctx: GeneratorContext,
     const mutated = initial !== layout;
     const axisAnswer = (l: NdLayout, a: string, b: string, i: number) => {
         if (isCircular(l.axes[i])) return displacementOn(l, i, a, b);
-        const delta = l.coords[a][i] - l.coords[b][i];
+        // In b's reckoning, which differs from the coordinates only under frames.
+        const delta = relDelta(l, a, b)[i];
         return feat.constructDistance ? delta : Math.sign(delta);
     };
 
@@ -783,7 +822,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
     const analogyHeld = (l: NdLayout, c: { pairs: [string, string, string, string]; claimSame: boolean }) => {
         const key = (x: string, y: string) => l.axes.map((axis, i) => isCircular(axis)
             ? displacementOn(l, i, y, x)
-            : Math.sign(l.coords[y][i] - l.coords[x][i])).join(",");
+            : Math.sign(relDelta(l, y, x)[i])).join(",");
         const [a, b, x, y] = c.pairs;
         const first = key(a, b);
         const second = key(x, y);
@@ -811,10 +850,10 @@ export function fillNdConclusion(ctx: GeneratorContext,
      */
     const liesFor = (a: string, b: string) => coupled
         ? layout.axes.flatMap((_, i) => axisBites(a, b, i)
-            ? readings.map(r => ({ axis: i, value: r.coords[a][i] - r.coords[b][i] }))
+            ? readings.map(r => ({ axis: i, value: relDelta(r, a, b)[i] }))
                 // A claim states a direction, so a misreading that differs only
                 // in distance would print the true clause and call it a lie.
-                .filter(l => Math.sign(l.value) !== Math.sign(layout.coords[a][i] - layout.coords[b][i]))
+                .filter(l => Math.sign(l.value) !== Math.sign(relDelta(layout, a, b)[i]))
             : [])
         : undefined;
     const rewritten = mutated && !coupled;
@@ -1317,6 +1356,7 @@ export function ndSetup(ctx: GeneratorContext,
         bridged?: boolean;
         clocked?: { layout: NdLayout; reading: "station" | "local" };
         coned?: NdLayout;
+        kinded?: NdLayout;
     } = {},
 ): string[] {
     const bridged = !!coupled.bridged;
@@ -1358,6 +1398,20 @@ export function ndSetup(ctx: GeneratorContext,
         lines.push(CONE_NOTE(listed, inert));
         if (coupled.coned.edges.some(e => e.form === "signal")) lines.push(SIGNAL_NOTE);
         if (coupled.coned.edges.some(e => e.form === "reach")) lines.push(REACH_NOTE);
+    }
+    if (coupled.kinded) {
+        const f = coupled.kinded.frames!;
+        const [x, y] = f.axes.map(i => axes[i]);
+        const p = axes[f.parity].scale.parity!;
+        lines.push(KIND_NOTE(
+            f.rule === "mirror"
+                ? `what one kind calls ${rel(x.scale.direction[0])} the other calls`
+                  + ` ${rel(x.scale.direction[1])}, and the reverse`
+                : `what one kind calls ${rel(x.scale.direction[0])} the other calls`
+                  + ` ${rel(y.scale.direction[0])}, ${rel(x.scale.direction[1])} is`
+                  + ` ${rel(y.scale.direction[1])}, and ${rel(x.scale.tie)} is ${rel(y.scale.tie)}`
+                  + ` \u2014 and the reverse`,
+            rel(p.same), rel(p.opposite)));
     }
     if (feat.facing) lines.push(FACING_NOTE);
     if (feat.twins) lines.push(MIRROR_NOTE);

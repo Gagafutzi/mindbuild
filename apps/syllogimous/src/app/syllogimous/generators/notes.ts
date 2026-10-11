@@ -109,6 +109,15 @@ export const REACH_NOTE =
     + " \u2014 how much later is not said. A claim counts as true only if it holds"
     + " <b>however much later</b>.";
 
+/**
+ * Kind frames: the rule, with the words it exchanges passed in marked as
+ * relations, and the reckoning convention without which the rule is moot.
+ */
+export const KIND_NOTE = (exchange: string, same: string, opposite: string) =>
+    `Everything is one of two kinds \u2014 the premises say ${same} or ${opposite} \u2014 and`
+    + ` the two reckon directions differently: ${exchange}. Every relation is in the`
+    + ` <b>reckoning of the one it is relative to</b>.`;
+
 export const BRIDGE_NOTE =
     "A premise saying one pair is <b>as many steps</b> apart on one dimension as"
     + " another pair is on a different one means the two gaps are the same size"

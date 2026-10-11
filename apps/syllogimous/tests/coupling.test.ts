@@ -1084,3 +1084,154 @@ test("cone: rule, minutes and forms are on the card, and forms lie on the asked 
         }
     }
 });
+
+/* ------------------------------------------------------------------ *
+ * Kind frames                                                          *
+ * ------------------------------------------------------------------ */
+
+export type KindReading = "true" | "face-value" | "convert-all" | "wrong-end";
+
+/**
+ * The setup's rule applied exactly: kind carried by parity from any one
+ * object (relative kind is all there is, and all that matters), each premise
+ * decoded through the frame change when its reference is the other kind, and
+ * each claim read in its own reference's reckoning.
+ */
+export function readKinds(q: Question, axes: AxisSpec[], how: KindReading = "true"): Gaps {
+    const note = q.setup.find(l => /two kinds/.test(strip(l)))!;
+    const said = [...note.matchAll(/<span class="relation ">([^<]+)<\/span>/g)].map(m => m[1]);
+    // "what one kind calls X the other calls Y": X's axis, and Y's.
+    const axisOf = (w: string) => axes.findIndex(a => a.scale.direction.includes(w) || a.scale.tie === w);
+    const [x, y] = [axisOf(said[2]), axisOf(said[3])];
+    const P = (d: number[]) => {
+        const out = [...d];
+        if (x === y) out[x] = -d[x];
+        else { out[x] = d[y]; out[y] = d[x]; }
+        return out;
+    };
+    const parity = axes.findIndex(a => a.scale.parity);
+    const reads = q.premises.map(p => readPremise(p, axes));
+    // Relative kind, by parity from the first object named.
+    const kinds = new Solver();
+    for (const r of reads) {
+        const c = r.clauses.find(c => c.axis === parity)!;
+        kinds.add([[`${r.words[0]}|${parity}`, 1], [`${r.words[1]}|${parity}`, -1]], c.delta);
+    }
+    const root = reads[0].words[0];
+    const kindOf = (w: string) =>
+        how === "face-value" || how === "convert-all" ? 0 : mod(kinds.gap(w, root, parity)!, 2);
+    const pos = new Solver();
+    for (const r of reads) {
+        const [S, R] = r.words;
+        const d = axes.map((_, i) => r.clauses.find(c => c.axis === i)?.delta ?? 0);
+        const abs = kindOf(how === "wrong-end" ? S : R) ? P(d) : d;
+        axes.forEach((_, i) => {
+            if (i !== parity) pos.add([[`${S}|${i}`, 1], [`${R}|${i}`, -1]], abs[i]);
+        });
+    }
+    return {
+        inconsistent: pos.inconsistent,
+        gap(a, b, axis) {
+            if (axis === parity) return kinds.gap(a, b, parity);
+            const d = axes.map((_, i) => (i === parity ? 0 : pos.gap(a, b, i) ?? 0));
+            const inB = how === "convert-all" || kindOf(b) ? P(d) : d;
+            return inB[axis];
+        },
+    };
+}
+
+const isKinded = (q: Question) => q.setup.some(l => /two kinds/.test(strip(l)));
+
+function kindedItems(type: EnumQuestionType, held: string[], count: number, seed: number) {
+    const items = build(ctxHolding(held), type, 6, count, seed).filter(isKinded);
+    // The stack as drawn: the default one, with Distinction appended if absent.
+    const axesFor = (q: Question) => {
+        const base = axesForDimensions(dimsOf[type]).map(scale => ({ scale }) as AxisSpec);
+        return (q.axisNames ?? []).length > base.length
+            ? [...base, { scale: AXIS_CHOICES.find(a => a.id === "distinction")! }]
+            : base;
+    };
+    return { items, axesFor };
+}
+
+const KIND_FORMS: Record<string, string[]> = {
+    plain: ["branching", "kinds"],
+    choice: ["branching", "choose-conclusion", "kinds"],
+    construct: ["branching", "construct-conclusion", "construct-distance", "kinds"],
+};
+
+test("kinds: the marked answer is what decoding each premise by its reference's kind gives", () => {
+    let checked = 0;
+    for (const [form, held] of Object.entries(KIND_FORMS)) {
+        for (const type of [EnumQuestionType.Direction, EnumQuestionType.Space3D,
+                            EnumQuestionType.Space4D, EnumQuestionType.Space7D]) {
+            const { items, axesFor } = kindedItems(type, held, 40, 5401);
+            assert(items.length >= 12, `${form} ${type}: only ${items.length} kinds items`);
+            for (const q of items) {
+                assert(judge(q, axesFor(q), readKinds(q, axesFor(q))),
+                    `${form} ${type}: decoded by the wrong end of the premise, or not at all — the `
+                    + `rule disagrees with the key on\n  `
+                    + [...q.setup, ...q.premises, String(q.conclusion), ...q.choices].map(strip).join("\n  "));
+                checked++;
+            }
+        }
+    }
+    assert(checked > 150, `only ${checked} items checked`);
+});
+
+test("kinds: face value and converting everything both fail; so does decoding by the subject", () => {
+    for (const [form, held] of Object.entries(KIND_FORMS)) {
+        const { items, axesFor } = kindedItems(EnumQuestionType.Space4D, held, 80, 5402);
+        const fails = (how: KindReading) =>
+            items.filter(q => !judge(q, axesFor(q), readKinds(q, axesFor(q), how))).length / items.length;
+        const enforced = form === "plain" ? 0.4 : 1;
+        for (const how of ["face-value", "convert-all"] as KindReading[]) {
+            assert(fails(how) >= enforced,
+                `${form}: the ${how} reading fails only ${Math.round(fails(how) * 100)}% of ${items.length}`);
+        }
+        assert(fails("wrong-end") >= 0.25,
+            `${form}: decoding by the subject's kind fails only ${Math.round(fails("wrong-end") * 100)}%`);
+    }
+});
+
+test("kinds: delivered on every family, the added axis priced, analogy and facing kept off", () => {
+    for (const type of [EnumQuestionType.Direction, EnumQuestionType.Space3D,
+                        EnumQuestionType.Space4D, EnumQuestionType.Space7D]) {
+        assert(ladderFor(type).includes("kinds"), `${type} does not offer kinds`);
+        const held = [...fullLadder(type), "bridges", "local-clocks", "cone", "signals", "reach", "kinds"]
+            .filter(r => ladderFor(type).includes(r));
+        const items = build(ctxHolding(held), type, 6, 200, 5403);
+        const kinded = items.filter(isKinded);
+        assert(kinded.length > items.length * 0.08, `${type}: ${kinded.length}/${items.length} kinds items`);
+        const appended = type !== EnumQuestionType.Space7D;
+        for (const q of items) {
+            equal(q.undelivered.includes("kinds"), !isKinded(q), `${type}: kinds charged wrongly`);
+            equal(q.surcharge, isKinded(q) && appended ? 1.2 : 0,
+                `${type}: surcharge ${q.surcharge} on a${isKinded(q) ? "" : " non"}-kinds item`);
+            equal((q.axisNames ?? []).includes("Distinction"), type === EnumQuestionType.Space7D || isKinded(q),
+                `${type}: the parity axis is ${(q.axisNames ?? []).includes("Distinction") ? "added where it should not be" : "missing"}`);
+        }
+        for (const q of kinded) {
+            assert(!hasFacing(q) && !/pair-to/.test(JSON.stringify(q.conclusion)),
+                `${type}: a kinds item also carries a facing or an analogy`);
+            if (held.includes("analogy")) assert(q.undelivered.includes("analogy"),
+                `${type}: a kinds item is charged for the analogy it set aside`);
+        }
+    }
+});
+
+test("kinds: the rule is stated, kinds are on every premise, and the derivation converts", () => {
+    const { items, axesFor } = kindedItems(EnumQuestionType.Space5D, KIND_FORMS.plain, 60, 5404);
+    for (const q of items) {
+        assert(q.setup.some(l => /reckoning of the one it is relative to/.test(strip(l))),
+            "the reckoning convention is not stated");
+        const parity = axesFor(q).findIndex(a => a.scale.parity);
+        for (const p of q.premises) {
+            assert(readPremise(p, axesFor(q)).clauses.some(c => c.axis === parity),
+                `a premise that does not say its kind: ${strip(p)}`);
+        }
+    }
+    const converted = items.filter(q => q.explanation.some(l => /is the other kind from/.test(strip(l))));
+    assert(converted.length > items.length * 0.5,
+        `only ${converted.length}/${items.length} derivations show a premise being converted`);
+});

@@ -128,6 +128,7 @@ export class ModeModifiersComponent {
             "cone": "Could one bell’s ring have reached another in time? Distance is a shared budget",
             "signals": "Some times given only as “rang the moment the ring arrived”",
             "reach": "Some times only bounded — “rang only after the ring arrived”",
+            "kinds": "Two kinds reckon directions differently — east for one is west for the other",
             "speakers": "Premises reported by speakers, and some of them lie",
             "testimony": "Reports that have to be checked against each other",
             "transform-1": "One transformation applied to the arrangement",
