@@ -25,6 +25,9 @@ import {
 } from "../utils/facing.utils";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../constants/settings.constants";
 import { BRIDGE_NOTE, CLOCK_NOTE, COMPACT_NOTE, CONE_NOTE, KIND_NOTE, NEAREST_NOTE, RANK_NOTE, WALK_NOTE, ONE_STEP_MINUTES_NOTE, REACH_NOTE, SIGNAL_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
+import { createTwistedSeam, twistAxes } from "./twisted-seam";
+import { dialCost } from "../utils/ability.utils";
+import { ladderFor } from "../utils/progression.utils";
 
 /** How many dimensions each composed-space mode asks for. */
 export function dimensionsOf(ctx: GeneratorContext, type: EnumQuestionType): number {
@@ -141,16 +144,36 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         ...(base.kinds ? ["kinds"] : []),
         ...(base.walkingTotals ? ["walking-totals"] : []),
         ...(base.ranked ? ["ranked"] : []),
+        ...(base.twistedSeam ? ["twisted-seam"] : []),
     ];
     const offered = heldCouplings
         .filter(r => r !== "local-clocks" || clockable)
         .filter(r => r !== "cone" || coneable)
         .filter(r => r !== "kinds" || frameable)
         .filter(r => r !== "walking-totals" || walkable)
-        .filter(r => r !== "ranked" || rankable);
+        .filter(r => r !== "ranked" || rankable)
+        .filter(r => r !== "twisted-seam" || !!twistAxes(scales));
     const coupling = offered.length && numOfPremises >= 4 && coinFlip()
         ? offered[Math.floor(Math.random() * offered.length)]
         : null;
+    /*
+     * A twisted ring is its own small arrangement, built apart from the layout
+     * code — which reduces a loop once at the end, and that is wrong across a
+     * twist — and asks only whether its placements can all hold. So it carries
+     * nothing else the ladder holds except branching, and records the rest.
+     *
+     * The ring is forced whatever the loop dial says, so the dial is priced at
+     * the one loop the item has: charged when the dial gave none, refunded for
+     * the loops it gave that this item does not carry.
+     */
+    if (coupling === "twisted-seam") {
+        const q = createTwistedSeam(ctx, type, scales, numOfPremises, base.branching, coinFlip());
+        if (!q) throw new Error("Cannot generate.");
+        q.undelivered.push(...ladderFor(type).filter(r =>
+            ctx.hasRung(type, r) && r !== "twisted-seam" && r !== "branching"));
+        q.surcharge = dialCost("circular", 1) - dialCost("circular", base.circular);
+        return q;
+    }
     const wantBridge = coupling === "bridges";
     const wantClocks = coupling === "local-clocks";
     const wantCone = coupling === "cone";
@@ -759,6 +782,8 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
     const walkingTotals = ladder("walking-totals") && edits === 0 && transforms === 0 && !compact;
     // Rankings are premises about the arrangement as stated, too.
     const ranked = ladder("ranked") && edits === 0 && transforms === 0 && !compact;
+    // A twisted ring builds its own arrangement, so nothing may rewrite one.
+    const twistedSeam = ladder("twisted-seam") && edits === 0 && transforms === 0 && !compact;
 
     return {
         testimony,
@@ -770,6 +795,7 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
         kinds,
         walkingTotals,
         ranked,
+        twistedSeam,
         speakers: speakers && !testimony,
         facing,
         twins,

@@ -131,6 +131,12 @@ export const RUNG_COST: Record<string, number> = {
      * carries one coupling at most, so the two are never charged together.
      */
     "walking-totals": 1.4,
+    /*
+     * As much as a facing: the frame change has to be located before it can be
+     * applied, and the arrangement is held twice — as stated, and as it sits on
+     * the ring. A guess until rungfit measures it.
+     */
+    "twisted-seam": 1.8,
     // Worldlines. Solve one axis for the hour, then read another at it: two
     // chains in sequence.
     level: 1.6,
@@ -439,6 +445,8 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     ranked: 5,
     // A viewer, what it faces, where its head points, and a target.
     heading: 4,
+    // An anchor, two placements, and one closing the ring.
+    "twisted-seam": 4,
     // An event axis, an asked axis, and a pair two placements apart.
     level: 4,
     meet: 3,

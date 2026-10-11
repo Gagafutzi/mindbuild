@@ -120,5 +120,6 @@ import "./hidden-algebra.test";
 import "./minimal-premises.test";
 import "./coupling.test";
 import "./worldlines.test";
+import "./twist.test";
 
 run();

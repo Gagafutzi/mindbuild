@@ -311,6 +311,7 @@ const DIRECTION_LADDER: string[] = Object.freeze([
     "kinds",
     "walking-totals",
     "ranked",
+    "twisted-seam",
 ]) as string[];
 
 const SPACE_3D_LADDER: string[] = Object.freeze([
@@ -325,6 +326,7 @@ const SPACE_3D_LADDER: string[] = Object.freeze([
     "walking-totals",
     "ranked",
     "heading",
+    "twisted-seam",
 ]) as string[];
 
 /** Space 4D to 7D: the spaces with a time axis to couple through. */
@@ -342,6 +344,7 @@ const SPACE_ND_LADDER: string[] = Object.freeze([
     "walking-totals",
     "ranked",
     "heading",
+    "twisted-seam",
 ]) as string[];
 
 /**

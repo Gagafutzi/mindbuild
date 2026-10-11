@@ -171,3 +171,22 @@ export const ND_ANALOGY_NOTE =
     "Two relations are <b>the same</b> when they point the same way on every "
     + "dimension, and <b>opposite</b> when every direction is reversed. How far "
     + "apart things are does not matter.";
+
+/**
+ * A twisted ring's placements count columns, so the one-step rule is stated
+ * with its exception rather than left to contradict the card.
+ */
+export const TWIST_STEP_NOTE =
+    "Each premise is <b>one step</b> on every dimension it names, except round the ring,"
+    + " where it says how many.";
+
+/**
+ * The twist, and how a placement is read across it. The mirror is about the
+ * centre line, which is why the anchor names it: a reader who mirrors the step
+ * rather than the position carried across lands somewhere else.
+ */
+export const TWIST_NOTE = (plus: string, minus: string) =>
+    `Carried across the twist, ${plus} and ${minus} trade places, mirrored about the centre line;`
+    + " nothing else changes. A premise is walked from its reference, the way round it names,"
+    + ` and read where it lands — so one thing can be ${minus} of another one way round and`
+    + ` ${plus} of it the other.`;
