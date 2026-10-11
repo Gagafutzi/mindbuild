@@ -425,5 +425,57 @@ function kinship(lines, tau) {
   claim("three of a non-abelian law's 36 products can pin it among them all; two never can", three && !two);
 }
 
+/* ── Ternary codes: Ontological Deception's bead chain ── */
+{
+  const codes = [];
+  for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) for (let c = 0; c < 3; c++) codes.push([a, b, c]);
+  const as = f => codes.map(x => codes.findIndex(y => key(y) === key(f(x))));
+  const R = as(x => [x[2], x[1], x[0]]);           /* reverse: 102 <-> 201 */
+  const C = as(x => x.map(d => 2 - d));            /* At-Bash complement: 001 <-> 221 */
+  const S = as(x => x.map(d => (d + 1) % 3));      /* turn every digit: 201 -> 012 */
+  const G = closure([R, C, S], 27), at = g => G.findIndex(h => key(h) === key(g));
+  const orders = {}; G.forEach(g => { orders[order(g)] = (orders[order(g)] || 0) + 1; });
+  claim("reverse, complement and turn generate a non-abelian group of order 12 shaped like D6 (= Z2 x S3)",
+    G.length === 12 && !abelian(G) && key(Object.values(orders)) === "1,7,2,2" && key(Object.keys(orders)) === "1,2,3,6");
+  const RC = compose(R, C), centre = G.filter(g => G.every(h => commutes(g, h)));
+  const halfTurn = codes.every((x, i) => key(codes[RC[i]].map(d => d - 1)) === key([1 - x[2], 1 - x[1], 1 - x[0]]));
+  claim("the reversal is central and the complement is not; their product is a half-turn of the 3x3x3 cube",
+    centre.length === 2 && centre.some(g => key(g) === key(R)) && !commutes(C, S) && halfTurn);
+  const RS = compose(R, S);
+  claim("reverse then turn has order 6: done twice it turns every digit by two, and it never holds backwards",
+    order(RS) === 6 && key(compose(RS, RS)) === key(compose(S, S)) && codes.every((_, i) => RS[RS[i]] !== i));
+  const seen = new Set(), sizes = [], free = [];
+  codes.forEach((x, i) => {
+    if (seen.has(i)) return;
+    const orbit = new Set(G.map(g => g[i])); orbit.forEach(j => seen.add(j)); sizes.push(orbit.size);
+    if (orbit.size === 12) free.push(...[...orbit].map(j => codes[j]));
+  });
+  const oddAtEnd = x => new Set(x).size === 2 && (x[1] === x[0] || x[1] === x[2]);
+  claim("the 27 codes fall into orbits of 3, 12, 6 and 6; the only free one is the 12 with two digits, the odd one at an end",
+    key(sizes.sort((a, b) => a - b)) === "3,6,6,12" && free.length === 12 && free.every(oddAtEnd) && codes.filter(oddAtEnd).length === 12);
+  const autos = [];
+  for (const r of G) for (const c of G) for (const s of G) {
+    const img = new Map([[at(G[0].map((_, i) => i)), G[0].map((_, i) => i)]]), queue = [G[0].map((_, i) => i)];
+    let ok = true;
+    while (queue.length && ok) {
+      const g = queue.shift(), fg = img.get(at(g));
+      [[R, r], [C, c], [S, s]].forEach(([h, fh]) => {
+        const child = compose(g, h), fc = compose(fg, fh);
+        if (!img.has(at(child))) { img.set(at(child), fc); queue.push(child); }
+        else if (key(img.get(at(child))) !== key(fc)) ok = false;
+      });
+    }
+    if (ok && new Set([...img.values()].map(key)).size === 12) autos.push(img);
+  }
+  const conj = g => x => compose(compose(inverse(g), x), g);
+  const inner = new Set(G.map(g => key(G.map(x => at(conj(g)(x))))));
+  const outer = autos.filter(m => !inner.has(key(G.map(x => at(m.get(at(x)))))));
+  const classOf = x => new Set(G.map(g => key(conj(g)(x))));
+  const cls = classOf(C), hts = classOf(RC);
+  claim("it has 12 automorphisms, 6 inner and 6 outer; every outer one fixes the reversal and swaps the complements with the half-turns",
+    autos.length === 12 && inner.size === 6 && outer.length === 6 &&
+    outer.every(m => key(m.get(at(R))) === key(R) && [...cls].every(k => hts.has(key(m.get(at(G.find(g => key(g) === k))))))));
+}
+
 console.log(failed ? "\n" + failed + " claim(s) failed" : "\nall claims hold");
 process.exit(failed ? 1 : 0);

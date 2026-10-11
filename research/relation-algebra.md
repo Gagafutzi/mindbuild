@@ -19,7 +19,7 @@ that is built belongs there first (see the README). Claims worked out for
 these notes, rather than quoted from a source, are checked by brute force:
 
 ```bash
-node research/relation-algebra-checks.js     # 29 claims, about five seconds
+node research/relation-algebra-checks.js     # 34 claims, about five seconds
 ```
 
 ## The floor
@@ -208,7 +208,10 @@ relabelling **that respects composition**: an automorphism.
   automorphisms. Four are **inner**, a change of viewpoint: turn or mirror
   the observer. Four are **outer**, and every one of them swaps the edge
   mirrors with the diagonal flips, which no way of looking at the tile can
-  do. *Checked.*
+  do. *Checked.* The bead codes' group (D₆, in the
+  [substrates](#substrates-materials-the-proposals-run-on)) has twelve
+  automorphisms, six of them outer, and every outer one leaves the
+  reversal alone and swaps the complements with the half-turns. *Checked.*
 - **The task.** A few stated correspondences, given as composed relations
   ("Gold's word for how Red stands to Blue is *vesk*"), pin down the
   dictionary. Then complete an analogy or answer a question that crosses
@@ -220,6 +223,9 @@ relabelling **that respects composition**: an automorphism.
   is relations computed through nesting rather than pairs of entities, and
   the right dictionary may be **outer**, so spatial intuition cannot
   shortcut it. It clears 1, 4 and 5.
+- **Prior art.** Ontological Deception's Scale-Echo carries a law between
+  counts and sizes, with the dictionary given. Here the dictionary has to
+  be found, and it must respect composition.
 - **In the engine.** Find Aut(G) by brute force once (at most 8! maps for
   D₄), then relabel `say` and `code`.
 - **Lures:** the inner automorphism nearest the outer one; the dictionary
@@ -249,7 +255,9 @@ in the catalogue fits.
   It clears 1, 2 and 4.
 - **In the engine.** Every operation is already `pose.op` and `pose.inv`.
 - **Lures:** conjugation the wrong way round (`B⁻¹·A·B`); the inverse taken
-  for the mirror; two operations swapped.
+  for the mirror; two operations swapped; in the Second-Order version, the
+  example's own operation offered as the answer, the trap Ontological
+  Deception plants in its polar trials.
 
 ### 5. Routes on a curved surface — holonomy
 
@@ -471,6 +479,7 @@ non-abelian groups with real content, which is what 3, 4, 8 and 11 need.
 | Allies and rivals | ℤ₂ | Heider's balance theory (Cartwright & Harary 1956); either/or carries no information here | — |
 | Hexagons | ℤ² with six directions | the grid-cell lattice (Hafting et al. 2005; Constantinescu et al. 2016) | — |
 | Stems and branches | ℤ₆₀ inside ℤ₁₀ × ℤ₁₂ | only 60 of the 120 pairs occur | yes |
+| Ternary codes | reverse, complement (0 ↔ 2) and turn (+1) on the 27 three-digit codes: ℤ₂ × S₃ ≅ D₆, order 12 | Ontological Deception's bead chain. Two mirrors that are not one mirror relabelled: reversing commutes with everything, complementing does not, and together they make a half-turn of the 3×3×3 cube. Reverse-then-turn has order 6, so done twice it turns every digit by two, and it never holds backwards. Only the 12 codes with two digits, the odd one at an end, have no symmetry of their own, so only they can be objects | yes |
 
 Kinship sections are living cultural systems that vary (McConvell 2017).
 Use abstract section labels, and say where the structure comes from.
@@ -498,6 +507,76 @@ again:
   valued relations are Syllogimous's territory.
 - **Qualitative poses** (OPRA, Moratz 2006): comparable to Region
   Connection, and close enough to the band to revisit if 2 or 5 is built.
+
+## Borrowed from Ontological Deception
+
+[Ontological Deception](https://github.com/mike-stack1982364/Ontology) is
+a one-page reasoning game. Its current build (V20) is a loader: at page
+load it fetches an earlier build (V16, commit `05a4510`), rewrites its
+text and adds a scheduler. Each trial hides one "deception" among
+figures:
+
+- a pair carrying a named relation;
+- a cell that betrays its partner across a centre line;
+- two bead codes that mirror;
+- a false testimony;
+- a chain of gestures to enact or unwind;
+- a matrix to complete.
+
+Most of it is perception plus one relation, below the floor. Worth
+keeping:
+
+- **The bead codes, as a material.** The Bead Chain asks for two codes
+  that mirror, in three senses:
+  - reversed (102 ↔ 201);
+  - reversed, then every digit turned by one (102 → 012);
+  - complemented digit by digit, 0 ↔ 2 (001 ↔ 221).
+
+  Its top lie is answering one mirror with the other. Together the three
+  generate a group of order 12 shaped like D₆ (in the
+  [substrates](#substrates-materials-the-proposals-run-on)). Two of its
+  facts are ready-made traps: the turned mirror is not undone by doing it
+  again, and no relabelling turns one mirror into the other.
+- **The planted law.** Its polar trials show an example pair, ask for the
+  pair carrying that law's mirror, and offer the example's own law as the
+  trap. That is now a lure in 4.
+- **A law in another register.** Its Scale-Echo is prior art for 3.
+- **Lures aimed at the player.** Every wrong option is one of twelve
+  named lies, the feedback names the one taken, and from level 9 the
+  generator serves the lies a player falls for most. Relation Algebra
+  names its traps (`TRAP` in the trainer) but never aims them. Worth
+  copying, with two guards:
+  - log that an item was aimed;
+  - leave aimed items out of the level's calibration, since they are
+    harder by design.
+- **A fixed probe before and after.** Its Gauge is two fixed forms, not
+  adaptive and without feedback, one taken before a block of training and
+  one after. You trust the change between forms, not the level. That is
+  the concrete form of the [honest caveat](#what-cognitive-science-says).
+  Two additions:
+  - build both forms from the same item specifications with different
+    seeds;
+  - counterbalance which form comes first,
+
+  so the change it measures is not the difference between the forms.
+
+Left out:
+
+- **The 27-cell curriculum** (nine operations × three frames, after B.
+  Woodson). Within a pair, field, bead or testimony trial the frame
+  changes nothing. It only shifts which kind of trial is picked, and the
+  details of gesture and weave trials. The cells label what was
+  generated; they are not separate demands.
+- **Enacting a chain of gestures and unwinding it**: one inverse of a
+  composite, which cube routes already asks (`R<walk>⌂?`).
+- **The stranger thread and the field's traitor**: each thread or pair
+  gives its rule directly, and the task is comparing them. That is the
+  single-composition case in the list above.
+- **The weave** (Raven-style matrix completion): a different task family,
+  with weak evidence of transfer.
+- **The provenance**, Stan Tenen's Meru Foundation readings of the Hebrew
+  alphabet. The game itself uses it "as design structure, not endorsed
+  cosmology", and nothing here depends on it.
 
 ---
 
@@ -559,6 +638,11 @@ and `TIERS_MATRIX` (`constants/game.constants.ts`), and the headers of
 `hidden-algebra.ts`, `projection.ts`, `minimal-premises.ts`,
 `second-order.ts` and `pivot-transforms.ts`.
 
+**Read from GitHub:**
+[mike-stack1982364/Ontology](https://github.com/mike-stack1982364/Ontology),
+the V20 loader (`index.html`) and the V16 build it patches (commit
+`05a4510`), decoded and read, not run.
+
 **Computed for these notes** (`research/relation-algebra-checks.js`, which
 uses the trainer's own `square` group where it applies):
 
@@ -578,6 +662,8 @@ uses the trainer's own `square` group where it applies):
 - The Mermin–Peres square is impossible, and minimally so.
 - PLR and T/I; Kariera and the Aranda-type model; the commas; the cube's
   rotation group; D₄'s commutators; the sexagenary cycle.
+- The bead codes' group: its order and shape (D₆), its centre, its orbits
+  on the 27 codes, the order of reverse-then-turn, and its automorphisms.
 
 **Found and checked in this pass:**
 
