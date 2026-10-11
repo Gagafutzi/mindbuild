@@ -54,6 +54,91 @@ export const ONE_STEP_NOTE =
     "Each premise is <b>one step</b> on every dimension it names.";
 
 /**
+ * Stated wherever a premise can leave a dimension out without meaning "level".
+ *
+ * `COMPACT_NOTE` says the opposite, and the two never share an item. Without
+ * one of them a missing clause is ambiguous, and on a bridged item the reading
+ * matters: the cut is a clause left out, and taking it as "same" makes the
+ * bridge look redundant.
+ */
+export const UNNAMED_NOTE =
+    "A dimension a premise does <b>not name</b> is unknown.";
+
+/**
+ * Stated on every bridged item.
+ *
+ * "As many steps east as later" is the one premise shape that compares sizes
+ * across dimensions, and its size is not written anywhere: it is the gap the
+ * second pair turns out to have.
+ */
+/**
+ * Stated on every clocked item, with the two direction words passed in marked
+ * as relations, so a relabelled card names them the way its premises do.
+ *
+ * The rule is the whole item: a marked premise's time clause is a difference
+ * of local readings, and a local reading is the station time plus the clock's
+ * own offset. Without it the marks are noise.
+ */
+export const CLOCK_NOTE = (east: string, later: string) =>
+    `Clocks are <b>local</b>: at the same moment, a clock one step ${east} of another reads`
+    + ` one step ${later}. Premises marked <b>by local clocks</b> give each time as read where`
+    + ` that thing is; the rest use the station clock.`;
+
+/**
+ * The light cone's rule, with the travel directions passed in marked as
+ * relations. The boundary case is stated because it decides items: arriving
+ * exactly on time is the commonest near miss, and either reading of it is
+ * defensible until one is written down.
+ */
+export const CONE_NOTE = (travel: string, inert: string) =>
+    "Each name is a bell ringing at a place and a moment. A ring travels <b>one step a"
+    + ` minute</b>, only ${travel}, one step at a time${inert}. A ring reaches a bell if`
+    + " it gets there by the moment that bell rings \u2014 <b>arriving exactly then counts</b>.";
+
+/** The one-step convention, with the cone's minutes excepted. */
+export const ONE_STEP_MINUTES_NOTE =
+    "Each premise is <b>one step</b> on every dimension it names, except time, which it gives"
+    + " in <b>minutes</b>.";
+
+export const SIGNAL_NOTE =
+    "\u201cRang the moment X\u2019s ring reached it\u201d means it rang exactly when a ring"
+    + " from X, travelling as above, would arrive.";
+
+export const REACH_NOTE =
+    "\u201cRang only after X\u2019s ring had reached it\u201d means it rang then or later"
+    + " \u2014 how much later is not said. A claim counts as true only if it holds"
+    + " <b>however much later</b>.";
+
+/**
+ * Kind frames: the rule, with the words it exchanges passed in marked as
+ * relations, and the reckoning convention without which the rule is moot.
+ */
+export const KIND_NOTE = (exchange: string, same: string, opposite: string) =>
+    `Everything is one of two kinds \u2014 the premises say ${same} or ${opposite} \u2014 and`
+    + ` the two reckon directions differently: ${exchange}. Every relation is in the`
+    + ` <b>reckoning of the one it is relative to</b>.`;
+
+/**
+ * A total breaks the one-step rule for its own premise, and has to say so —
+ * otherwise "6 steps in all" reads as a contradiction of the note above it.
+ */
+export const WALK_NOTE = (uncounted: boolean) =>
+    "\u201cN steps in all\u201d counts every step on every dimension, whichever way it goes;"
+    + " that premise is <b>not</b> one step per dimension, and gives each one\u2019s direction only."
+    + (uncounted ? " A loop or a kind is stated as usual and not counted in the total." : "");
+
+/** What the nearer question counts, where the stack has axes it does not. */
+export const NEAREST_NOTE = (parity: boolean, loop: boolean) =>
+    "Every step on every dimension counts towards being near, whichever way it goes."
+    + (loop ? " On a loop, count the short way round." : "")
+    + (parity ? " Kind is not a distance and does not count." : "");
+
+export const BRIDGE_NOTE =
+    "A premise saying one pair is <b>as many steps</b> apart on one dimension as"
+    + " another pair is on a different one means the two gaps are the same size"
+    + " \u2014 however large the second one turns out to be.";
+
+/**
  * Stated whenever operations move objects around a composed space.
  *
  * Distinct from EDIT_NOTE on purpose — the two look similar and mean opposite

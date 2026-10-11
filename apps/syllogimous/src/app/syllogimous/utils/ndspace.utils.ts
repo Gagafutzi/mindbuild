@@ -57,6 +57,23 @@ export interface AxisSpec {
      * anything.
      */
     modulus?: number;
+    /**
+     * This axis is read on local clocks set by another one: a marked premise
+     * states `value + rate × zone(source)` rather than the value itself.
+     *
+     * The one axis property that is not a relabelling. Every map elsewhere —
+     * rotations, axis maps, frames — sends one source axis to one target, so
+     * after undoing it the columns are independent again. A shear feeds one
+     * stated clause into two axes, and only on the premises that are marked,
+     * so no global change of basis separates them. See `zoneOf`.
+     */
+    local?: { source: number; rate: number };
+    /**
+     * Steps on this axis are stated as counts of `unit` rather than as one
+     * step each: "3 min later". The light cone needs it — time is a budget
+     * the spatial steps are paid out of, and a budget of one is no budget.
+     */
+    stride?: { unit: string };
 }
 
 export function isCircular(axis: AxisSpec): boolean {
@@ -265,6 +282,27 @@ export interface NdEdge {
      * clauses that carry a real difference, and says nothing in their place.
      */
     stated?: boolean[];
+    /**
+     * Stated by local clocks: the clause on an axis with `local` set gives the
+     * reading where each thing is, not the station clock's. `deltas` stay the
+     * real ones, so everything that walks the edges — positions, determinacy,
+     * depth — is unchanged; only what is printed differs.
+     */
+    local?: boolean;
+    /**
+     * A light-cone premise whose time is not stated but derived from the
+     * distance: `signal` rang the moment the other's ring arrived (the gap is
+     * the distance exactly), `reach` rang only after it had (the gap is at
+     * least the distance). The hearer is whichever end rang later.
+     */
+    form?: "signal" | "reach";
+    /**
+     * Which end the premise is said relative to, when that has to be fixed at
+     * build time rather than drawn as it is printed: under kind frames the
+     * reference's reckoning decides what the words mean, and the derivation
+     * has to name the same reference the card did.
+     */
+    flip?: boolean;
 }
 
 export interface NdLayout {
@@ -275,6 +313,78 @@ export interface NdLayout {
     edges: NdEdge[];
     neighbors: Record<string, string[]>;
     branching: boolean;
+    /**
+     * Premises that tie one axis to another. Absent on every layout that is
+     * not built for a coupling rung, which is what keeps the axes independent
+     * — and what anything reasoning about determinacy must read, or it will
+     * call a coupled pair open.
+     */
+    couplings?: NdCoupling[];
+    /**
+     * Which clock the coordinates on a `local` axis are read on. Absent means
+     * the station clock, which is what the edges sum to; "local" adds each
+     * object's own zone, and is what a question asked by local clocks is
+     * answered from.
+     */
+    reading?: "station" | "local";
+    /**
+     * Two kinds that reckon directions differently. Every relation is in the
+     * reckoning of the object it is relative to, and an object of kind 1 reads
+     * every displacement through `rule` — `mirror` reverses `axes[0]`, `swap`
+     * exchanges `axes[0]` and `axes[1]`. Kind is the object's class on the
+     * `parity` axis. `fixed` makes every reference that kind, which is how a
+     * reader who ignores kinds is modelled.
+     *
+     * Coordinates and edges stay in kind 0's reckoning throughout, so width,
+     * colours, determinacy and the map are untouched; only what a relation
+     * *says* passes through `relDelta`.
+     */
+    frames?: { parity: number; rule: "mirror" | "swap"; axes: number[]; fixed?: 0 | 1 };
+}
+
+/**
+ * "R is as many steps east of B as G is later than H."
+ *
+ * The gap on `axis` between `r` and `b` equals, in size, the gap on `via`
+ * between `g` and `h`, with `g` always on the positive side of `h`. So
+ * x_r − x_b = sign · (y_g − y_h). The size is never stated: it is whatever the
+ * `via` axis accumulates to, so that axis has to be finished before this one
+ * can use it.
+ */
+export interface NdBridge {
+    kind: "bridge";
+    r: string;
+    b: string;
+    axis: number;
+    g: string;
+    h: string;
+    via: number;
+    sign: 1 | -1;
+}
+
+/**
+ * "A is same longitude, south, above and earlier relative to B, 6 steps in
+ * all": a direction on every axis and one total across the straight ones.
+ *
+ * The signs are stated and the sizes are not, so the total is one linear
+ * equation, Σ |a_i − b_i| = total over the straight axes. Once every straight
+ * axis but one is settled between the pair, the last is what the total has
+ * left — so `axis` (the one the item cuts) is closed through all the others.
+ */
+export interface NdTotal {
+    kind: "total";
+    a: string;
+    b: string;
+    total: number;
+    axis: number;
+}
+
+/** Every premise kind that couples axes; `closeAxes` reads them all. */
+export type NdCoupling = NdBridge | NdTotal;
+
+/** Axes a total counts: ordered, unbounded lines. */
+export function countedAxes(axes: AxisSpec[]): number[] {
+    return axes.map((a, i) => (isCircular(a) || isParity(a) ? -1 : i)).filter(i => i >= 0);
 }
 
 const pick = <T>(xs: T[]): T => xs[Math.floor(Math.random() * xs.length)];
@@ -403,7 +513,7 @@ export function applyNdEdits(layout: NdLayout, edits: NdEdit[]): NdLayout {
 }
 
 /** Walk the tree from an arbitrary root, accumulating each axis. */
-function coordsFromEdges(layout: NdLayout, edges: NdEdge[]): Record<string, number[]> {
+export function coordsFromEdges(layout: NdLayout, edges: NdEdge[]): Record<string, number[]> {
     const { words, axes } = layout;
     const coords: Record<string, number[]> = { [words[0]]: axes.map(() => 0) };
     const byNode = new Map<string, Array<{ other: string; deltas: number[]; sign: number }>>();
@@ -645,32 +755,79 @@ export function describeNdAxes(axes: AxisSpec[]): string {
  * ties together, and — the axes being unbounded, or a ring with no stated
  * offset — every relation between them is satisfiable by some arrangement.
  *
- * So the whole question is per-axis connectivity, which is why this needs no
- * model enumeration. Under-specification is usually expensive to reason about;
- * here the structure of the premise set does the work.
+ * So the whole question is connectivity, which is why this needs no model
+ * enumeration. Under-specification is usually expensive to reason about; here
+ * the structure of the premise set does the work. It is per-axis connectivity
+ * *plus the couplings*: a bridge joins two groups on one axis through a gap on
+ * another, and `closeAxes` is where that is read.
  */
 export function determinedOn(layout: NdLayout, axis: number, a: string, b: string): boolean {
     if (a === b) return true;
+    const closed = closeAxes(layout)[axis];
+    return closed.find(a) === closed.find(b);
+}
 
-    const near: Record<string, string[]> = {};
-    for (const e of layout.edges) {
-        if (e.stated && !e.stated[axis]) continue;
-        (near[e.from] ??= []).push(e.to);
-        (near[e.to] ??= []).push(e.from);
+/** Union-find over one axis's objects. */
+export class AxisGroups {
+    private parent = new Map<string, string>();
+    constructor(words: string[]) { for (const w of words) this.parent.set(w, w); }
+    find(w: string): string {
+        let p = this.parent.get(w) ?? w;
+        while (p !== (this.parent.get(p) ?? p)) p = this.parent.get(p) ?? p;
+        this.parent.set(w, p);
+        return p;
     }
+    /** True when this joined two groups that were apart. */
+    join(a: string, b: string): boolean {
+        const ra = this.find(a), rb = this.find(b);
+        if (ra === rb) return false;
+        this.parent.set(ra, rb);
+        return true;
+    }
+}
 
-    const seen = new Set([a]);
-    const queue = [a];
-    while (queue.length) {
-        const cur = queue.shift()!;
-        for (const n of near[cur] ?? []) {
-            if (n === b) return true;
-            if (seen.has(n)) continue;
-            seen.add(n);
-            queue.push(n);
+/**
+ * Which objects each axis ties together, couplings included.
+ *
+ * Per axis first: a premise that names the axis joins its two objects on it.
+ * Then a fixpoint over the couplings, because a bridge is conditional — it
+ * joins `r` and `b` on its axis only once `g` and `h` are joined on `via`, and
+ * that may itself depend on another bridge (the cascade form). Loop until
+ * nothing changes; each pass joins at least two groups or stops, so it ends.
+ *
+ * The one reader of determinacy. `determinedOn`, and through it
+ * `indeterminatePairs` and the strict conclusion pickers, all ask this — a
+ * second copy that ignored couplings would call a bridged pair open and grade
+ * a true claim false under the indeterminate rung.
+ */
+export function closeAxes(layout: NdLayout): AxisGroups[] {
+    const groups = layout.axes.map(() => new AxisGroups(layout.words));
+    for (const e of layout.edges) {
+        layout.axes.forEach((_, ax) => {
+            if (!e.stated || e.stated[ax]) groups[ax].join(e.from, e.to);
+        });
+    }
+    for (let changed = true; changed;) {
+        changed = false;
+        for (const c of layout.couplings ?? []) {
+            if (c.kind === "bridge") {
+                if (groups[c.via].find(c.g) !== groups[c.via].find(c.h)) continue;
+                if (groups[c.axis].join(c.r, c.b)) changed = true;
+                continue;
+            }
+            // A total: its stated facts first — a tie on a counted axis is a
+            // gap of nothing, and a loop's or a kind's clause is stated whole —
+            // then whichever counted axis alone is left open.
+            const counted = countedAxes(layout.axes);
+            layout.axes.forEach((_, i) => {
+                const level = relDelta(layout, c.a, c.b)[i] === 0;
+                if ((!counted.includes(i) || level) && groups[i].join(c.a, c.b)) changed = true;
+            });
+            const open = counted.filter(i => groups[i].find(c.a) !== groups[i].find(c.b));
+            if (open.length === 1 && groups[open[0]].join(c.a, c.b)) changed = true;
         }
     }
-    return false;
+    return groups;
 }
 
 /**
@@ -717,15 +874,645 @@ export function withholdClauses(layout: NdLayout, count: number): NdLayout {
 /** Pairs and axes this layout leaves open, and those it pins down. */
 export function indeterminatePairs(layout: NdLayout): Array<{ a: string; b: string; axis: number }> {
     const out: Array<{ a: string; b: string; axis: number }> = [];
+    // Closed once rather than per pair; `determinedOn` is the same reading.
+    const closed = closeAxes(layout);
     for (let i = 0; i < layout.words.length; i++) {
         for (let j = i + 1; j < layout.words.length; j++) {
             layout.axes.forEach((_, ax) => {
-                if (!determinedOn(layout, ax, layout.words[i], layout.words[j])) {
+                if (closed[ax].find(layout.words[i]) !== closed[ax].find(layout.words[j])) {
                     out.push({ a: layout.words[i], b: layout.words[j], axis: ax });
                 }
             });
         }
     }
+    return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Bridges — one axis's gap given by another's                         *
+ * ------------------------------------------------------------------ */
+
+/** Axes a bridge may use at either end: ordered, unbounded lines. */
+function bridgeableAxes(layout: NdLayout): number[] {
+    return layout.axes
+        .map((a, i) => (isCircular(a) || isParity(a) ? -1 : i))
+        .filter(i => i >= 0);
+}
+
+/**
+ * Cut one axis in two and join it again through another axis.
+ *
+ * The cut is one withheld clause — the indeterminate rung's machinery, put to
+ * the opposite use: the axis *looks* open to anyone carrying it on its own, and
+ * is in fact closed through a second axis. Both sides keep at least two
+ * objects, or there is no pair across the cut except the bridge's own.
+ *
+ * The bridge spans at least two steps on its own axis, so that reading it as
+ * one ordinary step gives a different answer, and its source gap is at least
+ * two premises long, so that gap has to be derived rather than read off one
+ * sentence. Circular and parity axes are excluded at both ends: a ring has no
+ * size of gap to equal and a parity axis has no gap at all.
+ *
+ * Returns null when this layout has no such bridge; the caller draws another.
+ */
+export function drawBridge(layout: NdLayout): NdLayout | null {
+    const straight = bridgeableAxes(layout);
+    if (straight.length < 2) return null;
+    const c = layout.coords;
+
+    for (const X of shuffled(straight)) {
+        const edges = layout.edges.map(e => ({
+            ...e,
+            deltas: [...e.deltas],
+            stated: e.stated ? [...e.stated] : layout.axes.map(() => true),
+        }));
+        const cuttable = shuffled(edges.filter(e => e.deltas[X] !== 0 && e.stated[X]));
+
+        for (const cut of cuttable) {
+            cut.stated[X] = false;
+            const groups = closeAxes({ ...layout, edges, couplings: [] })[X];
+            const side = (w: string) => groups.find(w) === groups.find(cut.from);
+            const near = layout.words.filter(side);
+            const far = layout.words.filter(w => !side(w));
+            // A tree loses exactly one link on X, so exactly two sides — unless
+            // the layout had withheld something already, which this does not
+            // stack on.
+            const roots = new Set(layout.words.map(w => groups.find(w)));
+            if (roots.size !== 2 || near.length < 2 || far.length < 2) {
+                cut.stated[X] = true;
+                continue;
+            }
+
+            const options: NdBridge[] = [];
+            for (const r of layout.words) {
+                for (const b of side(r) ? far : near) {
+                    const d = c[r][X] - c[b][X];
+                    if (Math.abs(d) < 2) continue;
+                    for (const Y of straight) {
+                        if (Y === X) continue;
+                        for (const g of layout.words) {
+                            for (const h of layout.words) {
+                                if (g === h || c[g][Y] - c[h][Y] !== Math.abs(d)) continue;
+                                if (graphDistance(g, h, layout.neighbors) < 2) continue;
+                                if (new Set([r, b, g, h]).size < 3) continue;
+                                options.push({ kind: "bridge", r, b, axis: X, g, h, via: Y,
+                                    sign: d > 0 ? 1 : -1 });
+                            }
+                        }
+                    }
+                }
+            }
+            if (!options.length) {
+                cut.stated[X] = true;
+                continue;
+            }
+            return { ...layout, edges, couplings: [pick(options)] };
+        }
+    }
+    return null;
+}
+
+/**
+ * The layout as a reader would build it who misread the bridge.
+ *
+ * `one-step` takes the bridge as an ordinary premise — one step in the
+ * direction it names — and `reversed` takes its direction the wrong way round.
+ * Either moves the far side of the cut as a block, so every pair across it
+ * comes out shifted and every pair within a side is untouched. These are what
+ * the conclusion is required to disagree with, which is what makes every form
+ * of question need the bridge rather than only the one that names its pair.
+ */
+export function bridgeReading(layout: NdLayout, how: "one-step" | "reversed"): NdLayout {
+    const bridge = layout.couplings?.find((c): c is NdBridge => c.kind === "bridge");
+    if (!bridge) return layout;
+    const X = bridge.axis;
+    const d = layout.coords[bridge.r][X] - layout.coords[bridge.b][X];
+    const shift = how === "one-step" ? bridge.sign - d : -2 * d;
+
+    // The side of the cut `r` is on, by the stated premises alone.
+    const groups = closeAxes({ ...layout, couplings: [] })[X];
+    const coords: Record<string, number[]> = {};
+    for (const w of layout.words) {
+        coords[w] = [...layout.coords[w]];
+        if (groups.find(w) === groups.find(bridge.r)) coords[w][X] += shift;
+    }
+    return { ...layout, coords };
+}
+
+/**
+ * A coupling premise, each half painted in its own axis's colour.
+ *
+ * The direction words sit in spans of their own, exactly as a premise clause
+ * does, so a reader finds the two axes by colour and the relabelling pass
+ * rewrites them like any other — "as many steps" is the one new phrase, and it
+ * names no axis.
+ */
+export function renderNdCoupling(layout: NdLayout, coupling: NdCoupling): string {
+    const colors = ndAxisColors(layout.axes);
+    if (coupling.kind === "total") {
+        // The relation as a premise words it, every axis named, then the total.
+        return `${subj(coupling.a)} is ${relationClauses(layout, coupling.a, coupling.b).join(", ")}`
+            + ` relative to ${subj(coupling.b)}, <b>${coupling.total} steps in all</b>`;
+    }
+    const x = layout.axes[coupling.axis].scale;
+    const y = layout.axes[coupling.via].scale;
+    const linked = (scale: LinearScale, word: string, color: string) =>
+        hi(word, color) + (scale.link ? ` ${scale.link}` : "");
+    const xWord = x.direction[coupling.sign > 0 ? 0 : 1];
+    return `${subj(coupling.r)} is as many ${x.unit}s `
+        + `${linked(x, xWord, colors[coupling.axis])} ${subj(coupling.b)}`
+        + ` as ${subj(coupling.g)} is ${linked(y, y.direction[0], colors[coupling.via])} ${subj(coupling.h)}`;
+}
+
+/**
+ * How many relations the derivation of `a` against `b` composes, on one axis
+ * or — with none named — the deepest axis.
+ *
+ * On an uncoupled layout this is the tree distance. A bridge is one premise,
+ * but using it means first deriving its source gap, so crossing it costs one
+ * plus that gap's own derivation: the X path, the bridge, and the Y path.
+ */
+export function ndPairDepth(layout: NdLayout, a: string, b: string, axis?: number): number {
+    if (axis == null) {
+        return Math.max(...layout.axes.map((_, i) => ndPairDepth(layout, a, b, i)));
+    }
+    if (a === b) return 0;
+    const links = (w: string): Array<[string, number]> => {
+        const out: Array<[string, number]> = [];
+        for (const e of layout.edges) {
+            if (e.stated && !e.stated[axis]) continue;
+            if (e.from === w) out.push([e.to, 1]);
+            if (e.to === w) out.push([e.from, 1]);
+        }
+        for (const c of layout.couplings ?? []) {
+            if (c.axis !== axis) continue;
+            const [p, q] = c.kind === "bridge" ? [c.r, c.b] : [c.a, c.b];
+            const other = p === w ? q : q === w ? p : null;
+            if (!other) continue;
+            const without = { ...layout, couplings: layout.couplings!.filter(k => k !== c) };
+            // A bridge needs its source gap first; a total needs every other
+            // counted axis between the same pair.
+            const source = c.kind === "bridge"
+                ? ndPairDepth(without, c.g, c.h, c.via)
+                : Math.max(0, ...countedAxes(layout.axes).filter(i => i !== axis)
+                    .map(i => ndPairDepth(without, c.a, c.b, i)));
+            if (Number.isFinite(source)) out.push([other, 1 + source]);
+        }
+        return out;
+    };
+
+    // Dijkstra over a handful of objects; a linear scan for the minimum is fine.
+    const dist = new Map<string, number>([[a, 0]]);
+    const done = new Set<string>();
+    while (true) {
+        let cur: string | null = null;
+        for (const [w, d] of dist) if (!done.has(w) && (cur == null || d < dist.get(cur)!)) cur = w;
+        if (cur == null) return Infinity;
+        if (cur === b) return dist.get(b)!;
+        done.add(cur);
+        for (const [n, cost] of links(cur)) {
+            const via = dist.get(cur)! + cost;
+            if (via < (dist.get(n) ?? Infinity)) dist.set(n, via);
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ *
+ * Local clocks — a shear between two axes                             *
+ * ------------------------------------------------------------------ */
+
+/** The axis read on local clocks, if any, and what sets them. */
+export function clockAxes(layout: { axes: AxisSpec[] }): { target: number; source: number; rate: number } | null {
+    const target = layout.axes.findIndex(a => a.local);
+    if (target < 0) return null;
+    return { target, ...layout.axes[target].local! };
+}
+
+/**
+ * Which zone an object's clock is set by.
+ *
+ * On a straight source axis, its position: only differences ever matter, so
+ * where zero sits is immaterial. On a looped one, its position counted from
+ * the date line, 1 to m — absolute, because crossing the line is where a
+ * clock jumps back, and a difference of positions cannot see that.
+ */
+export function zoneOf(layout: NdLayout, w: string, source: number): number {
+    const v = layout.coords[w][source];
+    return isCircular(layout.axes[source]) ? mod(v, layout.axes[source].modulus!) + 1 : v;
+}
+
+/** What a premise states on one axis: the real step, or its local reading. */
+export function statedDelta(layout: NdLayout, edge: NdEdge, axis: number): number {
+    const clock = layout.axes[axis].local;
+    if (!edge.local || !clock) return edge.deltas[axis];
+    return edge.deltas[axis]
+        + clock.rate * (zoneOf(layout, edge.to, clock.source) - zoneOf(layout, edge.from, clock.source));
+}
+
+/**
+ * Re-read some of a layout's premises as local-clock readings.
+ *
+ * The drawn unit steps become what the marked premises *say*, and the real
+ * steps are worked back from them: real = stated − rate × (zone change). So
+ * every printed clause stays one step, as the one-step note promises, and the
+ * real arrangement is whatever those readings imply. The literal reader's
+ * model — every clause taken at face value — is then exactly the layout that
+ * was drawn, which is what makes it a lure that can be checked.
+ *
+ * Marked and unmarked premises are mixed, at least one of each where there
+ * are two: if every premise were marked the correction would telescope to the
+ * two ends of the question, and the item would be one subtraction at the end
+ * rather than a running total carried through the marked premises only.
+ */
+export function skewEdges(drawn: NdLayout, target: number, source: number, rate = 1): NdLayout {
+    const axes = drawn.axes.map((a, i) => (i === target ? { ...a, local: { source, rate } } : a));
+    const marks = drawn.edges.map(() => Math.random() < 0.5);
+    if (drawn.edges.length >= 2) {
+        if (marks.every(m => !m)) marks[Math.floor(Math.random() * marks.length)] = true;
+        if (marks.every(m => m)) marks[Math.floor(Math.random() * marks.length)] = false;
+    }
+    // Zones come from the source axis, which the skew never changes.
+    const zones = (w: string) => zoneOf({ ...drawn, axes }, w, source);
+    const edges: NdEdge[] = drawn.edges.map((e, i) => {
+        if (!marks[i]) return { ...e, deltas: [...e.deltas] };
+        const deltas = [...e.deltas];
+        deltas[target] = e.deltas[target] - rate * (zones(e.to) - zones(e.from));
+        return { ...e, deltas, local: true };
+    });
+    const layout: NdLayout = { ...drawn, axes, edges };
+    return { ...layout, coords: coordsFromEdges(layout, edges) };
+}
+
+/**
+ * A clocked layout as some reader would build it.
+ *
+ * `literal` takes every clause at face value — the per-axis reading, which
+ * never lets the time column see the east one. `wrong-way` corrects in the
+ * wrong direction; `no-date-line` corrects by the step on the source axis, as
+ * though the loop had no line on it; `all-corrected` corrects the unmarked
+ * premises too. The coordinates are real-time ones, so `inReading` can put
+ * any of them into the clock the question asks about.
+ */
+export type ClockMisreading = "literal" | "wrong-way" | "no-date-line" | "all-corrected";
+
+export function clockModel(layout: NdLayout, how: ClockMisreading): NdLayout {
+    const clock = clockAxes(layout);
+    if (!clock) return layout;
+    const { target, source, rate } = clock;
+    const zones = (w: string) => zoneOf(layout, w, source);
+    const edges = layout.edges.map(e => {
+        const said = statedDelta(layout, e, target);
+        const shift = zones(e.to) - zones(e.from);
+        const deltas = [...e.deltas];
+        deltas[target] =
+            how === "literal" ? said
+            : how === "all-corrected" ? said - rate * shift
+            : !e.local ? said
+            : how === "wrong-way" ? said + rate * shift
+            : said - rate * e.deltas[source];
+        return { ...e, deltas };
+    });
+    return { ...layout, edges, coords: coordsFromEdges(layout, edges) };
+}
+
+/** The same layout with the clocked axis read on the clock asked about. */
+export function inReading(layout: NdLayout, reading: "station" | "local"): NdLayout {
+    const clock = clockAxes(layout);
+    if (!clock || reading === "station") return { ...layout, reading: "station" };
+    const coords: Record<string, number[]> = {};
+    for (const w of layout.words) {
+        coords[w] = [...layout.coords[w]];
+        coords[w][clock.target] += clock.rate * zoneOf(layout, w, clock.source);
+    }
+    return { ...layout, coords, reading: "local" };
+}
+
+/**
+ * Where the date line is, as one object's zone.
+ *
+ * Steps fix every zone relative to every other, and only up to the loop; one
+ * absolute zone pins them all. Without it a clocked premise that crosses the
+ * line cannot be told from one that does not.
+ */
+export function renderZoneAnchor(layout: NdLayout, source: number): string {
+    const w = layout.words[Math.floor(Math.random() * layout.words.length)];
+    const axis = layout.axes[source];
+    const color = ndAxisColors(layout.axes)[source];
+    return `${subj(w)} is in zone ${zoneOf(layout, w, source)} of ${axis.modulus},`
+        + ` counting ${hi(axis.scale.cyclic!.direction[0], color)} from the date line`;
+}
+
+/* ------------------------------------------------------------------ *
+ * The light cone — time as a travel budget                            *
+ * ------------------------------------------------------------------ */
+
+/** Axes a ring travels along. Height counts; size, amount and kind do not. */
+const TRAVEL_IDS = new Set(["east", "north", "up", "vertical", "horizontal"]);
+
+/**
+ * The time axis and the axes a ring travels along, if this stack has a cone.
+ *
+ * A straight time axis and at least two straight travel axes. Any travel axis
+ * bent into a loop rules it out: distance on a ring is the short way round,
+ * and a rule stated in steps east would then be wrong on the item it governs.
+ */
+export function coneAxes(axes: AxisSpec[]): { time: number; space: number[] } | null {
+    const time = axes.findIndex(a => a.scale.id === "temporal" && !isCircular(a) && !isParity(a));
+    const travel = axes.map((a, i) => (TRAVEL_IDS.has(a.scale.id) ? i : -1)).filter(i => i >= 0);
+    if (time < 0 || travel.length < 2 || travel.some(i => isCircular(axes[i]))) return null;
+    return { time, space: travel };
+}
+
+/** Steps a ring needs from `a` to `b`: taxicab, one travel axis at a time. */
+export function travelSteps(layout: NdLayout, a: string, b: string): number {
+    const cone = coneAxes(layout.axes)!;
+    return cone.space.reduce((t, i) => t + Math.abs(layout.coords[b][i] - layout.coords[a][i]), 0);
+}
+
+/** The objects along the route the premises give, ends included. */
+export function routePath(layout: NdLayout, a: string, b: string): string[] {
+    return pathBetween(layout, a, b) ?? [];
+}
+
+/** Steps summed premise by premise along the route the premises give. */
+export function routeSteps(layout: NdLayout, a: string, b: string): number {
+    const path = pathBetween(layout, a, b) ?? [];
+    let total = 0;
+    for (let i = 0; i < path.length - 1; i++) total += edgeSteps(layout, edgeBetween(layout, path[i], path[i + 1])!.edge);
+    return total;
+}
+
+/** The premise forms on that route. */
+export function routeForms(layout: NdLayout, a: string, b: string): Array<NdEdge["form"]> {
+    const path = pathBetween(layout, a, b) ?? [];
+    return path.slice(1).map((w, i) => edgeBetween(layout, path[i], w)!.edge.form);
+}
+
+/** The same along one premise, from its own steps. */
+export function edgeSteps(layout: NdLayout, edge: NdEdge): number {
+    const cone = coneAxes(layout.axes)!;
+    return cone.space.reduce((t, i) => t + Math.abs(edge.deltas[i]), 0);
+}
+
+/**
+ * A layout re-timed for the cone.
+ *
+ * Time steps are drawn from −1 to 4 minutes rather than ±1, so a gap sits near
+ * the distance it is compared with and the answers are not all "no". Then
+ * `kind` turns some premises into signal or reach premises, whose time is the
+ * distance exactly or at least the distance, on the hearer's side. Those need
+ * a premise that actually moves along a travel axis; a ring arriving from the
+ * same spot says nothing.
+ *
+ * A reach premise's time clause is withheld (`stated` false on time), which is
+ * exactly what makes it a bound: `closeAxes` then reads time across it as
+ * open, and the conclusion has to be settled from one side.
+ */
+export function coneLayout(
+    drawn: NdLayout, kind: "cone" | "signal" | "reach", count: number,
+): NdLayout | null {
+    const cone = coneAxes(drawn.axes);
+    if (!cone) return null;
+    const axes = drawn.axes.map((a, i) => (i === cone.time ? { ...a, stride: { unit: "min" } } : a));
+    const edges: NdEdge[] = drawn.edges.map(e => {
+        const deltas = [...e.deltas];
+        deltas[cone.time] = Math.floor(Math.random() * 6) - 1;
+        return { ...e, deltas, stated: e.stated ? [...e.stated] : undefined };
+    });
+    if (kind !== "cone") {
+        const movers = shuffled(edges.filter(e => cone.space.some(i => e.deltas[i] !== 0)));
+        // Never every premise: one stated time at least, or the item has no
+        // clock to read anything against.
+        const take = Math.min(count, movers.length, edges.length - 1);
+        if (take < 1) return null;
+        for (const e of movers.slice(0, take)) {
+            const len = cone.space.reduce((t, i) => t + Math.abs(e.deltas[i]), 0);
+            const gap = kind === "signal" ? len : len + Math.floor(Math.random() * 3);
+            e.deltas[cone.time] = Math.random() < 0.5 ? gap : -gap;
+            e.form = kind;
+            if (kind === "reach") {
+                e.stated = (e.stated ?? axes.map(() => true)).map((v, i) => (i === cone.time ? false : v));
+            }
+        }
+    }
+    const layout: NdLayout = { ...drawn, axes, edges };
+    return { ...layout, coords: coordsFromEdges(layout, edges) };
+}
+
+/**
+ * How much later `b` rang than `a`, as far as the premises say: a range.
+ *
+ * Along the one route the premises give, a stated or signal time adds a fixed
+ * amount, and a reach premise adds "at least its distance" when the route runs
+ * towards its hearer and "at most minus it" when it runs away. So a route with
+ * reach premises all one way round has one finite end; one with both ways has
+ * none, and nothing about the pair's timing is settled.
+ */
+export function timeBounds(layout: NdLayout, a: string, b: string): { lo: number; hi: number } {
+    const cone = coneAxes(layout.axes)!;
+    const path = pathBetween(layout, a, b);
+    if (!path) return { lo: -Infinity, hi: Infinity };
+    let lo = 0, hi = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+        const found = edgeBetween(layout, path[i], path[i + 1])!;
+        const dt = found.sign * found.edge.deltas[cone.time];
+        if (found.edge.form !== "reach") { lo += dt; hi += dt; continue; }
+        const len = edgeSteps(layout, found.edge);
+        if (dt > 0) { lo += len; hi = Infinity; } else { hi -= len; lo = -Infinity; }
+    }
+    return { lo, hi };
+}
+
+/* ------------------------------------------------------------------ *
+ * Kind frames — a direction word read by its speaker's kind           *
+ * ------------------------------------------------------------------ */
+
+/** An object's kind under frames: its class on the parity axis. */
+export function kindOf(layout: NdLayout, w: string): 0 | 1 {
+    const f = layout.frames!;
+    return f.fixed ?? (mod(layout.coords[w][f.parity], 2) as 0 | 1);
+}
+
+/** The frame change itself: an involution, so applying it twice is nothing. */
+function frameMap(f: NonNullable<NdLayout["frames"]>, d: number[]): number[] {
+    const out = [...d];
+    if (f.rule === "mirror") out[f.axes[0]] = -d[f.axes[0]];
+    else { out[f.axes[0]] = d[f.axes[1]]; out[f.axes[1]] = d[f.axes[0]]; }
+    return out;
+}
+
+/** A displacement as `ref` would state it. */
+export function reckon(layout: NdLayout, ref: string, d: number[]): number[] {
+    if (!layout.frames) return d;
+    return kindOf(layout, ref) ? frameMap(layout.frames, d) : d;
+}
+
+/**
+ * Where `a` is relative to `b`, as `b` reckons it — what any claim "a is …
+ * relative to b" is checked against. On a layout without frames, simply the
+ * difference of positions. Every conclusion builder reads through this, so a
+ * claim, a construction slot and an analogy key can never disagree about
+ * whose reckoning they are in.
+ */
+export function relDelta(layout: NdLayout, a: string, b: string): number[] {
+    return reckon(layout, b, layout.coords[a].map((v, i) => v - layout.coords[b][i]));
+}
+
+/**
+ * Kind frames over a drawn layout that already has a parity axis.
+ *
+ * Each premise is said from a fixed end, in that end's reckoning. The frame
+ * axes must be straight lines: a ring has no east to mirror into west, and a
+ * swap between a line and a loop would carry a position onto an axis that
+ * wraps.
+ */
+export function kindsLayout(drawn: NdLayout, rule: "mirror" | "swap"): NdLayout | null {
+    const parity = drawn.axes.findIndex(a => isParity(a));
+    const straight = drawn.axes.map((a, i) => (isCircular(a) || isParity(a) ? -1 : i)).filter(i => i >= 0);
+    if (parity < 0 || straight.length < (rule === "swap" ? 2 : 1)) return null;
+    const axes = shuffled(straight).slice(0, rule === "swap" ? 2 : 1);
+    const edges = drawn.edges.map(e => ({ ...e, flip: Math.random() < 0.5 }));
+    return { ...drawn, edges, frames: { parity, rule, axes } };
+}
+
+/**
+ * The layout a reader would build who took every premise at face value.
+ *
+ * Positions are the stated words summed as though every reference were kind
+ * 0; `fixed` then says how that reader reads a claim — at face value (0), or
+ * with the frame change applied to the whole result (1), the two kind-blind
+ * readings the item has to defeat.
+ */
+export function kindsFaceValue(layout: NdLayout, fixed: 0 | 1): NdLayout {
+    const edges = layout.edges.map(e => {
+        // What the card says, from its reference, turned back into from → to.
+        const sign = e.flip ? -1 : 1;
+        const said = reckon(layout, e.flip ? e.to : e.from, e.deltas.map(d => sign * d));
+        return { ...e, deltas: said.map(d => sign * d) };
+    });
+    const faced = { ...layout, edges, frames: { ...layout.frames!, fixed } };
+    return { ...faced, coords: coordsFromEdges(faced, edges) };
+}
+
+/* ------------------------------------------------------------------ *
+ * Walking totals — one step budget across every dimension             *
+ * ------------------------------------------------------------------ */
+
+/** A relation as a premise words it, every axis named: a's relation to b. */
+export function relationClauses(layout: NdLayout, a: string, b: string): string[] {
+    const colors = ndAxisColors(layout.axes);
+    const d = relDelta(layout, a, b);
+    return layout.axes.map((axis, i) => hi(
+        isCircular(axis)
+            ? displacementClause(displacementOn(layout, i, a, b), axis.modulus!, axis.scale.cyclic!, axis.scale.tie)
+            : axisClause(axis, isParity(axis) ? mod(d[i], 2) : Math.sign(d[i])),
+        colors[i]));
+}
+
+/**
+ * Cut one straight axis and close it again with a total.
+ *
+ * As a bridge does, but through the same pair's other gaps rather than a
+ * different axis between a different pair: the cut axis's gap is whatever the
+ * total leaves once every other straight gap is subtracted. The pair crosses
+ * the cut and differs on the cut axis — a level pair would read its gap off
+ * the tie word — and on some other straight axis too, or the total is just the
+ * gap restated.
+ */
+export function drawWalk(layout: NdLayout): NdLayout | null {
+    const counted = countedAxes(layout.axes);
+    if (counted.length < 2) return null;
+    const c = layout.coords;
+
+    for (const X of shuffled(counted)) {
+        const edges = layout.edges.map(e => ({
+            ...e,
+            deltas: [...e.deltas],
+            stated: e.stated ? [...e.stated] : layout.axes.map(() => true),
+        }));
+        for (const cut of shuffled(edges.filter(e => e.deltas[X] !== 0 && e.stated[X]))) {
+            cut.stated[X] = false;
+            const groups = closeAxes({ ...layout, edges, couplings: [] })[X];
+            const side = (w: string) => groups.find(w) === groups.find(cut.from);
+            const near = layout.words.filter(side);
+            const far = layout.words.filter(w => !side(w));
+            if (near.length < 2 || far.length < 2) { cut.stated[X] = true; continue; }
+
+            const options: NdTotal[] = [];
+            for (const a of layout.words) {
+                for (const b of side(a) ? far : near) {
+                    if (graphDistance(a, b, layout.neighbors) < 2 || c[a][X] === c[b][X]) continue;
+                    const others = counted.filter(i => i !== X).reduce((t, i) => t + Math.abs(c[a][i] - c[b][i]), 0);
+                    if (others === 0) continue;
+                    options.push({ kind: "total", a, b, axis: X, total: others + Math.abs(c[a][X] - c[b][X]) });
+                }
+            }
+            if (!options.length) { cut.stated[X] = true; continue; }
+            return { ...layout, edges, couplings: [pick(options)] };
+        }
+    }
+    return null;
+}
+
+/**
+ * The walked layout as a reader would build it who misread the total.
+ *
+ * `one-step` takes the premise as an ordinary one: one step on every axis it
+ * names. `legs` counts each named leg as one step and gives the cut axis the
+ * rest. `whole` hands the cut axis the entire total. Each sets the pair's gap
+ * on the cut axis and moves the far side of the cut with it.
+ */
+export function walkReading(layout: NdLayout, how: "one-step" | "legs" | "whole"): NdLayout {
+    const walk = layout.couplings?.find((c): c is NdTotal => c.kind === "total");
+    if (!walk) return layout;
+    const X = walk.axis;
+    const d = layout.coords[walk.a][X] - layout.coords[walk.b][X];
+    const others = countedAxes(layout.axes).filter(i => i !== X)
+        .map(i => layout.coords[walk.a][i] - layout.coords[walk.b][i]);
+    const size = how === "one-step" ? 1
+        : how === "whole" ? walk.total
+        : walk.total - others.filter(g => g !== 0).length;
+    const shift = Math.sign(d) * size - d;
+    const groups = closeAxes({ ...layout, couplings: [] })[X];
+    const coords: Record<string, number[]> = {};
+    for (const w of layout.words) {
+        coords[w] = [...layout.coords[w]];
+        if (groups.find(w) === groups.find(walk.a)) coords[w][X] += shift;
+    }
+    return { ...layout, coords };
+}
+
+/**
+ * Counting every step on every dimension: straight gaps in full, a loop the
+ * short way round. A kind is not a distance and is not counted.
+ */
+export function walkDistance(layout: NdLayout, a: string, b: string): number {
+    return layout.axes.reduce((t, axis, i) => {
+        if (isParity(axis)) return t;
+        if (isCircular(axis)) {
+            const m = axis.modulus!, s = displacementOn(layout, i, a, b);
+            return t + Math.min(s, m - s);
+        }
+        return t + Math.abs(layout.coords[a][i] - layout.coords[b][i]);
+    }, 0);
+}
+
+/** The per-axis stand-ins: dimensions differing, and the longest one leg. */
+export function walkLures(layout: NdLayout, a: string, b: string): { hamming: number; widest: number } {
+    const legs = layout.axes.map((axis, i) => {
+        if (isParity(axis)) return 0;
+        if (isCircular(axis)) {
+            const m = axis.modulus!, s = displacementOn(layout, i, a, b);
+            return Math.min(s, m - s);
+        }
+        return Math.abs(layout.coords[a][i] - layout.coords[b][i]);
+    });
+    return { hamming: legs.filter(l => l !== 0).length, widest: Math.max(...legs) };
+}
+
+function shuffled<T>(xs: T[]): T[] {
+    const out = [...xs];
+    shuffleInPlace(out);
     return out;
 }
 
@@ -737,7 +1524,7 @@ function shuffleInPlace<T>(xs: T[]) {
 }
 
 export function compareOn(layout: NdLayout, axis: number, a: string, b: string): -1 | 0 | 1 {
-    const d = layout.coords[a][axis] - layout.coords[b][axis];
+    const d = relDelta(layout, a, b)[axis];
     return d === 0 ? 0 : (d > 0 ? 1 : -1);
 }
 
@@ -821,7 +1608,8 @@ function axisClause(axis: AxisSpec, delta: number): string {
         return delta > 0 ? c.direction[0] : c.direction[1];
     }
     if (delta === 0) return axis.scale.tie;
-    return delta > 0 ? axis.scale.direction[0] : axis.scale.direction[1];
+    const word = delta > 0 ? axis.scale.direction[0] : axis.scale.direction[1];
+    return axis.stride ? `${Math.abs(delta)} ${axis.stride.unit} ${word}` : word;
 }
 
 export interface NdRenderOptions {
@@ -848,6 +1636,10 @@ export function renderNdPremise(
     flip: boolean,
     options: NdRenderOptions = {},
 ): string {
+    const cone = edge.form ? coneAxes(layout.axes) : null;
+    // A signal or reach premise is said from the hearer's side, so its
+    // subject is always the one that rang later.
+    if (cone) flip = edge.deltas[cone.time] < 0;
     const [from, to] = flip ? [edge.to, edge.from] : [edge.from, edge.to];
     const sign = flip ? -1 : 1;
     const colors = ndAxisColors(layout.axes);
@@ -863,9 +1655,14 @@ export function renderNdPremise(
      * instead of by re-reading. Position cannot do this job once the order is
      * configurable, and `compact` already removes clauses from the middle.
      */
+    // In the reference's reckoning, which is only ever not kind 0's under frames.
+    const said = reckon(layout, from, layout.axes.map((_, i) => sign * statedDelta(layout, edge, i)));
     const clauses = layout.axes
-        .map((axis, i) => ({ axis, i, delta: sign * edge.deltas[i] }))
+        .map((axis, i) => ({ axis, i, delta: said[i] }))
         .filter(c => edge.stated ? edge.stated[c.i] : true)
+        // The time a signal or reach premise implies is not printed; it is
+        // what the reader derives from the distance.
+        .filter(c => !cone || c.i !== cone.time)
         .filter(c => !options.compact || c.delta !== 0)
         .map(c => hi(axisClause(c.axis, c.delta), colors[c.i]));
 
@@ -873,7 +1670,14 @@ export function renderNdPremise(
     // hand-built layout could be, and an empty clause list reads as a bug.
     if (!clauses.length) return `${subj(to)} is at the same point as ${subj(from)}`;
 
-    return `${subj(to)} is ${clauses.join(", ")} relative to ${subj(from)}`;
+    // Named in front, so the reading is known before any clause is.
+    const by = edge.local ? `<b>By local clocks</b>, ` : "";
+    const heard = edge.form === "signal"
+        ? `, and rang the moment ${subj(from)}'s ring reached it`
+        : edge.form === "reach"
+        ? `, and rang only after ${subj(from)}'s ring had reached it`
+        : "";
+    return `${by}${subj(to)} is ${clauses.join(", ")} relative to ${subj(from)}${heard}`;
 }
 
 /**
@@ -901,7 +1705,7 @@ export function renderNdDirection(axes: AxisSpec[], axis: number, delta: number)
 }
 
 export function renderNdPremises(layout: NdLayout, options: NdRenderOptions = {}): string[] {
-    return layout.edges.map(e => renderNdPremise(layout, e, Math.random() > 0.5, options));
+    return layout.edges.map(e => renderNdPremise(layout, e, e.flip ?? Math.random() > 0.5, options));
 }
 
 /**
@@ -1041,6 +1845,14 @@ export function buildNdWideConclusion(
     b: string,
     wantValid: boolean,
     mustBeDetermined: boolean,
+    /**
+     * Where a false claim may lie, and what it may say there. Absent, any axis
+     * and any wrong value. A bridged item passes the misreadings' own values on
+     * the bridged axis, so the claim is false exactly where a misreader would
+     * call it true — a lie on an axis the bridge never touched is caught
+     * without the bridge, and the item would not need it.
+     */
+    lies?: Array<{ axis: number; value: number }>,
 ): NdConclusion | null {
     if (mustBeDetermined
         && layout.axes.some((_, i) => !determinedOn(layout, i, a, b))) return null;
@@ -1053,9 +1865,10 @@ export function buildNdWideConclusion(
      * step apart — and mixing them up would state the long way round as though
      * it were the short one.
      */
+    const said = relDelta(layout, a, b);
     const truth = layout.axes.map((axis, i) => isCircular(axis)
         ? displacementOn(layout, i, a, b)
-        : layout.coords[a][i] - layout.coords[b][i]);
+        : said[i]);
     const claim = [...truth];
 
     /*
@@ -1066,7 +1879,11 @@ export function buildNdWideConclusion(
      * sign — including zero, which reads as "the same" — is a different claim.
      */
     let flipped = -1;
-    if (!wantValid) {
+    if (!wantValid && lies?.length) {
+        const lie = pick(lies);
+        flipped = lie.axis;
+        claim[flipped] = lie.value;
+    } else if (!wantValid) {
         const candidates = layout.axes.map((_, i) => i);
         flipped = pick(candidates);
         const axis = layout.axes[flipped];
@@ -1188,7 +2005,7 @@ export function relationKey(layout: NdLayout, a: string, b: string): string {
         ? (sameClass(layout, i, a, b) ? 0 : 1)
         : isCircular(axis)
         ? displacementOn(layout, i, b, a)
-        : Math.sign(layout.coords[b][i] - layout.coords[a][i])).join(",");
+        : Math.sign(relDelta(layout, b, a)[i])).join(",");
 }
 
 /** The key a relation would have if every direction were reversed. */
@@ -1276,6 +2093,12 @@ export function buildNdAnalogySet(
     layout: NdLayout,
     wantValid: boolean[],
     accept?: (candidate: { pairs: [string, string, string, string]; claimSame: boolean }) => boolean,
+    /**
+     * A condition per claim, by position, replacing `accept`. A coupled item
+     * needs it: the set is true only if every claim is, so which claims must
+     * need the bridge depends on which one is false — see the caller.
+     */
+    acceptAt?: (index: number) => ((candidate: { pairs: [string, string, string, string]; claimSame: boolean }) => boolean) | undefined,
 ): NdAnalogy[] {
     const used = new Set<string>();
     const out: NdAnalogy[] = [];
@@ -1285,7 +2108,7 @@ export function buildNdAnalogySet(
         // requiring it of every claim in a set is a much stronger demand than
         // the item needs, and one that most layouts cannot meet.
         const claim = buildNdAnalogy(layout, wantValid[out.length], undefined,
-            out.length === 0 ? accept : undefined);
+            acceptAt ? acceptAt(out.length) : out.length === 0 ? accept : undefined);
         if (!claim) break;
         const key = claim.pairs.join(" ") + "#" + claim.claimSame;
         if (used.has(key)) continue;
@@ -1349,7 +2172,7 @@ export function buildNdConstructClaim(
             };
         }
 
-        const delta = layout.coords[a][i] - layout.coords[b][i];
+        const delta = relDelta(layout, a, b)[i];
         return {
             label: scale.name,
             colorClass: colors[i],
@@ -1456,15 +2279,33 @@ function pathBetween(layout: NdLayout, a: string, b: string, axis?: number): str
         return !found || !found.edge.stated || found.edge.stated[axis];
     };
 
+    /*
+     * A bridge on this axis is a route too, once its source gap is settled —
+     * on a bridged item it is the only route across the cut, and a derivation
+     * that could not take it would have nothing to show.
+     */
+    const bridged = (w: string) => axis == null ? [] : (layout.couplings ?? [])
+        .filter(c => c.axis === axis)
+        .map(c => (c.kind === "bridge" ? { c, p: c.r, q: c.b } : { c, p: c.a, q: c.b }))
+        .filter(({ p, q }) => p === w || q === w)
+        .filter(({ c }) => {
+            const without = { ...layout, couplings: layout.couplings!.filter(k => k !== c) };
+            return c.kind === "bridge"
+                ? determinedOn(without, c.via, c.g, c.h)
+                : countedAxes(layout.axes).filter(i => i !== axis).every(i => determinedOn(without, i, c.a, c.b));
+        })
+        .map(({ p, q }) => (p === w ? q : p));
+
     const prev: Record<string, string> = {};
     const seen = new Set([a]);
     const queue = [a];
 
     while (queue.length) {
         const cur = queue.shift()!;
-        for (const n of layout.neighbors[cur] ?? []) {
+        const across = bridged(cur);
+        for (const n of [...(layout.neighbors[cur] ?? []), ...across]) {
             if (seen.has(n)) continue;
-            if (!usable(cur, n)) continue;
+            if (!usable(cur, n) && !across.includes(n)) continue;
             seen.add(n);
             prev[n] = cur;
             if (n === b) {
@@ -1517,21 +2358,160 @@ export function explainNdAxis(
     const lines: string[] = [];
     let total = 0;
 
+    const runningTotal = () => isParity(axis)
+        ? `now ${mod(total, 2) === 0 ? "the same" : "opposite"}`
+        : isCircular(axis)
+        ? `running total ${mod(total, axis.modulus!)}`
+        : `running total ${total > 0 ? "+" : ""}${total}`;
+
     for (let i = 0; i < path.length - 1; i++) {
         const found = edgeBetween(layout, path[i], path[i + 1]);
-        if (!found) return [];
+        if (!found || (found.edge.stated && !found.edge.stated[axisIndex])) {
+            /*
+             * Across a bridge: its source gap is derived first, on its own
+             * axis, and then carried over. Shown in full, because that order —
+             * the other axis finished before this one can continue — is the
+             * whole of what the item asks.
+             */
+            const ends = (c: NdCoupling) => (c.kind === "bridge" ? [c.r, c.b] : [c.a, c.b]);
+            const crossing = (layout.couplings ?? []).find(c => c.axis === axisIndex
+                && ends(c).includes(path[i]) && ends(c).includes(path[i + 1]));
+            if (!crossing) return [];
+            if (crossing.kind === "total") {
+                /*
+                 * Across a total: the other dimensions' gaps between the pair,
+                 * each derived, and what the total leaves for this one.
+                 */
+                const others = countedAxes(layout.axes).filter(k => k !== axisIndex);
+                const colors = ndAxisColors(layout.axes);
+                const spent = others.map(k => ({ k, d: relDelta(layout, crossing.a, crossing.b)[k] }));
+                const used = spent.reduce((t, x) => t + Math.abs(x.d), 0);
+                const delta = layout.coords[path[i + 1]][axisIndex] - layout.coords[path[i]][axisIndex];
+                total += delta;
+                const legs = spent.filter(x => x.d !== 0)
+                    .map(x => hi(`${Math.abs(x.d)} ${axisClause(layout.axes[x.k], x.d)}`, colors[x.k]));
+                lines.push(
+                    `No premise joins ${subj(path[i])} and ${subj(path[i + 1])} on ${hi(axis.scale.name, color)}`
+                    + ` except the total: ${subj(crossing.a)} is ${crossing.total} steps in all from`
+                    + ` ${subj(crossing.b)}, and on the other dimensions it is`
+                    + ` ${legs.length ? legs.join(", ") : "level"} \u2014 ${used} of them`,
+                    `so ${crossing.total - used} remain for ${hi(axis.scale.name, color)}:`
+                    + ` ${subj(path[i + 1])} is ${hi(`${Math.abs(delta)} ${axisClause(axis, delta)}`, color)}`
+                    + ` relative to ${subj(path[i])} \u2014 ${rel(runningTotal())}`);
+                continue;
+            }
+            const bridge = crossing;
+            const via = layout.axes[bridge.via];
+            const viaColor = ndAxisColors(layout.axes)[bridge.via];
+            const gap = layout.coords[bridge.g][bridge.via] - layout.coords[bridge.h][bridge.via];
+            const source = explainNdAxis(
+                { ...layout, couplings: layout.couplings!.filter(c => c !== bridge) },
+                bridge.h, bridge.g, bridge.via);
+            lines.push(
+                `No premise joins ${subj(path[i])} and ${subj(path[i + 1])} on ${hi(axis.scale.name, color)}`
+                + ` except the bridge, so first ${subj(bridge.g)} against ${subj(bridge.h)}`
+                + ` on ${hi(via.scale.name, viaColor)}:`,
+                ...source.slice(0, -1));
+
+            const delta = layout.coords[path[i + 1]][axisIndex] - layout.coords[path[i]][axisIndex];
+            total += delta;
+            const steps = (n: number) => `${n} ${n === 1 ? axis.scale.unit : axis.scale.unit + "s"}`;
+            lines.push(
+                `so ${subj(bridge.g)} is ${hi(`${gap} ${via.scale.direction[0]}`, viaColor)}`
+                + `${via.scale.link ? " " + via.scale.link : ""} ${subj(bridge.h)}, and by the bridge`
+                + ` ${subj(path[i + 1])} is ${hi(`${steps(Math.abs(delta))} ${axisClause(axis, delta)}`, color)}`
+                + `${axis.scale.link ? " " + axis.scale.link : ""} ${subj(path[i])}`
+                + ` — ${rel(runningTotal())}`);
+            continue;
+        }
+        if (layout.frames && !isParity(axis)) {
+            /*
+             * Under kind frames the walk is in the claim reference's reckoning.
+             * A premise said from a reference of the other kind is shown as the
+             * card says it and then converted, because that conversion, premise
+             * by premise, is the item.
+             */
+            const v = layout.axes.map((_, k) => found.sign * found.edge.deltas[k]);
+            const step = reckon(layout, a, v)[axisIndex];
+            total += step;
+            const ref = found.edge.flip ? found.edge.to : found.edge.from;
+            const other = ref === found.edge.from ? found.edge.to : found.edge.from;
+            const word = step === 0 ? axis.scale.tie : axisClause(axis, step);
+            if (kindOf(layout, ref) !== kindOf(layout, a) && layout.frames.axes.includes(axisIndex)) {
+                const said = reckon(layout, ref, ref === path[i] ? v : v.map(x => -x));
+                const colors = ndAxisColors(layout.axes);
+                const words = layout.frames.axes
+                    .map(k => hi(axisClause(layout.axes[k], said[k]), colors[k])).join(", ");
+                lines.push(
+                    `${subj(other)} is ${words} relative to ${subj(ref)} as ${subj(ref)} reckons it;`
+                    + ` ${subj(ref)} is the other kind from ${subj(a)}, so for ${subj(a)}`
+                    + ` ${subj(path[i + 1])} is ${hi(word, color)} relative to ${subj(path[i])}`
+                    + ` — ${rel(runningTotal())}`);
+            } else {
+                lines.push(
+                    `${subj(path[i + 1])} is ${hi(word, color)} relative to ${subj(path[i])}`
+                    + ` — ${rel(runningTotal())}`);
+            }
+            continue;
+        }
+
         const delta = found.sign * found.edge.deltas[axisIndex];
         total += delta;
 
+        if (found.edge.form === "signal" && coneAxes(layout.axes)?.time === axisIndex) {
+            // A signal's time is its distance, on the hearer's side.
+            lines.push(
+                `${subj(found.sign * found.edge.deltas[axisIndex] > 0 ? path[i + 1] : path[i])} rang the moment`
+                + ` ${subj(found.sign * found.edge.deltas[axisIndex] > 0 ? path[i] : path[i + 1])}'s ring reached it,`
+                + ` ${edgeSteps(layout, found.edge)} step${edgeSteps(layout, found.edge) === 1 ? "" : "s"} away,`
+                + ` so ${subj(path[i + 1])} is`
+                + ` ${hi(axisClause(axis, delta), color)} relative to ${subj(path[i])} — ${rel(runningTotal())}`);
+            continue;
+        }
+
+        if (found.edge.local && axis.local) {
+            /*
+             * A local reading, corrected to the station clock. Shown as its own
+             * step with the zone change spelled out, because the correction is
+             * per premise — it is the running total over the marked premises
+             * that the item is about.
+             */
+            const said = found.sign * statedDelta(layout, found.edge, axisIndex);
+            const src = layout.axes[axis.local.source];
+            const srcColor = ndAxisColors(layout.axes)[axis.local.source];
+            const zFrom = zoneOf(layout, path[i], axis.local.source);
+            const zTo = zoneOf(layout, path[i + 1], axis.local.source);
+            const where = isCircular(src)
+                ? `${subj(path[i + 1])} is in zone ${zTo} and ${subj(path[i])} in zone ${zFrom}`
+                : zTo === zFrom
+                ? `they are at the same ${hi(src.scale.tie, srcColor)}`
+                : `${subj(path[i + 1])} is ${hi(`${Math.abs(zTo - zFrom)} ${src.scale.direction[zTo > zFrom ? 0 : 1]}`, srcColor)}`;
+            lines.push(
+                `<b>by local clocks</b> ${subj(path[i + 1])} is ${hi(axisClause(axis, said), color)}`
+                + ` relative to ${subj(path[i])}; ${where}, so by the station clock it is`
+                + ` ${hi(delta === 0 ? axis.scale.tie : `${Math.abs(delta)} ${axisClause(axis, delta)}`, color)}`
+                + ` — ${rel(runningTotal())}`);
+            continue;
+        }
+
         const word = delta === 0 ? axis.scale.tie : axisClause(axis, delta);
-        const running = isParity(axis)
-            ? `now ${mod(total, 2) === 0 ? "the same" : "opposite"}`
-            : isCircular(axis)
-            ? `running total ${mod(total, axis.modulus!)}`
-            : `running total ${total > 0 ? "+" : ""}${total}`;
         lines.push(
             `${subj(path[i + 1])} is ${hi(word, color)} relative to ${subj(path[i])}`
-            + ` — ${rel(running)}`);
+            + ` — ${rel(runningTotal())}`);
+    }
+
+    /*
+     * Asked by local clocks: the real gap, then each end's own clock. The
+     * conversion happens once, at the ends, which is the one place it does.
+     */
+    if (axis.local && layout.reading === "local") {
+        const ahead = axis.local.rate
+            * (zoneOf(layout, b, axis.local.source) - zoneOf(layout, a, axis.local.source));
+        total += ahead;
+        lines.push(ahead === 0
+            ? `${subj(b)}'s clock and ${subj(a)}'s read alike — ${rel(runningTotal())}`
+            : `${subj(b)}'s clock reads ${hi(`${Math.abs(ahead)} ${axisClause(axis, ahead)}`, color)}`
+              + ` than ${subj(a)}'s — ${rel(runningTotal())}`);
     }
 
     /*

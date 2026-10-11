@@ -483,6 +483,32 @@ export class Question {
     widthDelta = 0;
 
     /**
+     * Rungs the player holds that this item did not carry.
+     *
+     * A rung that changes *what is asked* competes with the other question
+     * forms, so an item can hold it and still be built without it — a facing
+     * item and an analogy item cannot be the same item. Charging the rung
+     * anyway prices a reading the player was never given, which is the
+     * "charged but never delivered" bug class: facing was billed on every
+     * Space item from the analogy rung on and delivered on none.
+     *
+     * Written by the generator, which is the only place that knows which form
+     * the item ended up in, and subtracted wherever the item is priced.
+     */
+    undelivered: string[] = [];
+
+    /**
+     * Levels this item is worth beyond its mode and rungs, for structure a
+     * rung added that the mode's own price does not cover.
+     *
+     * Kind frames need a parity axis, and only Space 7D has one; elsewhere the
+     * rung appends it, which makes the item one axis wider than its mode. The
+     * mode's price is per premise, so the width is priced the same way —
+     * `MODE_SCALE`'s step from 6D to 7D, per premise.
+     */
+    surcharge = 0;
+
+    /**
      * How much of the item the conclusion needs: the number of relations that
      * have to be composed to reach it.
      *

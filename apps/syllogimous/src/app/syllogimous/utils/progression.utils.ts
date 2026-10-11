@@ -269,7 +269,11 @@ const LINEAR_LADDER = [
  * west onto earlier — so it sits after the reading-level rungs and before the
  * answer-mode ones.
  */
-const ND_LADDER = [
+/**
+ * The single composed-space ladder as it stood when it was forked, kept as the
+ * record every fork must still begin with. Nothing serves it.
+ */
+export const ND_LADDER_AT_SPLIT: readonly string[] = Object.freeze([
     // "compact" is retired rather than removed; see the note on LINEAR_LADDER.
     "branching", "retired-compact", "retired-circular", "indeterminate", "facing", "speakers", "testimony",
     "retired-transform-1", "retired-edit-1",
@@ -280,7 +284,60 @@ const ND_LADDER = [
     // every rung after it for everyone who already has them.
     "checkpoint",
     "mirror-twins",
-];
+]);
+
+/*
+ * One ladder per mode family, written out in full three times.
+ *
+ * The coupling rungs (research/syllogimous-coupling) do not all fit every
+ * space: the clock shear and the light cone need a time axis, a heading needs a
+ * third spatial one, so the three families' ladders diverge from here on. They
+ * share nothing by reference and are not built by spreading one into another —
+ * `[...ND_LADDER, "x"]` would make an edit to the shared part rename rungs in
+ * every family at once, silently, for everyone who had earned them.
+ *
+ * Each began as an exact copy of the single ladder they replace, so a stored
+ * rung count means the same thing it meant before the split. Append only;
+ * frozen so that nothing at runtime can do otherwise.
+ */
+const DIRECTION_LADDER: string[] = Object.freeze([
+    "branching", "retired-compact", "retired-circular", "indeterminate", "facing", "speakers", "testimony",
+    "retired-transform-1", "retired-edit-1",
+    "retired-circular-2", "retired-transform-2", "retired-edit-2", "analogy",
+    "retired-multi-conclusion", "choose-conclusion", "construct-conclusion", "construct-distance",
+    "checkpoint",
+    "mirror-twins",
+    "bridges",
+    "kinds",
+    "walking-totals",
+]) as string[];
+
+const SPACE_3D_LADDER: string[] = Object.freeze([
+    "branching", "retired-compact", "retired-circular", "indeterminate", "facing", "speakers", "testimony",
+    "retired-transform-1", "retired-edit-1",
+    "retired-circular-2", "retired-transform-2", "retired-edit-2", "analogy",
+    "retired-multi-conclusion", "choose-conclusion", "construct-conclusion", "construct-distance",
+    "checkpoint",
+    "mirror-twins",
+    "bridges",
+    "kinds",
+    "walking-totals",
+]) as string[];
+
+/** Space 4D to 7D: the spaces with a time axis to couple through. */
+const SPACE_ND_LADDER: string[] = Object.freeze([
+    "branching", "retired-compact", "retired-circular", "indeterminate", "facing", "speakers", "testimony",
+    "retired-transform-1", "retired-edit-1",
+    "retired-circular-2", "retired-transform-2", "retired-edit-2", "analogy",
+    "retired-multi-conclusion", "choose-conclusion", "construct-conclusion", "construct-distance",
+    "checkpoint",
+    "mirror-twins",
+    "bridges",
+    "local-clocks",
+    "cone", "signals", "reach",
+    "kinds",
+    "walking-totals",
+]) as string[];
 
 /**
  * Modes that are one skill wearing several vocabularies.
@@ -495,20 +552,20 @@ export const RUNG_LADDERS: Record<string, string[]> = {
      * closest thing to keeping what was earned. It also stops a new player
      * opening with three free rungs already claimed.
      */
-    "Direction":                 ND_LADDER,
+    "Direction":                 DIRECTION_LADDER,
     "Direction3D Spatial":       ["negation", "retired-meta-unbuilt"],
     "Direction3D Temporal":      ["negation", "retired-meta-unbuilt"],
-    "Space 3D":                  ND_LADDER,
-    "Space 4D":                  ND_LADDER,
-    "Space 5D":                  ND_LADDER,
-    "Space 6D":                  ND_LADDER,
+    "Space 3D":                  SPACE_3D_LADDER,
+    "Space 4D":                  SPACE_ND_LADDER,
+    "Space 5D":                  SPACE_ND_LADDER,
+    "Space 6D":                  SPACE_ND_LADDER,
     /*
      * Space 7D was missing from this table entirely, so `ladderFor` returned
      * nothing and the mode could never earn a single modifier — while being
      * built by the same generator as the other five, which honour all of them.
      * A strong player was served plain seven-axis items forever.
      */
-    "Space 7D":                  ND_LADDER,
+    "Space 7D":                  SPACE_ND_LADDER,
 
     /*
      * These three had no entry here at all, and `ladderFor` falls back to an

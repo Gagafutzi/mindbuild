@@ -1055,7 +1055,11 @@ export class GameService implements GeneratorContext {
     private recordDifficulty() {
         try {
             const type = this.question.type;
-            const rungs = ladderFor(type).filter(r => this.hasRung(type, r));
+            const rungs = ladderFor(type)
+                .filter(r => this.hasRung(type, r))
+                // Held is not carried: a rung the generator could not fit into
+                // this item's question form is not part of what it was worth.
+                .filter(r => !this.question.undelivered?.includes(r));
             /*
              * And the dials, on the same footing. Same combination of ladder and
              * overrides the generator was handed, so this prices the item that
@@ -1079,6 +1083,7 @@ export class GameService implements GeneratorContext {
                 carousel,
                 widthDelta: this.question.widthDelta,
                 depth: this.question.depth,
+                surcharge: this.question.surcharge,
             };
             this.question.difficulty = {
                 level: this.progressionService.levelFor(spec),
@@ -1218,6 +1223,10 @@ export class GameService implements GeneratorContext {
                     // predicts accuracy can later be answered from answered
                     // items rather than from a screenshot.
                     depth: this.question.depth,
+                    // What the item held and did not carry, so it is not
+                    // charged for it.
+                    undelivered: this.question.undelivered,
+                    surcharge: this.question.surcharge,
                     /*
                      * How each claim went, for an item that asks more than one.
                      *
