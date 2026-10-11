@@ -10,8 +10,10 @@ back into per-axis problems. Ten survived as truly coupled. Two did not:
 Turned Frames is relabelling per speaker, and Helix is one time axis read in
 two units. Neither is built.
 
-**Status (2026-10-08): nothing below is built yet.** This folder is the
-hand-off. It holds:
+**Status (2026-10-11): all of it is built and on main.** The three
+prerequisite fixes, all nine rungs and the Worldlines mode, each with its
+tests in `apps/syllogimous/tests/` (`coupling.test.ts`, `twist.test.ts`,
+`worldlines.test.ts`). This folder is now the design record. It holds:
 
 - `designs.md` gives every proposal in full: idea, worked example, where it
   plugs in, solver, lures, pricing, and the judge's verdict and **binding
