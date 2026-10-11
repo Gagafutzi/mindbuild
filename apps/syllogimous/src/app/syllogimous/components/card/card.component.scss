@@ -34,6 +34,14 @@
          */
         max-block-size: 55%;
         overflow-y: auto;
+        /*
+         * The body scrolls and the footer holds the answers, so a long item
+         * squeezes the body. Left to shrink alongside it, the footer lost a
+         * share of its height too — with two or three options stacked, the
+         * last one was cut in half, or out of sight behind a scrollbar that
+         * never shows. The cap above is still what stops it taking over.
+         */
+        flex-shrink: 0;
     }
 
     /*

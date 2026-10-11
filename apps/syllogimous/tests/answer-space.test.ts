@@ -69,6 +69,21 @@ test("and it scrolls inside the cap rather than clipping", () => {
         + "uncapped: the options past the cap cannot be reached at all");
 });
 
+test("and it keeps its height under the cap rather than sharing the squeeze", () => {
+    /*
+     * A scrolling footer's automatic minimum height is zero, so with the
+     * default `flex-shrink: 1` a long item shrank the footer alongside the
+     * body. Two options stacked in 104px were given 79: the second was cut in
+     * half on Second-Order Analogy, and out of sight on Worldlines.
+     */
+    const footer = declared.slice(declared.indexOf(".playcard-footer"));
+    const block = footer.slice(0, footer.indexOf("}"));
+
+    assert(/flex-shrink:\s*0/.test(block),
+        "the footer may shrink, so a long item squeezes the answers as well as "
+        + "the premises and the last option is cut off below the card");
+});
+
 test("the body may give way to it", () => {
     assert(/\.playcard\s*>\s*\.card-body\s*\{[^}]*min-block-size:\s*0/.test(declared),
         "the card body does not state that it may shrink — a flex item's "
