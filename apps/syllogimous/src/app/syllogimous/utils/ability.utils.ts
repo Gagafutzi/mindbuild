@@ -132,6 +132,13 @@ export const RUNG_COST: Record<string, number> = {
      */
     "walking-totals": 1.4,
     /*
+     * Just under a facing, and for the same reason: one premise costs two
+     * steps — compare on the key, then read the tiebreak or decide there is
+     * nothing to read. The idle ranking removes the shortcut of reading every
+     * ranking as a tiebreak statement.
+     */
+    ranked: 1.7,
+    /*
      * Two puzzles stacked: work out who is lying, then work out the
      * arrangement from what is left. Dearer than either alone because the
      * second cannot start until the first is finished.
@@ -417,6 +424,7 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     reach: 4,
     kinds: 4,
     "walking-totals": 5,
+    ranked: 5,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,

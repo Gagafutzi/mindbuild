@@ -130,6 +130,7 @@ export class ModeModifiersComponent {
             "reach": "Some times only bounded — “rang only after the ring arrived”",
             "kinds": "Two kinds reckon directions differently — east for one is west for the other",
             "walking-totals": "Totals of steps across every dimension — “6 steps in all”, and which is nearer",
+            "ranked": "One sorted list — “listed before” means height only for things at the same time",
             "speakers": "Premises reported by speakers, and some of them lie",
             "testimony": "Reports that have to be checked against each other",
             "transform-1": "One transformation applied to the arrangement",

@@ -380,7 +380,30 @@ export interface NdTotal {
 }
 
 /** Every premise kind that couples axes; `closeAxes` reads them all. */
-export type NdCoupling = NdBridge | NdTotal;
+/**
+ * "A is listed before B", on a list sorted by `key` and then by `tie`.
+ *
+ * A lexicographic premise: if A and B differ on the key it says only that, and
+ * if they are level on it, it says how they stand on the tiebreak. Which of
+ * the two it means is known only once the key axis has been carried — the
+ * meaning on one axis depends on the value of another. An inequality, never
+ * an equality, so `closeAxes` passes over it and `boundsOn` reads it.
+ *
+ * `keyDir` and `tieDir` are +1 where the list runs low to high on that axis
+ * and −1 where it runs high to low. `axis` is the tiebreak, the axis whose
+ * order the ranking can carry.
+ */
+export interface NdRank {
+    kind: "rank";
+    a: string;
+    b: string;
+    key: number;
+    keyDir: 1 | -1;
+    axis: number;
+    tieDir: 1 | -1;
+}
+
+export type NdCoupling = NdBridge | NdTotal | NdRank;
 
 /** Axes a total counts: ordered, unbounded lines. */
 export function countedAxes(axes: AxisSpec[]): number[] {
@@ -810,6 +833,8 @@ export function closeAxes(layout: NdLayout): AxisGroups[] {
     for (let changed = true; changed;) {
         changed = false;
         for (const c of layout.couplings ?? []) {
+            // A ranking is an inequality and joins nothing.
+            if (c.kind === "rank") continue;
             if (c.kind === "bridge") {
                 if (groups[c.via].find(c.g) !== groups[c.via].find(c.h)) continue;
                 if (groups[c.axis].join(c.r, c.b)) changed = true;
@@ -1009,6 +1034,7 @@ export function bridgeReading(layout: NdLayout, how: "one-step" | "reversed"): N
  */
 export function renderNdCoupling(layout: NdLayout, coupling: NdCoupling): string {
     const colors = ndAxisColors(layout.axes);
+    if (coupling.kind === "rank") return `${subj(coupling.a)} is <b>listed before</b> ${subj(coupling.b)}`;
     if (coupling.kind === "total") {
         // The relation as a premise words it, every axis named, then the total.
         return `${subj(coupling.a)} is ${relationClauses(layout, coupling.a, coupling.b).join(", ")}`
@@ -1045,7 +1071,7 @@ export function ndPairDepth(layout: NdLayout, a: string, b: string, axis?: numbe
             if (e.to === w) out.push([e.from, 1]);
         }
         for (const c of layout.couplings ?? []) {
-            if (c.axis !== axis) continue;
+            if (c.axis !== axis || c.kind === "rank") continue;
             const [p, q] = c.kind === "bridge" ? [c.r, c.b] : [c.a, c.b];
             const other = p === w ? q : q === w ? p : null;
             if (!other) continue;
@@ -1508,6 +1534,125 @@ export function walkLures(layout: NdLayout, a: string, b: string): { hamming: nu
         return Math.abs(layout.coords[a][i] - layout.coords[b][i]);
     });
     return { hamming: legs.filter(l => l !== 0).length, widest: Math.max(...legs) };
+}
+
+/* ------------------------------------------------------------------ *
+ * Ranked lists — lexicographic premises                               *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Which list a stack can carry: a key axis and a tiebreak, both straight,
+ * with an order people already sort by. A timetable — time, then height, low
+ * first — where there is time to sort by; otherwise reading order — the
+ * northernmost row first, then west to east — which every stack from two
+ * axes up has.
+ */
+export function rankOrder(axes: AxisSpec[]): { key: number; keyDir: 1 | -1; tie: number; tieDir: 1 | -1 } | null {
+    const at = (id: string) => axes.findIndex(a => a.scale.id === id && !isCircular(a) && !isParity(a));
+    const [time, up, north, east] = ["temporal", "up", "north", "east"].map(at);
+    if (time >= 0 && up >= 0) return { key: time, keyDir: 1, tie: up, tieDir: 1 };
+    if (north >= 0 && east >= 0) return { key: north, keyDir: -1, tie: east, tieDir: 1 };
+    return null;
+}
+
+/** Whether `a` comes before `b` on the list, by the layout's own positions. */
+function listedBefore(layout: NdLayout, o: NonNullable<ReturnType<typeof rankOrder>>, a: string, b: string): boolean {
+    const k = o.keyDir * (layout.coords[a][o.key] - layout.coords[b][o.key]);
+    if (k !== 0) return k < 0;
+    return o.tieDir * (layout.coords[a][o.tie] - layout.coords[b][o.tie]) < 0;
+}
+
+/**
+ * Two rankings across a cut tiebreak.
+ *
+ * No two things may share both a key and a tiebreak position — the setup
+ * says so, because "listed before" between two things level on both would
+ * otherwise be undefined, and the item would rest on a convention nobody
+ * stated. The key axis is never cut, so every ranking's case can be decided.
+ *
+ * One ranking is informative: a pair level on the key, across the cut, at
+ * least two premises apart, so it carries the tiebreak across. The other is
+ * idle: a pair one step apart on the key, so it says nothing about the
+ * tiebreak, chosen so that reading it as a tiebreak statement anyway is false.
+ */
+export function drawRanks(layout: NdLayout): NdLayout | null {
+    const o = rankOrder(layout.axes);
+    if (!o) return null;
+    const c = layout.coords;
+    const cell = new Set(layout.words.map(w => `${c[w][o.key]},${c[w][o.tie]}`));
+    if (cell.size < layout.words.length) return null;
+
+    const edges = layout.edges.map(e => ({
+        ...e,
+        deltas: [...e.deltas],
+        stated: e.stated ? [...e.stated] : layout.axes.map(() => true),
+    }));
+    for (const cut of shuffled(edges.filter(e => e.deltas[o.tie] !== 0))) {
+        cut.stated[o.tie] = false;
+        const groups = closeAxes({ ...layout, edges, couplings: [] })[o.tie];
+        const side = (w: string) => groups.find(w) === groups.find(cut.from);
+        const near = layout.words.filter(side), far = layout.words.filter(w => !side(w));
+        if (near.length < 2 || far.length < 2) { cut.stated[o.tie] = true; continue; }
+
+        const across: Array<[string, string]> = [];
+        for (const a of layout.words) for (const b of side(a) ? far : near) {
+            if (listedBefore(layout, o, a, b)) across.push([a, b]);
+        }
+        const informative = across.filter(([a, b]) =>
+            c[a][o.key] === c[b][o.key] && graphDistance(a, b, layout.neighbors) >= 2);
+        // Read as a tiebreak statement, "a before b" would put a first on the
+        // tiebreak; idle, it is the other way round.
+        const idle = across.filter(([a, b]) => Math.abs(c[a][o.key] - c[b][o.key]) === 1
+            && o.tieDir * (c[a][o.tie] - c[b][o.tie]) > 0);
+        if (!informative.length || !idle.length) { cut.stated[o.tie] = true; continue; }
+        const rank = ([a, b]: [string, string]): NdRank =>
+            ({ kind: "rank", a, b, key: o.key, keyDir: o.keyDir, axis: o.tie, tieDir: o.tieDir });
+        return { ...layout, edges, couplings: [rank(pick(informative)), rank(pick(idle))] };
+    }
+    return null;
+}
+
+/**
+ * Bounds on `a − b` along one axis, from what the premises say exactly and
+ * what the rankings say at least. Difference constraints, closed by
+ * Floyd–Warshall over a handful of objects; `null` where they contradict.
+ *
+ * `how` models the readers: `true` takes a ranking as a tiebreak statement
+ * only where its pair is level on the key; `all` takes every ranking that way;
+ * `none` ignores the rankings; `flipped` reads the tiebreak the wrong way.
+ */
+export function boundsOn(
+    layout: NdLayout, axis: number, a: string, b: string,
+    how: "true" | "all" | "none" | "flipped" = "true",
+): { lo: number; hi: number } | null {
+    const words = layout.words;
+    const ix = new Map(words.map((w, i) => [w, i]));
+    const n = words.length;
+    // d[u][v] is the most x_v − x_u can be.
+    const d = words.map((_, i) => words.map((__, j) => (i === j ? 0 : Infinity)));
+    const most = (u: string, v: string, w: number) => {
+        const [i, j] = [ix.get(u)!, ix.get(v)!];
+        d[i][j] = Math.min(d[i][j], w);
+    };
+    for (const e of layout.edges) {
+        if (e.stated && !e.stated[axis]) continue;
+        most(e.from, e.to, e.deltas[axis]);
+        most(e.to, e.from, -e.deltas[axis]);
+    }
+    for (const c of layout.couplings ?? []) {
+        if (c.kind !== "rank" || c.axis !== axis || how === "none") continue;
+        const level = layout.coords[c.a][c.key] === layout.coords[c.b][c.key];
+        if (!level && how !== "all") continue;
+        // a before b: tieDir·(x_a − x_b) ≤ −1, so x_b − x_a ≥ 1 along tieDir.
+        const dir = how === "flipped" ? -c.tieDir : c.tieDir;
+        if (dir > 0) most(c.b, c.a, -1); else most(c.a, c.b, -1);
+    }
+    for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        if (d[i][k] + d[k][j] < d[i][j]) d[i][j] = d[i][k] + d[k][j];
+    }
+    if (words.some((_, i) => d[i][i] < 0)) return null;
+    const [i, j] = [ix.get(a)!, ix.get(b)!];
+    return { lo: -d[i][j], hi: d[j][i] };
 }
 
 function shuffled<T>(xs: T[]): T[] {
@@ -2285,7 +2430,7 @@ function pathBetween(layout: NdLayout, a: string, b: string, axis?: number): str
      * that could not take it would have nothing to show.
      */
     const bridged = (w: string) => axis == null ? [] : (layout.couplings ?? [])
-        .filter(c => c.axis === axis)
+        .filter((c): c is NdBridge | NdTotal => c.axis === axis && c.kind !== "rank")
         .map(c => (c.kind === "bridge" ? { c, p: c.r, q: c.b } : { c, p: c.a, q: c.b }))
         .filter(({ p, q }) => p === w || q === w)
         .filter(({ c }) => {
@@ -2374,7 +2519,8 @@ export function explainNdAxis(
              * whole of what the item asks.
              */
             const ends = (c: NdCoupling) => (c.kind === "bridge" ? [c.r, c.b] : [c.a, c.b]);
-            const crossing = (layout.couplings ?? []).find(c => c.axis === axisIndex
+            const crossing = (layout.couplings ?? []).find((c): c is NdBridge | NdTotal =>
+                c.kind !== "rank" && c.axis === axisIndex
                 && ends(c).includes(path[i]) && ends(c).includes(path[i + 1]));
             if (!crossing) return [];
             if (crossing.kind === "total") {

@@ -11,7 +11,7 @@ import { buildConstructClaims } from "./context";
 import { Question } from "../models/question.models";
 import { coinFlip, getRandomSymbols, pickUniqueItems, shuffle } from "../utils/question.utils";
 import { describeTransform } from "../utils/transformations.utils";
-import { AxisSpec, NdConclusion, NdLayout, ndAxisColors, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, coneAxes, coneLayout, edgeSteps, routeForms, routePath, routeSteps, timeBounds, travelSteps, kindsFaceValue, kindsLayout, relDelta, countedAxes, drawWalk, walkDistance, walkLures, walkReading, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
+import { AxisSpec, NdConclusion, NdLayout, NdRank, ndAxisColors, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, coneAxes, coneLayout, edgeSteps, routeForms, routePath, routeSteps, timeBounds, travelSteps, kindsFaceValue, kindsLayout, relDelta, countedAxes, drawWalk, walkDistance, walkLures, walkReading, boundsOn, drawRanks, rankOrder, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
 import { orderPremises, scrambleBlocks, scrambleByFactor, scrambleLeading } from "../utils/premise-order.utils";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
 import { LinearFeatureFlags } from "../services/settings-override.service";
@@ -24,7 +24,7 @@ import {
     describeFacing, egocentric,
 } from "../utils/facing.utils";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../constants/settings.constants";
-import { BRIDGE_NOTE, CLOCK_NOTE, COMPACT_NOTE, CONE_NOTE, KIND_NOTE, NEAREST_NOTE, WALK_NOTE, ONE_STEP_MINUTES_NOTE, REACH_NOTE, SIGNAL_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
+import { BRIDGE_NOTE, CLOCK_NOTE, COMPACT_NOTE, CONE_NOTE, KIND_NOTE, NEAREST_NOTE, RANK_NOTE, WALK_NOTE, ONE_STEP_MINUTES_NOTE, REACH_NOTE, SIGNAL_NOTE, EDIT_NOTE, INDETERMINATE_NOTE, ND_ANALOGY_NOTE, ND_TRANSFORM_NOTE, ONE_STEP_NOTE, UNNAMED_NOTE } from "./notes";
 
 /** How many dimensions each composed-space mode asks for. */
 export function dimensionsOf(ctx: GeneratorContext, type: EnumQuestionType): number {
@@ -114,6 +114,8 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
     const frameable = axes.some(a => !isCircular(a) && !isParity(a));
     // A total needs a straight axis to cut and another to subtract.
     const walkable = countedAxes(axes).length >= 2;
+    // A list needs a key and a tiebreak with an order people already sort by.
+    const rankable = !!rankOrder(axes);
 
     /*
      * One coupling per item, decided before anything else is.
@@ -138,12 +140,14 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         ...(base.cone ? ["cone"] : []),
         ...(base.kinds ? ["kinds"] : []),
         ...(base.walkingTotals ? ["walking-totals"] : []),
+        ...(base.ranked ? ["ranked"] : []),
     ];
     const offered = heldCouplings
         .filter(r => r !== "local-clocks" || clockable)
         .filter(r => r !== "cone" || coneable)
         .filter(r => r !== "kinds" || frameable)
-        .filter(r => r !== "walking-totals" || walkable);
+        .filter(r => r !== "walking-totals" || walkable)
+        .filter(r => r !== "ranked" || rankable);
     const coupling = offered.length && numOfPremises >= 4 && coinFlip()
         ? offered[Math.floor(Math.random() * offered.length)]
         : null;
@@ -158,6 +162,9 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
      * later rung of its own.
      */
     const walkNearest = wantWalk && coinFlip();
+    const wantRanked = coupling === "ranked";
+    // Whether the ranked claim is true, decided once rather than per draw.
+    const rankedTrue = wantRanked && coinFlip();
     /*
      * A kinds item reads kind off a parity axis, and only the seven-axis stack
      * has one. Elsewhere it is appended for the item — one axis wider than the
@@ -239,6 +246,12 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
            // The nearest question is the item's whole conclusion, as the cone's is.
            ...(walkNearest ? ["indeterminate", "analogy", "construct-conclusion", "construct-distance",
                "choose-conclusion"] : []),
+           /*
+            * A ranking says "at least", never "exactly", so a ranked item asks
+            * one claim of necessity about the tiebreak and nothing that needs a
+            * distance or a whole relation.
+            */
+           ...(wantRanked ? ["analogy", "construct-conclusion", "construct-distance", "choose-conclusion"] : []),
           ].filter(r => ctx.hasRung(type, r))
         : [];
     // The cone's later rungs ride on it, and are charged only on the item
@@ -272,7 +285,8 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         Math.max(0, numOfPremises + 1 - objectFloor - editCount));
     // A bridge is a premise too, as is the date line's anchor, and each comes
     // out of the objects as edits do.
-    const couplingPremises = wantBridge || (wantClocks && dateLine) || (wantWalk && !walkNearest) ? 1 : 0;
+    const couplingPremises = wantRanked ? 2
+        : wantBridge || (wantClocks && dateLine) || (wantWalk && !walkNearest) ? 1 : 0;
     const objectCount = Math.max(4, numOfPremises + 1 - editCount - transformCount - couplingPremises);
     const vocab = ndTransformVocab(axes);
 
@@ -365,7 +379,9 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         const walked = coupling_ === "walking-totals" && !walkNearest ? drawWalk(drawn) : null;
         if (coupling_ === "walking-totals" && !walkNearest && !walked) continue;
         const neared = coupling_ === "walking-totals" && walkNearest ? drawn : null;
-        const layout = bridged ?? clocked ?? coned ?? kinded ?? walked ?? neared
+        const ranked = coupling_ === "ranked" ? drawRanks(drawn) : null;
+        if (coupling_ === "ranked" && !ranked) continue;
+        const layout = bridged ?? clocked ?? coned ?? kinded ?? walked ?? neared ?? ranked
             ?? (feat.indeterminate
                 ? withholdClauses(drawn, 1 + Math.floor(Math.random() * 2))
                 : drawn);
@@ -474,6 +490,8 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             if (!fillConeConclusion(question, coned, coneKind, coneSelect, coneWant)) continue;
         } else if (neared) {
             if (!fillNearestConclusion(question, neared)) continue;
+        } else if (ranked) {
+            if (!fillRankedConclusion(question, ranked, rankedTrue)) continue;
         } else if (!fillNdConclusion(
             ctx, question, fill.initial, fill.final, feat,
             // A coupled item gives up on analogy sooner: a matching pair the
@@ -483,7 +501,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             fill.coupling)) continue;
 
         const delivered = bridged ? "bridges" : clocked ? "local-clocks" : coned ? "cone" : kinded ? "kinds"
-            : walked || neared ? "walking-totals" : null;
+            : walked || neared ? "walking-totals" : ranked ? "ranked" : null;
         if (kinded && appendParity) question.surcharge = Math.round(0.2 * numOfPremises * 100) / 100;
         question.undelivered.push(...heldCouplings.filter(r => r !== delivered));
         question.undelivered.push(...heldConeForms.filter(r =>
@@ -619,7 +637,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
             ...ndSetup(ctx, layout.axes, feat, edits.length > 0, transforms.length > 0,
                 { bridged: !!bridged, clocked: clocked ? { layout: clocked, reading } : undefined,
                   coned: coned ?? undefined, kinded: kinded ?? undefined,
-                  walked: !!walked, neared: !!neared }),
+                  walked: !!walked, neared: !!neared, ranked: ranked ?? undefined }),
             ...question.setup,
         ];
         return question;
@@ -733,6 +751,8 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
     const kinds = ladder("kinds") && edits === 0 && transforms === 0 && !compact;
     // A total is a premise about the arrangement as stated, as a bridge is.
     const walkingTotals = ladder("walking-totals") && edits === 0 && transforms === 0 && !compact;
+    // Rankings are premises about the arrangement as stated, too.
+    const ranked = ladder("ranked") && edits === 0 && transforms === 0 && !compact;
 
     return {
         testimony,
@@ -743,6 +763,7 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
         reach: cone && ladder("reach"),
         kinds,
         walkingTotals,
+        ranked,
         speakers: speakers && !testimony,
         facing,
         twins,
@@ -1394,9 +1415,10 @@ export function ndSetup(ctx: GeneratorContext,
         kinded?: NdLayout;
         walked?: boolean;
         neared?: boolean;
+        ranked?: NdLayout;
     } = {},
 ): string[] {
-    const bridged = !!coupled.bridged || !!coupled.walked;
+    const bridged = !!coupled.bridged || !!coupled.walked || !!coupled.ranked;
     const loops = axes.filter(a => isCircular(a));
     const lines: string[] = [];
     /*
@@ -1413,7 +1435,9 @@ export function ndSetup(ctx: GeneratorContext,
      * no difference, and the conclusion may ask about exactly that axis.
      */
     if (feat.compact) lines.push(COMPACT_NOTE);
-    if (feat.indeterminate) lines.push(INDETERMINATE_NOTE);
+    // A ranked item asks a claim of necessity whether or not the rung that
+    // introduces them is held, so it states what one means either way.
+    if (feat.indeterminate || coupled.ranked) lines.push(INDETERMINATE_NOTE);
     /*
      * A bridged item leaves a clause out whether or not the indeterminate rung
      * is held, so the reading of an omission is stated with it either way.
@@ -1421,6 +1445,13 @@ export function ndSetup(ctx: GeneratorContext,
     if (feat.indeterminate || bridged) lines.push(UNNAMED_NOTE);
     if (coupled.bridged) lines.push(BRIDGE_NOTE);
     if (coupled.walked) lines.push(WALK_NOTE(axes.some(a => isCircular(a) || isParity(a))));
+    if (coupled.ranked) {
+        const o = rankOrder(axes)!;
+        const [key, tie] = [axes[o.key].scale, axes[o.tie].scale];
+        const first = (scale: typeof key, dir: number) => rel(scale.direction[dir > 0 ? 1 : 0]);
+        lines.push(RANK_NOTE(key.name.toLowerCase(), first(key, o.keyDir),
+            tie.name.toLowerCase(), first(tie, o.tieDir), rel(key.tie), rel(tie.tie)));
+    }
     if (coupled.neared) lines.push(NEAREST_NOTE(axes.some(a => isParity(a)), axes.some(a => isCircular(a))));
     if (coupled.clocked) lines.push(...clockNotes(coupled.clocked.layout, coupled.clocked.reading));
     if (coupled.coned) {
@@ -1686,6 +1717,69 @@ function fillNearestConclusion(question: Question, layout: NdLayout): boolean {
         }
     }
     return false;
+}
+
+/**
+ * A claim of necessity about the tiebreak, across the cut.
+ *
+ * The pair is one the informative ranking settles strictly and nothing else
+ * settles at all: with the rankings ignored it is open. Reading every ranking
+ * as a tiebreak statement — the idle one too — must give the opposite answer
+ * or a contradiction, or the idle ranking is decoration. A false claim says
+ * what that misreading says.
+ */
+function fillRankedConclusion(question: Question, layout: NdLayout, wantTrue: boolean): boolean {
+    const o = rankOrder(layout.axes)!;
+    const T = o.tie;
+    const axis = layout.axes[T];
+    const color = ndAxisColors(layout.axes)[T];
+    const sign = (b: { lo: number; hi: number } | null) => !b ? null : b.lo >= 1 ? 1 : b.hi <= -1 ? -1 : 0;
+
+    // Never a ranking's own pair: the answer would be one premise, read off.
+    const ranked = new Set((layout.couplings ?? []).filter((c): c is NdRank => c.kind === "rank")
+        .flatMap(c => [`${c.a} ${c.b}`, `${c.b} ${c.a}`]));
+    const options: Array<{ p: string; q: string; truth: number }> = [];
+    for (const p of layout.words) for (const q of layout.words) {
+        if (p === q || ranked.has(`${p} ${q}`)) continue;
+        if (determinedOn(layout, T, p, q) || graphDistance(p, q, layout.neighbors) < 2) continue;
+        const truth = sign(boundsOn(layout, T, p, q));
+        if (truth == null || truth === 0) continue;
+        const misread = boundsOn(layout, T, p, q, "all");
+        if (misread && sign(misread) !== -truth) continue;
+        options.push({ p, q, truth });
+    }
+    if (!options.length) return false;
+    const { p, q, truth } = options[Math.floor(Math.random() * options.length)];
+    const said = wantTrue ? truth : -truth;
+    const word = said > 0 ? axis.scale.above : axis.scale.below;
+
+    question.conclusion = mustBe(`${subj(p)} ${rel(word, color)} ${subj(q)}`);
+    question.isValid = wantTrue;
+    question.depth = graphDistance(p, q, layout.neighbors) + 1;
+
+    const key = layout.axes[o.key];
+    const keyColor = ndAxisColors(layout.axes)[o.key];
+    const bounds = boundsOn(layout, T, p, q)!;
+    question.explanation = [
+        ...(layout.couplings ?? []).filter((c): c is NdRank => c.kind === "rank").map(c => {
+            const k = layout.coords[c.a][o.key] - layout.coords[c.b][o.key];
+            if (k === 0) {
+                const lower = o.tieDir > 0 ? axis.scale.below : axis.scale.above;
+                return `${subj(c.a)} and ${subj(c.b)} are at the ${hi(key.scale.tie, keyColor)}, so`
+                    + ` \u201c${subj(c.a)} is listed before ${subj(c.b)}\u201d means ${subj(c.a)}`
+                    + ` ${rel(lower, color)} ${subj(c.b)}.`;
+            }
+            return `${subj(c.a)} ${rel(k < 0 ? key.scale.below : key.scale.above, keyColor)} ${subj(c.b)},`
+                + ` so \u201c${subj(c.a)} is listed before ${subj(c.b)}\u201d is explained by`
+                + ` ${hi(key.scale.name, keyColor)} and says nothing about ${hi(axis.scale.name, color)}.`;
+        }),
+        truth > 0
+            ? `so, with the rest of the premises, ${subj(p)} is at least ${bounds.lo} ${bounds.lo === 1 ? axis.scale.unit : axis.scale.unit + "s"}`
+              + ` ${hi(axis.scale.direction[0], color)}${axis.scale.link ? " " + axis.scale.link : ""} ${subj(q)}`
+            : `so, with the rest of the premises, ${subj(p)} is at least ${-bounds.hi} ${-bounds.hi === 1 ? axis.scale.unit : axis.scale.unit + "s"}`
+              + ` ${hi(axis.scale.direction[1], color)}${axis.scale.link ? " " + axis.scale.link : ""} ${subj(q)}`,
+    ];
+    return true;
 }
 
 /** "X's ring can have reached Y by the moment Y rang." */
