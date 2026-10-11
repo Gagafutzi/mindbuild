@@ -193,6 +193,21 @@ export function createPivotTransforms(ctx: GeneratorContext, numOfPremises: numb
          */
         const naive = sub(moved.get(to)!, place.get(from)!).map(sign);
         if (naive.join(",") === answer.join(",")) continue;
+        /*
+         * **Length must not give it away.** A tie clause ("same longitude") is
+         * longer than a direction word, and the moved answer carries more ties
+         * than the naive one more often than not — measured at 58–61% "the
+         * longer option is right" across seeds, a rule a reader can learn
+         * without reading a premise. A longer right answer is kept with
+         * probability 0.69, which brings 59% to half.
+         *
+         * Thinned rather than drawn to order: deciding the length order first
+         * and rejecting what does not match left some configurations with no
+         * short right answer in the attempt budget, so they threw, and the
+         * items that survived were skewed long again.
+         */
+        const shownLength = (v: Point) => pattern(v).replace(/<[^>]*>/g, "").length;
+        if (shownLength(answer) > shownLength(naive) && Math.random() > 0.69) continue;
 
         const shown = shuffle([
             { v: answer, right: true },
