@@ -256,6 +256,9 @@
     + "A key works too: F, K, J, 1–4, Space. The phone buzzes on every touch, and the screen is kept on. Two soft rising notes mean the question comes next.</p>"
     + "<p>Each round starts with its number, task and material. Mistakes are explained in a few words (or every answer, if you set it), and each round ends with the score and the level. "
     + "Escape or the Pause button pauses, and the voice stops with it.</p>"
+    + "<h3>Listen only</h3>"
+    + "<p>Set <b>Play</b> to <i>Listen only</i> and nothing is answered: each question is followed by a pause, set by <b>Pause before the answer</b>, and then its solution is spoken. "
+    + "The level is the one set under <b>Listen only: level</b> (your current one by default), and listening never moves it. The speech rate is the same setting as everywhere else.</p>"
     + "<h3>The spoken code</h3>"
     + "<p>The compact code, said word for word, in words picked to be told apart by ear:</p><ul>"
     + "<li><b>=</b> is · objects by colour: Red, Blue, Green, Gold, Violet, White.</li>"
@@ -295,7 +298,18 @@
         { value: "compact", label: "Compact notation (see How it works)" }, { value: "words", label: "Words" }] },
       { key: "play", label: "Play", type: "select", default: "screen", options: [
         { value: "screen", label: "On screen" }, { value: "aloud", label: "On screen, read aloud" },
-        { value: "ears", label: "Eyes closed (audio only)" }] },
+        { value: "ears", label: "Eyes closed (audio only)" },
+        { value: "listen", label: "Listen only (audio, no answers)" }] },
+      /* Listen only: nothing is answered, so nothing can move the level. The
+         level is chosen here instead, and the voice pauses between asking and
+         answering for as long as is set. */
+      { key: "listenLevel", label: "Listen only: level", type: "select", default: "current", options: [
+        { value: "current", label: "My current level" }].concat(Array.from({ length: 30 }, function (_, i) {
+          return { value: i + 1, label: "Level " + (i + 1) };
+        })) },
+      { key: "reveal", label: "Listen only: pause before the answer", type: "select", default: 6000, options: [
+        { value: 2000, label: "2 s" }, { value: 4000, label: "4 s" }, { value: 6000, label: "6 s" }, { value: 8000, label: "8 s" },
+        { value: 12000, label: "12 s" }, { value: 20000, label: "20 s" }, { value: 30000, label: "30 s" }] },
       { key: "minutes", label: "Session length", type: "select", default: 20, options: [
         { value: 10, label: "10 minutes" }, { value: 15, label: "15 minutes" }, { value: 20, label: "20 minutes" }, { value: 30, label: "30 minutes" },
         { value: 45, label: "45 minutes" }, { value: 60, label: "1 hour" }, { value: 90, label: "1½ hours" }, { value: 120, label: "2 hours" },
@@ -338,10 +352,14 @@
       var set = s.settings, compact = set.notation === "compact";
       /* Eyes closed: everything is heard, and the whole screen is the answer
          pad. Read aloud: the screen as usual, and the voice too. */
-      var ears = set.play === "ears" && !!speech, aloud = ears || (set.play === "aloud" && !!speech);
+      /* Listen only is eyes closed with no answers: every question is followed
+         by a pause and then its solution, and the session plays itself. */
+      var listen = set.play === "listen" && !!speech;
+      var ears = (set.play === "ears" || listen) && !!speech, aloud = ears || (set.play === "aloud" && !!speech);
       useLetters = compact;
       Voice.rate = +set.rate || 1; Voice.which = set.voice; Voice.held = false;
-      var level = typeof load(LEVEL_KEY) === "number" ? load(LEVEL_KEY) : s.level;
+      var stored = typeof load(LEVEL_KEY) === "number" ? load(LEVEL_KEY) : s.level;
+      var level = listen && set.listenLevel !== "current" ? +set.listenLevel : stored;
       var startedAt = Date.now(), endMs = set.minutes * 60000, limit = set.timeLimit ? set.timeLimit * 1000 : null;
       var rows = [], lureStats = {}, roundsDone = [];
       var rot = 0;
@@ -377,14 +395,28 @@
         document.addEventListener("visibilitychange", wake);
         wake();
       }
-      function buttons(defs) { s.buttons(defs); if (pad) pad.dataset.n = defs.length; }
+      function buttons(defs) { s.buttons(listen ? [] : defs); if (pad) pad.dataset.n = listen ? 0 : defs.length; }
+      /* An answer, or — listening — the pause in which one would be thought of. */
+      async function respond(opts) {
+        if (!listen) return s.respond(opts);
+        await s.wait(+set.reveal || 6000);
+        return null;
+      }
 
       function hud() { var e = document.querySelector(".h-session .h-bar .h-dim"); if (e) e.textContent = "level " + level; }
       hud();
-      function tone(ok) { if (set.sound) s.audio.tone(ok ? 880 : 196, ok ? 90 : 220, ok ? 0.12 : 0.16); }
-      function log(row) { var r = s.log(row); rows.push(r); checkpoint(); }
+      function tone(ok) { if (set.sound && !listen) s.audio.tone(ok ? 880 : 196, ok ? 90 : 220, ok ? 0.12 : 0.16); }
+      /* Listening, a trial is kept as heard but unscored: no target, no
+         correct, so it can count towards no accuracy and no level. */
+      function log(row) {
+        if (listen) row = { response: null, extra: Object.assign({ listened: true }, row.extra || {}) };
+        var r = s.log(row); rows.push(r); checkpoint();
+      }
       function checkpoint(final) {
         if (final) return drop(CHECKPOINT_KEY);
+        // A listening session's level is chosen, not earned; recovering it
+        // would put it in the record as though it had been.
+        if (listen) return;
         var scored = rows.filter(function (r) { return typeof r.correct === "boolean"; });
         var correct = scored.filter(function (r) { return r.correct; }).length;
         save(CHECKPOINT_KEY, { level: level, session: {
@@ -411,6 +443,11 @@
          words, then straight on. */
       async function explain(ok, parts, spoken) {
         var show = set.explain === "always" || (set.explain === "errors" && !ok);
+        if (listen) {
+          await sayAll(spoken, 150);
+          await s.wait(1200);
+          return;
+        }
         if (ears) {
           if (show) { await s.wait(250); await sayAll([ok ? "Correct." : "Wrong."].concat(spoken), 150); await s.wait(500); }
           else await s.wait(ok ? 400 : 700);
@@ -521,7 +558,7 @@
             await present(c.lines, c.question);
             var t0 = s.now(), resp;
             for (;;) {
-              resp = await s.respond({ timeoutMs: limit ? Math.max(1, limit - (s.now() - t0)) : null });
+              resp = await respond({ timeoutMs: limit ? Math.max(1, limit - (s.now() - t0)) : null });
               if (!resp || resp.id === "done") break;
               var j = +resp.id.slice(1), at = picked.indexOf(j);
               if (at >= 0) picked.splice(at, 1); else picked.push(j);
@@ -539,7 +576,7 @@
             }
             buttons(bs);
             await present(c.lines, c.question);
-            var r1 = await s.respond({ timeoutMs: limit });
+            var r1 = await respond({ timeoutMs: limit });
             given = r1 ? r1.id : null; rtMs = r1 ? r1.rtMs : null;
             good = given === trial.answer;
           }
@@ -564,7 +601,7 @@
               said: Array.isArray(given) ? walks(given) : given, lure: trial.lure || null, level: level, cube: o.N,
               premises: trial.premises ? trial.premises.length : null, grid: trial.gridAnswer || null },
           });
-          s.feedback(good);
+          if (!listen) s.feedback(good);
           await explain(good, routeExplain(trial), routeHeard(trial));
         }
         return { done: done, right: right };
@@ -589,7 +626,8 @@
             if (compact) { q = new String(scored ? sym + nb + "?" : "⊢" + (i + 1) + "/" + nb); q.spoken = A.ear(String(q)); }
             else q = scored ? "Same arrangement as " + nb + " back" + (rotOK ? ", up to rotation" : "") + "?" : "Hold this (" + (i + 1) + " of " + nb + ")";
             await present(lines, q);
-            var r = await s.respond({ timeoutMs: scored ? limit : null });
+            // Listening, an item to hold is a short pause, not the full one.
+            var r = listen && !scored ? (await s.wait(1000), null) : await respond({ timeoutMs: scored ? limit : null });
             if (!scored) continue;
             var said = r ? r.id : null, ok = said === (it.target ? "match" : "diff");
             done++; if (ok) right++;
@@ -597,7 +635,7 @@
             if (!it.target) { lureStats[it.kind] = lureStats[it.kind] || { shown: 0, caught: 0 }; lureStats[it.kind].shown++; if (ok) lureStats[it.kind].caught++; }
             log({ target: it.target, response: said === "match" ? "match" : null, correct: ok, rtMs: r ? r.rtMs : null,
               extra: { task: "nback", material: G.name, kind: it.target ? "match" : it.kind, said: said, n: nb, level: level } });
-            s.feedback(ok);
+            if (!listen) s.feedback(ok);
             await explain(ok, "<p>" + (it.target ? (compact ? sym : "The same arrangement") : (compact ? "≢ " : "Different: ") + esc(trapText(it.kind))) + "</p>"
               + '<div class="ra-pair"><div><small>−' + nb + "</small>" + drawing(G, items[i - nb].world) + "</div><div><small>0</small>" + drawing(G, it.world) + "</div></div>",
               [it.target ? "Same." : "Different: " + trapWords(it.kind) + "."]);
@@ -630,7 +668,7 @@
           }
           buttons(bs);
           await present(plines, question);
-          var resp = await s.respond({ timeoutMs: limit });
+          var resp = await respond({ timeoutMs: limit });
           var given = resp ? resp.id : null, good = given === trial.answer;
           var signal = kind === "question" ? "yes" : kind === "possible" ? "possible" : null;
           done++; if (good) right++;
@@ -643,7 +681,7 @@
             extra: { task: kind, material: G.name, answer: trial.answer, said: given, lure: trial.lure || null, level: level,
               path: trial.pathLength || null, premises: trial.premises.length, nested: trial.premises.filter(function (p) { return p.kind === "nested"; }).length },
           });
-          s.feedback(good);
+          if (!listen) s.feedback(good);
           var why = "", heard = [];
           if (kind === "question" && trial.either && !trial.unlinked) {
             /* Either/or: what the premises allow, over every reading that fits. */
@@ -712,8 +750,10 @@
           if (!res.done) { if (++empty >= 3) break; continue; }
           empty = 0;
           var acc = res.right / res.done;
-          if (res.done >= Math.min(4, set.perRound)) level = acc >= 0.8 ? Math.min(30, level + 1) : acc < 0.6 ? Math.max(1, level - 1) : level;
-          save(LEVEL_KEY, level);
+          if (!listen) {
+            if (res.done >= Math.min(4, set.perRound)) level = acc >= 0.8 ? Math.min(30, level + 1) : acc < 0.6 ? Math.max(1, level - 1) : level;
+            save(LEVEL_KEY, level);
+          }
           hud();
           roundsDone.push({ task: task, material: material, trials: res.done, correct: res.right, from: from, to: level });
           checkpoint();
@@ -722,7 +762,8 @@
           var left = Math.max(0, Math.round((endMs - s.now()) / 60000));
           if (ears) {
             buttons([]);
-            await say(Math.round(acc * 100) + " percent. Level " + level + ". " + left + " minutes left.");
+            await say(listen ? "End of round. " + left + " minutes left."
+              : Math.round(acc * 100) + " percent. Level " + level + ". " + left + " minutes left.");
             await s.wait(1200);
             continue;
           }
@@ -732,7 +773,7 @@
             : "Round " + r + ": " + Math.round(acc * 100) + "% · level " + from + " → " + level + ". Next: " + nextTask + ", " + materialLabel(nextMaterial) + ". " + left + " min left.") + "</p></div>");
           await s.respond({ accept: ["next"], timeoutMs: 8000 });
         }
-        if (ears) await say("Session over. Level " + level + ".");
+        if (ears) await say(listen ? "Session over." : "Session over. Level " + level + ".");
       } finally {
         try { localStorage.setItem(ROTATION_KEY, String(rot + Math.max(1, roundsDone.length))); } catch (e) {}
         checkpoint(true);
@@ -743,7 +784,9 @@
         document.removeEventListener("visibilitychange", wake);
         if (lock) lock.release().catch(function () {});
       }
-      return { mode: "rounds", modalities: ears ? ["audio"] : ["visual"].concat(aloud ? ["audio"] : []), levelEnd: level,
+      return { mode: listen ? "listen" : "rounds", modalities: ears ? ["audio"] : ["visual"].concat(aloud ? ["audio"] : []),
+        // Listening leaves the level where it was.
+        levelEnd: listen ? stored : level,
         extra: { rounds: roundsDone, lures: lureStats, notation: set.notation, play: aloud ? set.play : "screen" } };
     },
   });
