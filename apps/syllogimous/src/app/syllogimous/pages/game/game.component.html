@@ -258,7 +258,7 @@
                   compared against each other.
                 -->
                 <div *ngIf="activeSlide === 'choices'">
-                    <small class="text-muted">{{ game.question.choicePrompt || "Which follows?" }}</small>
+                    <small class="text-muted" [innerHTML]="game.question.choicePrompt || 'Which follows?'"></small>
                     <div class="choice-list" *ngIf="!game.question.choiceGrids?.length">
                         <div *ngFor="let c of game.question.choices; let i = index">
                             <span class="choice__key">{{ i + 1 }}</span>
@@ -337,9 +337,8 @@
               listing them here as well doubled the height of the tallest item
               in the game for no added information.
             -->
-            <div *ngIf="game.question.answerMode === 'choice'" class="small text-muted">
-                {{ game.question.choicePrompt || "Which of the statements below follows?" }}
-            </div>
+            <div *ngIf="game.question.answerMode === 'choice'" class="small text-muted"
+                 [innerHTML]="game.question.choicePrompt || 'Which of the statements below follows?'"></div>
 
             <ng-container *ngIf="game.question.answerMode !== 'choice' && game.question.answerMode !== 'construct' && game.question.answerMode !== 'map'">
             <div *ngIf="Array.isArray(game.question.conclusion); else conclusionIsStringTemplate">
@@ -474,7 +473,7 @@
         -->
         <div *ngIf="game.question.answerMode === 'map'" class="d-grid">
             <div class="small text-muted text-center mb-2"
-                 *ngIf="game.question.choicePrompt">{{ game.question.choicePrompt }}</div>
+                 *ngIf="game.question.choicePrompt" [innerHTML]="game.question.choicePrompt"></div>
             <button class="btn btn-lg btn-primary"
                     [disabled]="!mapComplete || !builderReady"
                     (click)="submitMapping()">
@@ -504,9 +503,13 @@
           answer nobody can give.
         -->
         <div *ngIf="game.question.answerMode === 'select'">
-            <div class="small text-muted mb-2" *ngIf="game.question.choicePrompt">
-                {{ game.question.choicePrompt }}
-            </div>
+            <!--
+              innerHTML, for the reason the build claims give above: a prompt
+              names its subjects as the premises do, and a subject is markup.
+              Interpolated, the player read the span tags.
+            -->
+            <div class="small text-muted mb-2" *ngIf="game.question.choicePrompt"
+                 [innerHTML]="game.question.choicePrompt"></div>
             <div class="choices" [style.grid-template-columns]="choiceColumns">
                 <button *ngFor="let c of game.question.choices; let i = index"
                         class="btn choice" [class.active]="isSelected(i)"

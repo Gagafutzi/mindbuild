@@ -89,6 +89,7 @@ import "./isomorphism.test";
 import "./web-substructure.test";
 import "./projection.test";
 import "./mode-tag.test";
+import "./choice-prompt.test";
 import "./goals.test";
 import "./dials.test";
 import "./player-sim.test";
