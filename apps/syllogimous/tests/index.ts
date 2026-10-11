@@ -119,5 +119,6 @@ import "./possibility.test";
 import "./hidden-algebra.test";
 import "./minimal-premises.test";
 import "./coupling.test";
+import "./worldlines.test";
 
 run();

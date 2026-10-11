@@ -281,6 +281,13 @@ export const MODE_SCALE: Record<EnumQuestionType, ModeScale> = {
      * distinctions are the ones the eight names cannot make.
      */
     [EnumQuestionType.ConcaveRegions]: { weight: 2.8, ceiling: 26 },
+    /*
+     * Each placement needs its own Δv·(T−τ) correction before it can be chained,
+     * which is heavier than Space 3D's per-premise step and lighter than Pivot
+     * Transforms, which holds two phases of the arrangement. A guess from the
+     * design, to be checked by placement.
+     */
+    [EnumQuestionType.Worldlines]: { weight: 1.9, ceiling: 22 },
     [EnumQuestionType.Binary]: { weight: 1.5, ceiling: 20 },
     [EnumQuestionType.Deictic]: { weight: 1.6, ceiling: 20 },
     [EnumQuestionType.AnchorSpace]: { weight: 1.8, ceiling: 20 },

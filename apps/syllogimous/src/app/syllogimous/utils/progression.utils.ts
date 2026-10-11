@@ -310,6 +310,7 @@ const DIRECTION_LADDER: string[] = Object.freeze([
     "bridges",
     "kinds",
     "walking-totals",
+    "ranked",
 ]) as string[];
 
 const SPACE_3D_LADDER: string[] = Object.freeze([
@@ -322,6 +323,8 @@ const SPACE_3D_LADDER: string[] = Object.freeze([
     "bridges",
     "kinds",
     "walking-totals",
+    "ranked",
+    "heading",
 ]) as string[];
 
 /** Space 4D to 7D: the spaces with a time axis to couple through. */
@@ -337,6 +340,8 @@ const SPACE_ND_LADDER: string[] = Object.freeze([
     "cone", "signals", "reach",
     "kinds",
     "walking-totals",
+    "ranked",
+    "heading",
 ]) as string[];
 
 /**
@@ -667,6 +672,14 @@ export const RUNG_LADDERS: Record<string, string[]> = {
     "Cross-System Analogy":     [],
     "Region Connection":        [],
     "Concave Regions":           [],
+    /*
+     * The base form, "how do they stand at hour T", still decomposes axis by
+     * axis once the stamps are applied — it is the on-ramp. Both rungs make one
+     * axis's reading depend on another: `level` reads one axis at the hour a
+     * second decides, and `meet` asks whether every axis's level hour is the
+     * same one.
+     */
+    "Worldlines":                ["level", "meet"],
     "Binary":                    ["negation", "retired-meta"],
     /*
      * Empty, and for a different reason from the two above.

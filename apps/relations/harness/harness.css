@@ -117,6 +117,14 @@ body {
   border: 1px solid var(--h-line);
   border-radius: 0;
 }
+/* The open list is drawn by the browser, and an option cannot see through to
+   the select's translucent background: left alone it gets the system's light
+   grey under this light ink, and nothing in it can be read. So the options
+   are painted outright, the chosen one in the accent, and the control is
+   declared dark so the system draws its arrow and scrollbar to match. */
+.h-field select { color-scheme: dark; }
+.h-field select option { background: var(--h-panel); color: var(--h-ink); }
+.h-field select option:checked { background: var(--h-panel-hi); color: var(--h-accent-2); }
 .h-field input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--h-accent); }
 
 .h-table { width: 100%; border-collapse: collapse; font-size: .85rem; }

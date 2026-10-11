@@ -131,6 +131,25 @@ export const RUNG_COST: Record<string, number> = {
      * carries one coupling at most, so the two are never charged together.
      */
     "walking-totals": 1.4,
+    // Worldlines. Solve one axis for the hour, then read another at it: two
+    // chains in sequence.
+    level: 1.6,
+    // Every axis's level hour, then a comparison of them.
+    meet: 1.3,
+    /*
+     * Just under a facing, and for the same reason: one premise costs two
+     * steps — compare on the key, then read the tiebreak or decide there is
+     * nothing to read. The idle ranking removes the shortcut of reading every
+     * ranking as a tiebreak statement.
+     */
+    ranked: 1.7,
+    /*
+     * A facing and a head: one more relational premise and a frame in three
+     * dimensions, read off a determinant no single axis carries. Dearer than
+     * mirror twins, which only exchange a word at the end. Charged on top of
+     * the facing it extends, as the twins are, and only on items that use it.
+     */
+    heading: 2.4,
     /*
      * Two puzzles stacked: work out who is lying, then work out the
      * arrangement from what is left. Dearer than either alone because the
@@ -417,6 +436,12 @@ export const RUNG_MIN_PREMISES: Record<string, number> = {
     reach: 4,
     kinds: 4,
     "walking-totals": 5,
+    ranked: 5,
+    // A viewer, what it faces, where its head points, and a target.
+    heading: 4,
+    // An event axis, an asked axis, and a pair two placements apart.
+    level: 4,
+    meet: 3,
     // Three objects at least: one that moves alone, and a pair that does not,
     // or the invariance form has nothing left to be invariant about.
     "solo-turns": 4,

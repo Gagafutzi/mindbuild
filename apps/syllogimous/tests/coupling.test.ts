@@ -1454,3 +1454,224 @@ test("walking totals: the total and what it counts are stated on the card", () =
     const crossed = items.filter(q => q.explanation.some(l => /remain for/.test(strip(l))));
     assert(crossed.length > items.length * 0.3, `only ${crossed.length}/${items.length} derivations use the total`);
 });
+
+/* ------------------------------------------------------------------ *
+ * Ranked lists                                                         *
+ * ------------------------------------------------------------------ */
+
+export type RankReading = "true" | "none" | "all" | "flipped" | "no-informative" | "no-idle";
+
+/**
+ * The list rule applied from the card alone: the order from the setup, the
+ * key axis solved exactly (it is never cut), each ranking classified by its
+ * key gap, and the tiebreak closed as difference constraints by Floyd–Warshall.
+ * Returns the claim's verdict by necessity, or "contradiction".
+ */
+function readRanked(q: Question, axes: AxisSpec[], how: RankReading = "true") {
+    const note = strip(q.setup.find(l => /one list/.test(strip(l)))!);
+    const m = /in order of (\S+), (\S+) first; things level on \S+ are listed by (\S+), (\S+) first/.exec(note)!;
+    const axisNamed = (n: string) => axes.findIndex(a => a.scale.name.toLowerCase() === n);
+    const [key, tie] = [axisNamed(m[1]), axisNamed(m[3])];
+    const dirOf = (axis: number, word: string) => (axes[axis].scale.direction[1] === word ? 1 : -1);
+    const keyDir = dirOf(key, m[2]);
+    const tieDir = (how === "flipped" ? -1 : 1) * dirOf(tie, m[4]);
+
+    const ranks = q.premises.filter(p => /listed before/.test(strip(p))).map(subjectsOf);
+    const edges = q.premises.filter(p => !/listed before/.test(strip(p))).map(p => readPremise(p, axes));
+    const sys = new Solver();
+    for (const r of edges) {
+        const [to, from] = r.words;
+        for (const c of r.clauses) if (c.axis !== tie) sys.add([[`${to}|${c.axis}`, 1], [`${from}|${c.axis}`, -1]], c.delta);
+    }
+    const words = [...new Set(q.premises.flatMap(subjectsOf))];
+    const ix = new Map(words.map((w, i) => [w, i]));
+    const d = words.map((_, i) => words.map((__, j) => (i === j ? 0 : Infinity)));
+    const most = (u: string, v: string, w: number) => {
+        d[ix.get(u)!][ix.get(v)!] = Math.min(d[ix.get(u)!][ix.get(v)!], w);
+    };
+    for (const r of edges) {
+        const c = r.clauses.find(c => c.axis === tie);
+        if (!c) continue;
+        most(r.words[1], r.words[0], c.delta);
+        most(r.words[0], r.words[1], -c.delta);
+    }
+    let classified = { informative: 0, idle: 0 };
+    ranks.forEach(([a, b], i) => {
+        const gap = keyDir * sys.gap(a, b, key)!;
+        assert(gap <= 0, `"${a} is listed before ${b}" contradicts the key axis`);
+        const informative = gap === 0;
+        if (informative) classified.informative++; else classified.idle++;
+        if (how === "none") return;
+        if (how === "no-informative" && informative) return;
+        if (how === "no-idle" && !informative) return;
+        if (!informative && how !== "all") return;
+        void i;
+        if (tieDir > 0) most(b, a, -1); else most(a, b, -1);
+    });
+    const n = words.length;
+    for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        if (d[i][k] + d[k][j] < d[i][j]) d[i][j] = d[i][k] + d[k][j];
+    }
+    if (words.some((_, i) => d[i][i] < 0)) return { verdict: "contradiction" as const, classified, key, tie };
+
+    const claim = String(q.conclusion);
+    const [p, r] = subjectsOf(claim);
+    const s = axes[tie].scale;
+    const above = new RegExp(`>${s.above}<`).test(claim);
+    const lo = -d[ix.get(p)!][ix.get(r)!], hi = d[ix.get(r)!][ix.get(p)!];
+    return { verdict: above ? lo >= 1 : hi <= -1, classified, key, tie };
+}
+
+const isRanked = (q: Question) => q.premises.some(p => /listed before/.test(strip(p)));
+
+function rankedItems(type: EnumQuestionType, held: string[], count: number, seed: number) {
+    const axes = axesForDimensions(dimsOf[type]).map(scale => ({ scale }) as AxisSpec);
+    return { axes, items: build(ctxHolding(held), type, 6, count, seed).filter(isRanked) };
+}
+
+const ALL_SIX = [EnumQuestionType.Direction, EnumQuestionType.Space3D, EnumQuestionType.Space4D,
+    EnumQuestionType.Space5D, EnumQuestionType.Space6D, EnumQuestionType.Space7D];
+
+test("ranked: the marked answer is what the list rule gives, read from the card alone", () => {
+    let checked = 0;
+    for (const type of ALL_SIX) {
+        const { axes, items } = rankedItems(type, ["branching", "ranked"], 60, 5601);
+        assert(items.length >= 15, `${type}: only ${items.length} ranked items`);
+        for (const q of items) {
+            const r = readRanked(q, axes);
+            equal(r.classified, { informative: 1, idle: 1 },
+                `${type}: the rankings are not one informative and one idle`);
+            equal(r.verdict, q.isValid, `${type}: the list rule disagrees with the key on\n  `
+                + [...q.setup, ...q.premises, String(q.conclusion)].map(strip).join("\n  "));
+            // The key axis is never cut, so every ranking's case is decided.
+            for (const p of q.premises.filter(p => !/listed before/.test(strip(p)))) {
+                assert(readPremise(p, axes).clauses.some(c => c.axis === r.key),
+                    `${type}: a premise leaves out the key axis: ${strip(p)}`);
+            }
+            // Strictness, as the card states it: no two things level on both.
+            const cells = Object.values(q.wordCoordMap!).map(c => `${c[r.key]},${c[r.tie]}`);
+            equal(new Set(cells).size, cells.length, `${type}: two things share both a key and a tiebreak position`);
+            checked++;
+        }
+    }
+    assert(checked > 100, `only ${checked} items checked`);
+});
+
+test("ranked: the informative ranking carries the answer, the idle one only misleads", () => {
+    const { axes, items } = rankedItems(EnumQuestionType.Space4D, ["branching", "ranked"], 120, 5602);
+    const share = (how: RankReading) => items.filter(q => readRanked(q, axes, how).verdict !== q.isValid).length / items.length;
+    for (const q of items) {
+        const truth = readRanked(q, axes).verdict;
+        equal(readRanked(q, axes, "no-idle").verdict, truth, "deleting the idle ranking changes the answer");
+        // Without the informative ranking the pair is open, so a true claim fails.
+        if (q.isValid) equal(readRanked(q, axes, "no-informative").verdict, false,
+            "the answer survives deleting the informative ranking");
+    }
+    assert(share("none") > 0.35, `ignoring the rankings fails only ${Math.round(share("none") * 100)}%`);
+    assert(share("all") > 0.9, `reading every ranking as a tiebreak fails only ${Math.round(share("all") * 100)}%`);
+    assert(share("flipped") > 0.35, `reading the tiebreak backwards fails only ${Math.round(share("flipped") * 100)}%`);
+});
+
+test("ranked: delivered on all six spaces, charged only where carried, the rule on the card", () => {
+    for (const type of ALL_SIX) {
+        assert(ladderFor(type).includes("ranked"), `${type} does not offer ranked lists`);
+        const held = [...fullLadder(type), "bridges", "local-clocks", "cone", "signals", "reach", "kinds",
+            "walking-totals", "ranked"].filter(r => ladderFor(type).includes(r));
+        const items = build(ctxHolding(held), type, 6, 160, 5603);
+        const ranked = items.filter(isRanked);
+        assert(ranked.length > 5, `${type}: ${ranked.length}/${items.length} ranked items`);
+        for (const q of items) equal(q.undelivered.includes("ranked"), !isRanked(q), `${type}: ranked charged wrongly`);
+        for (const q of ranked) {
+            equal(q.premises.length, 6, `${type}: the rankings came on top of the premise count`);
+            const setup = q.setup.map(strip).join(" ");
+            assert(/No two things are at both/.test(setup), `${type}: strictness is not stated`);
+            assert(/holds in every arrangement/.test(setup), `${type}: the necessity reading is not stated`);
+            assert(q.explanation.some(l => /says nothing about/.test(strip(l))),
+                `${type}: the derivation does not set the idle ranking aside`);
+        }
+    }
+});
+
+/* ------------------------------------------------------------------ *
+ * Heading                                                              *
+ * ------------------------------------------------------------------ */
+
+const isHeaded = (q: Question) => q.premises.some(p => /head points toward/.test(strip(p)));
+
+/** The card's facing, head, twin and claim, by name. */
+function readHeading(q: Question) {
+    const find = (re: RegExp) => q.premises.map(strip).map(p => re.exec(p)).find(Boolean)!;
+    const [, viewer, faced] = find(/^(\S+) faces (\S+)$/);
+    const [, , head] = find(/^(\S+)'s head points toward (\S+)$/);
+    const twin = q.premises.some(p => /mirror twin/.test(strip(p)));
+    const [, target, , said] = /^(\S+) is on (\S+)'s (left|right)$/.exec(strip(String(q.conclusion)))!;
+    return { viewer, faced, head, twin, target, said };
+}
+
+/**
+ * Left or right by a different method from the generator's determinant: a
+ * floating-point Gram–Schmidt frame — forward, then the head with its forward
+ * part taken off, then left as up × forward — from the arrangement's positions.
+ */
+function gramSchmidtSide(at: Record<string, number[]>, r: ReturnType<typeof readHeading>, head?: number[]) {
+    const v3 = (a: string, b: string) => [0, 1, 2].map(i => at[b][i] - at[a][i]);
+    const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const unit = (a: number[]) => { const n = Math.hypot(...a); return a.map(x => x / n); };
+    const F = unit(v3(r.viewer, r.faced));
+    const h = head ?? v3(r.viewer, r.head);
+    const U = unit(h.map((x, i) => x - dot(h, F) * F[i]));
+    const L = [U[1] * F[2] - U[2] * F[1], U[2] * F[0] - U[0] * F[2], U[0] * F[1] - U[1] * F[0]];
+    const d = dot(L, v3(r.viewer, r.target));
+    return Math.abs(d) < 1e-9 ? null : d > 0 ? "left" : "right";
+}
+
+test("heading: the claim is what a body frame from the card's names gives", () => {
+    let checked = 0;
+    for (const [type, twins] of [[EnumQuestionType.Space3D, false], [EnumQuestionType.Space4D, true],
+                                 [EnumQuestionType.Space7D, false]] as Array<[EnumQuestionType, boolean]>) {
+        const held = ["branching", "facing", "heading", ...(twins ? ["mirror-twins"] : [])];
+        const items = build(ctxHolding(held), type, 6, 80, 5701).filter(isHeaded);
+        assert(items.length >= 25, `${type}: only ${items.length} heading items`);
+        for (const q of items) {
+            const r = readHeading(q);
+            const side = gramSchmidtSide(q.wordCoordMap!, r);
+            assert(side != null, `${type}: a target in the plane of facing and head`);
+            const spoken = r.twin ? (side === "left" ? "right" : "left") : side;
+            equal(spoken === r.said, q.isValid,
+                `${type}: the frame from facing and head says ${spoken}, and the key disagrees on\n  `
+                + [...q.premises, String(q.conclusion)].map(strip).join("\n  "));
+            // Axis-aligned facing and head, at right angles: a frame a person can take.
+            const v3 = (a: string, b: string) => [0, 1, 2].map(i => q.wordCoordMap![b][i] - q.wordCoordMap![a][i]);
+            const f = v3(r.viewer, r.faced), h = v3(r.viewer, r.head);
+            equal(f.filter(x => x).length, 1, `${type}: an oblique facing`);
+            equal(h.filter(x => x).length, 1, `${type}: an oblique head`);
+            equal(f[0] * h[0] + f[1] * h[1] + f[2] * h[2], 0, `${type}: the head is not at right angles to the facing`);
+            // The planar reading — the head taken to point up — never gets it.
+            // Facing straight up or down, it has no frame to answer from at all.
+            const planar = f[2] !== 0 ? null : gramSchmidtSide(q.wordCoordMap!, r, [0, 0, 1]);
+            assert(planar !== side,
+                `${type}: assuming the head points up gives the right answer, so this is a facing item`);
+            checked++;
+        }
+    }
+    assert(checked > 80, `only ${checked} items checked`);
+});
+
+test("heading: delivered on 3D and up when held, charged only on heading items", () => {
+    for (const type of [EnumQuestionType.Space3D, EnumQuestionType.Space6D]) {
+        assert(ladderFor(type).includes("heading"), `${type} does not offer heading`);
+        const items = build(ctxHolding(["branching", "facing", "heading"]), type, 6, 80, 5702);
+        const headed = items.filter(isHeaded);
+        assert(headed.length > items.length * 0.3, `${type}: ${headed.length}/${items.length} heading items`);
+        for (const q of items) {
+            equal(q.undelivered.includes("heading"), !isHeaded(q), `${type}: heading charged wrongly`);
+            if (isHeaded(q)) assert(q.setup.some(l => /head is fixed/.test(strip(l))), `${type}: no heading note`);
+        }
+    }
+    assert(!ladderFor(EnumQuestionType.Direction).includes("heading"), "Direction offers heading with no third axis");
+    // A stack the picker left without up has no head to point.
+    const flat = build(ctxHolding(["branching", "facing", "heading"], {}, null, ["east", "north", "temporal"]),
+        EnumQuestionType.Space3D, 6, 40, 5703);
+    assert(flat.length > 30 && flat.every(q => !isHeaded(q) && q.undelivered.includes("heading")),
+        "heading served, or charged, on a stack with no up axis");
+});

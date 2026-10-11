@@ -1,4 +1,23 @@
 /* Relation Algebra: what the harness's look doesn't already cover. */
+
+/* Green on black instead of the hub's old gold — the harness is built to be
+   retinted this way, and the hierarchy is in the type, so nothing else moves.
+   The object colours (Red, Blue, Green, Gold…) are in trainer.js and stay:
+   they name the pieces of the task, not the chrome around it. */
+:root {
+  --h-bg: #050a07;
+  --h-panel: #0b140e;
+  --h-panel-hi: #143021;
+  --h-ink: #cfe8d6;
+  --h-ink-strong: #ecf8ef;
+  --h-dim: #74a183;
+  --h-accent: #3ecf6e;
+  --h-accent-2: #8ff0ae;
+  --h-ok: #7be59a;
+  --h-bad: #b0524a;
+  --h-line: rgba(62, 207, 110, .30);
+  --h-line-soft: rgba(62, 207, 110, .13);
+}
 .ra-card { max-width: 46rem; margin: 0 auto; text-align: left; padding: .4rem .2rem; }
 .ra-premises p { margin: 0 0 .7rem; font-size: 1.02rem; line-height: 1.55; color: var(--h-ink-strong); }
 .ra-q { margin: 1.2rem 0 0; padding-top: .9rem; border-top: 1px solid var(--h-line-soft); font-size: 1.08rem; color: var(--h-accent-2); }
@@ -16,7 +35,7 @@
 .ra-grid { stroke: var(--h-line-soft); stroke-width: 1; }
 .ra-ring { fill: none; stroke: var(--h-line); stroke-width: 1; }
 .ra-tick { fill: var(--h-dim); }
-.ra-lbl { font: 700 8px var(--h-font); fill: #0a0906; text-anchor: middle; }
+.ra-lbl { font: 700 8px var(--h-font); fill: var(--h-bg); text-anchor: middle; }
 .ra-lbl2 { font: 700 10px var(--h-font); fill: var(--h-ink); text-anchor: middle; }
 .ra-n { font: 10px var(--h-font); fill: var(--h-dim); }
 .ra-pair { display: flex; gap: 1.5rem; flex-wrap: wrap; }

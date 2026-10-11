@@ -133,6 +133,17 @@ export const NEAREST_NOTE = (parity: boolean, loop: boolean) =>
     + (loop ? " On a loop, count the short way round." : "")
     + (parity ? " Kind is not a distance and does not count." : "");
 
+/**
+ * The list's order, and the strictness without which "listed before" between
+ * two things level on both keys would mean nothing — and the item would rest
+ * on a convention nobody stated.
+ */
+export const RANK_NOTE = (key: string, keyFirst: string, tie: string, tieFirst: string,
+                          keyLevel: string, tieLevel: string) =>
+    `Everything is on one list, in order of ${key}, ${keyFirst} first; things level on ${key}`
+    + ` are listed by ${tie}, ${tieFirst} first. <b>No two things are at both the ${keyLevel}`
+    + ` and the ${tieLevel}</b>, so the order is never a tie.`;
+
 export const BRIDGE_NOTE =
     "A premise saying one pair is <b>as many steps</b> apart on one dimension as"
     + " another pair is on a different one means the two gaps are the same size"

@@ -508,6 +508,16 @@ export const QUESTION_TYPE_SETTING_PARAMS: Record<EnumQuestionType, ISettingPara
         maxNumOfPremises: 7,
         basic: false
     },
+    /* Counted in placements; the paces are stated beside them and are not
+       premises to chain. Three is the floor — the asked pair is never one a
+       placement states, so the shortest chain between them is two — and six is
+       where a third axis comes in. */
+    [EnumQuestionType.Worldlines]: {
+        enabled: true,
+        minNumOfPremises: 3,
+        maxNumOfPremises: 8,
+        basic: false
+    },
     [EnumQuestionType.Binary]: {
         enabled: true,
         minNumOfPremises: 4,
