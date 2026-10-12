@@ -1718,11 +1718,23 @@ export function graphDistance(a: string, b: string, neighbors: Record<string, st
  */
 export function pickDistantPair(
     layout: NdLayout, minSpan = 2, slack = 0, legacy = false,
+    /**
+     * Only pairs the premises pin down on every axis.
+     *
+     * A built claim asks every axis, and with clauses withheld the most
+     * distant pair is the one most likely to cross a withheld clause — so,
+     * picked blind, the checkpoint's final claim asked a dimension no premise
+     * linked on 70 of 72 Direction items and 69 of 72 in Space 4D, answerable
+     * only from coordinates the card never gave. The band is measured among
+     * the settled pairs, so this still takes the deepest one that can be asked.
+     */
+    settled = false,
 ): [string, string] | null {
     const pairs: Array<[string, string, number]> = [];
     for (let i = 0; i < layout.words.length; i++) {
         for (let j = i + 1; j < layout.words.length; j++) {
             const d = graphDistance(layout.words[i], layout.words[j], layout.neighbors);
+            if (settled && !layout.axes.every((_, k) => determinedOn(layout, k, layout.words[i], layout.words[j]))) continue;
             if (Number.isFinite(d) && d >= minSpan) pairs.push([layout.words[i], layout.words[j], d]);
         }
     }
@@ -2180,6 +2192,16 @@ export function derivedPairs(layout: NdLayout): Array<{ a: string; b: string; ke
         for (const b of layout.words) {
             if (a === b) continue;
             if (graphDistance(a, b, layout.neighbors) < 2) continue;
+            /*
+             * Only a relation the premises settle on every axis. With clauses
+             * withheld, the key below is read off coordinates the premises
+             * leave open — and the card says a claim holds only if it holds in
+             * every arrangement — so an analogy marked true on such a pair was
+             * not true, and its choice had no right answer. Measured on the
+             * full pre-coupling ladder: 66 of 82 Direction analogy items and
+             * 61 of 70 in Space 4D rested a true answer on an unlinked axis.
+             */
+            if (!layout.axes.every((_, k) => determinedOn(layout, k, a, b))) continue;
             const key = relationKey(layout, a, b);
             if (key === zero) continue;
             out.push({ a, b, key });
@@ -2682,6 +2704,47 @@ export function explainNdAxis(
 
     lines.push(`so ${subj(b)} ${rel(word, color)} ${subj(a)}`);
     return lines;
+}
+
+/**
+ * Why a pair stands as it does on every dimension: a's relation to b.
+ *
+ * For the answer forms that ask the whole relation — a built claim, a choice
+ * between two wide ones, an analogy — which had no derivation at all, so a
+ * wrong answer on them opened nothing. A walk on every axis is a wall, though:
+ * seven axes over a five-premise chain is thirty-five lines of the same move.
+ * So the walk is shown on `focus`, the axes the caller says need it — on a
+ * coupled item, those the coupling decides — and the whole relation is then
+ * stated as the totals it comes to.
+ *
+ * Nothing when no focus axis can be walked: the closing totals alone would be
+ * the answer restated, which the review's own breakdown already gives.
+ */
+export function explainNdPair(layout: NdLayout, a: string, b: string, focus: number[]): string[] {
+    const walked = focus.map(i => ({ i, w: explainNdAxis(layout, b, a, i) })).filter(x => x.w.length);
+    if (!walked.length) return [];
+    const walks = walked.map(x => x.w);
+    const colors = ndAxisColors(layout.axes);
+    const d = relDelta(layout, a, b);
+    const totals = layout.axes.map((axis, i) => {
+        if (isCircular(axis)) {
+            return hi(displacementClause(displacementOn(layout, i, a, b), axis.modulus!,
+                axis.scale.cyclic!, axis.scale.tie), colors[i]);
+        }
+        if (isParity(axis)) return hi(axisClause(axis, mod(d[i], 2)), colors[i]);
+        // A stride axis counts its own units in the clause already.
+        const word = axisClause(axis, d[i]);
+        return hi(d[i] === 0 || axis.stride ? word : `${Math.abs(d[i])} ${word}`, colors[i]);
+    });
+    // A lead line per pair, because a built item asks two or three and their
+    // walks would otherwise run together.
+    const names = walked.map(x => hi(layout.axes[x.i].scale.name, colors[x.i]));
+    return [
+        `${subj(a)} relative to ${subj(b)}, walked on ${names.join(" and ")}:`,
+        ...walks.flat(),
+        `${focus.length < layout.axes.length ? "and with every dimension added up the same way, " : ""}`
+        + `${subj(a)} is ${totals.join(", ")} relative to ${subj(b)}`,
+    ];
 }
 
 /**

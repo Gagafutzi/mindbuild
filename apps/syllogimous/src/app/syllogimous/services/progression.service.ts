@@ -441,6 +441,20 @@ export class ProgressionService {
     }
 
     /**
+     * How many answered items of a mode carried a rung.
+     *
+     * Carried, not held: a trial's rungs are the ones its item delivered, so
+     * this is how often the player has actually met the thing. The generator
+     * weights its draw by it, so a rung just earned comes up often enough to be
+     * learned before the next one arrives.
+     */
+    carriedCount(type: EnumQuestionType, rung: string): number {
+        let n = 0;
+        for (const t of this.trials()) if (t.type === type && t.rungs?.includes(rung)) n++;
+        return n;
+    }
+
+    /**
      * What the answered items say the rung costs should be.
      *
      * Reported, never applied. A fit from a handful of trials is worse than the

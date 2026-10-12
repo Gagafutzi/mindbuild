@@ -11,7 +11,7 @@ import { buildConstructClaims } from "./context";
 import { Question } from "../models/question.models";
 import { coinFlip, getRandomSymbols, pickUniqueItems, shuffle } from "../utils/question.utils";
 import { describeTransform } from "../utils/transformations.utils";
-import { AxisSpec, NdConclusion, NdLayout, NdRank, ndAxisColors, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, coneAxes, coneLayout, edgeSteps, routeForms, routePath, routeSteps, timeBounds, travelSteps, kindsFaceValue, kindsLayout, relDelta, countedAxes, drawWalk, walkDistance, walkLures, walkReading, boundsOn, drawRanks, rankOrder, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
+import { AxisSpec, NdConclusion, NdLayout, NdRank, ndAxisColors, applyNdEdits, applyNdTransforms, axesForDimensions, buildNdAnalogy, buildNdAnalogySet, buildNdConclusion, buildNdConclusionSet, buildNdWideConclusion, buildNdConstructClaim, NdEdge, buildNdLayout, describeNdAxes, determinedOn, graphDistance, ndPrefixLayout, ndWidth, pickByWidth, displacementOn, drawNdEdits, drawNdTransforms, explainNdAxis, explainNdPair, indeterminatePairs, isCircular, isParity, mod, bridgeReading, drawBridge, ndPairDepth, renderNdCoupling, clockAxes, clockModel, inReading, renderZoneAnchor, skewEdges, coneAxes, coneLayout, edgeSteps, routeForms, routePath, routeSteps, timeBounds, travelSteps, kindsFaceValue, kindsLayout, relDelta, countedAxes, drawWalk, walkDistance, walkLures, walkReading, boundsOn, drawRanks, rankOrder, ndTransformVocab, pickDistantPair as pickDistantPairNd, renderNdEdit, renderNdPremise, renderNdPremises, withholdClauses } from "../utils/ndspace.utils";
 import { orderPremises, scrambleBlocks, scrambleByFactor, scrambleLeading } from "../utils/premise-order.utils";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
 import { LinearFeatureFlags } from "../services/settings-override.service";
@@ -153,9 +153,35 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         .filter(r => r !== "walking-totals" || walkable)
         .filter(r => r !== "ranked" || rankable)
         .filter(r => r !== "twisted-seam" || !!twistAxes(scales));
-    const coupling = offered.length && numOfPremises >= 4 && coinFlip()
-        ? offered[Math.floor(Math.random() * offered.length)]
-        : null;
+    /*
+     * Which one, weighted towards what the player has hardly met.
+     *
+     * Drawn evenly, every rung's share fell with each rung earned after it, and
+     * so did the share of the one just earned: at the top of the 4D-7D ladder
+     * each came up in five to eight items in a hundred and heading in four, so
+     * a player could be promoted past a rung having met it a handful of times.
+     * Now a rung the trial log shows carried fewer than thirty times weighs up
+     * to three times as much, falling to even as it is played. Nobody's top
+     * rung stays favoured for good, and once everything has been met the draw
+     * is even, as it was.
+     *
+     * Heading draws here too, though it is not a coupling. It lives on the
+     * facing branch, which only an uncoupled item reaches, and there it was
+     * tried first and gave way to a flat facing most of the time. Drawn, it
+     * claims the item, and the conclusion keeps trying layouts until one can
+     * carry a head.
+     */
+    const carried = (r: string) => {
+        try { return ctx.progressionService.carriedCount?.(type, r) ?? 0; } catch { return 0; }
+    };
+    const fresh = (r: string) => 1 + 2 * Math.max(0, 1 - carried(r) / 30);
+    const weightOf = (r: string) => r === "cone"
+        ? Math.max(fresh("cone"), ...(base.signals ? [fresh("signals")] : []), ...(base.reach ? [fresh("reach")] : []))
+        : fresh(r);
+    const draws = [...offered, ...(base.heading && bearingSpace(axes) ? ["heading"] : [])];
+    const drawn = draws.length && numOfPremises >= 4 && coinFlip() ? weightedPick(draws, weightOf) : null;
+    const coupling = drawn === "heading" ? null : drawn;
+    const favourHeading = drawn === "heading";
     /*
      * A twisted ring is its own small arrangement, built apart from the layout
      * code — which reduces a loop once at the end, and that is wrong across a
@@ -207,7 +233,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
     const coneKinds: Array<"cone" | "signal" | "reach"> = [
         "cone", ...(base.signals ? ["signal" as const] : []), ...(base.reach ? ["reach" as const] : []),
     ];
-    const coneKind = coneKinds[Math.floor(Math.random() * coneKinds.length)];
+    const coneKind = weightedPick(coneKinds, k => fresh(k === "cone" ? "cone" : k === "signal" ? "signals" : "reach"));
     const coneSelect = wantCone && (base.chooseConclusion || base.constructConclusion) && coinFlip();
     const coneWant = wantCone ? { yes: coinFlip(), boundTrap: coinFlip() } : { yes: true, boundTrap: false };
 
@@ -233,7 +259,7 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
      * which would delete a form of item that works — it is the scale family's
      * top rung and fires there.
      */
-    const wantCheckpoint = !coupling && base.checkpoint && numOfPremises > 4 && coinFlip();
+    const wantCheckpoint = !coupling && !favourHeading && base.checkpoint && numOfPremises > 4 && coinFlip();
     const feat = coupling
         ? {
             ...base, speakers: false, testimony: false, facing: false, twins: false, checkpoint: false,
@@ -249,6 +275,8 @@ export function createNdSpace(ctx: GeneratorContext, numOfPremises: number, type
         }
         : wantCheckpoint
         ? { ...base, edits: 0, transforms: 0, speakers: false, testimony: false }
+        : favourHeading
+        ? { ...base, favourHeading: true }
         : base;
     const displaced = coupling
         ? ["speakers", "testimony", "facing", "mirror-twins", "heading", "checkpoint",
@@ -800,6 +828,8 @@ export function ndFeatures(ctx: GeneratorContext, type: EnumQuestionType) {
         facing,
         twins,
         heading,
+        // Set per item, by the draw in createNdSpace, never by the ladder.
+        favourHeading: false,
         indeterminate,
         branching: pick("branching", "branching"),
         compact,
@@ -947,6 +977,44 @@ export function fillNdConclusion(ctx: GeneratorContext,
         : undefined;
     const rewritten = mutated && !coupled;
 
+    /*
+     * The derivation for the forms that ask a whole relation — built claims, a
+     * choice between two, an analogy. They had none, so a wrong answer on them
+     * opened nothing; and since a coupled item displaces reports and testimony,
+     * whose lines were the only ones such items ever carried, a bridge, a clock
+     * or a kind item explained nothing at all.
+     *
+     * The walk goes where the item turns. On a coupled item, every axis the
+     * coupling decides for this pair, since that is what a wrong answer
+     * misread. On a plain one, a single axis the pair differs on — `prefer`
+     * when the caller knows which matters — as the worked example the other
+     * axes repeat. Never on a rewritten layout, for the reason the boolean form
+     * gives at the end.
+     */
+    const explainPair = (l: NdLayout, a: string, b: string, prefer?: number): string[] => {
+        if (rewritten) return [];
+        const axes = l.axes.map((_, i) => i);
+        if (coupled && l === layout) {
+            const focus = axes.filter(i => axisBites(a, b, i));
+            return explainNdPair(l, a, b, focus.length ? focus : [coupling.axis ?? prefer ?? 0]);
+        }
+        const d = relDelta(l, a, b);
+        const order = [...(prefer != null ? [prefer] : []),
+            ...axes.filter(i => i !== prefer && d[i] !== 0), ...axes.filter(i => i !== prefer && d[i] === 0)];
+        const walkable = order.find(i => explainNdAxis(l, b, a, i).length);
+        return walkable == null ? [] : explainNdPair(l, a, b, [walkable]);
+    };
+    /** Both relations of an analogy, then whether they point as claimed. */
+    const explainAnalogy = (c: { pairs: [string, string, string, string]; claimSame: boolean; isValid: boolean }): string[] => {
+        const [a, b, x, y] = c.pairs;
+        // "a to b" is b's place relative to a, as `analogyHeld` keys it.
+        const first = explainPair(layout, b, a), second = explainPair(layout, y, x);
+        if (!first.length || !second.length) return [];
+        return [...first, ...second,
+            `so ${subj(a)} to ${subj(b)} and ${subj(x)} to ${subj(y)} ${c.isValid ? "" : `do ${hi("not")} `}`
+            + `point ${c.claimSame ? "the same way" : "opposite ways"} on every dimension.`];
+    };
+
     /** Relations the answer composes: the tree distance, or through a bridge. */
     const depthOf = (a: string, b: string, axis?: number) => coupled
         ? ndPairDepth(layout, a, b, axis)
@@ -959,7 +1027,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
      * deepest of them taken, widening by `slack` as the diameter draw does.
      */
     const pickPair = (slack: number): [string, string] | null => {
-        if (!coupled) return pickDistantPairNd(layout, 2, slack, legacy);
+        if (!coupled) return pickDistantPairNd(layout, 2, slack, legacy, true);
         const live: Array<[string, string]> = [];
         for (const a of layout.words) {
             for (const b of layout.words) {
@@ -1004,9 +1072,11 @@ export function fillNdConclusion(ctx: GeneratorContext,
             ...(feat.heading ? ["heading"] : []));
         const rivals = feat.analogy || feat.chooseConclusion || feat.constructConclusion
             || (feat.checkpoint && canCheckpoint);
-        const built = (!rivals || coinFlip()) && !mutated
+        const built = (!rivals || coinFlip() || feat.favourHeading) && !mutated
             ? fillFacingConclusion(question, layout, extraPremises, feat.twins, feat.heading)
             : false;
+        // Drawn for its head, so a flat facing is the item it was drawn away from.
+        if (feat.favourHeading && built !== "heading" && !lastChance) return false;
         if (built) {
             // A heading item is a facing item too; a planar one leaves heading uncharged.
             question.undelivered = question.undelivered
@@ -1053,6 +1123,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
             question.answerMode = "choice";
             question.isValid = true;
             question.conclusion = "";
+            question.explanation = explainAnalogy(set[0]);
             return true;
         }
 
@@ -1096,6 +1167,14 @@ export function fillNdConclusion(ctx: GeneratorContext,
             const allTrue = coinFlip();
             question.conclusion = (allTrue ? yes : no).map(c => c.text);
             question.isValid = allTrue;
+            /*
+             * The claim that decides the set: the false one when there is one,
+             * otherwise the first — on a coupled item, the one built to need the
+             * coupling. Every claim in full would be a page.
+             */
+            const deciding = allTrue ? 0 : no.findIndex(c => !c.isValid);
+            const why = explainAnalogy((allTrue ? yes : no)[deciding]);
+            if (why.length) question.explanation = [`Claim ${deciding + 1}:`, ...why];
             return true;
         }
 
@@ -1107,6 +1186,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
         const claim = options[coinFlip() ? 0 : 1]!;
         question.conclusion = claim.text;
         question.isValid = claim.isValid;
+        question.explanation = explainAnalogy(claim);
         return true;
     };
 
@@ -1157,8 +1237,8 @@ export function fillNdConclusion(ctx: GeneratorContext,
     if (feat.checkpoint && canCheckpoint && numOfPremises > 4) {
         const half = Math.floor(numOfPremises / 2);
         const early = ndPrefixLayout(layout, half);
-        const earlyPair = pickDistantPairNd(early, 2, 0, legacy);
-        const latePair = pickDistantPairNd(layout, 2, 0, legacy);
+        const earlyPair = pickDistantPairNd(early, 2, 0, legacy, true);
+        const latePair = pickDistantPairNd(layout, 2, 0, legacy, true);
 
         if (earlyPair && latePair && pairBites(latePair[0], latePair[1])) {
             const first = buildNdConstructClaim(early, earlyPair[0], earlyPair[1], false);
@@ -1176,6 +1256,11 @@ export function fillNdConclusion(ctx: GeneratorContext,
 
             question.depth = graphDistance(latePair[0], latePair[1], layout.neighbors);
             question.construct = [first, last];
+            const early_ = explainPair(early, earlyPair[0], earlyPair[1]);
+            const late_ = explainPair(layout, latePair[0], latePair[1]);
+            if (early_.length && late_.length) {
+                question.explanation = [`From the first ${half}:`, ...early_, "From all of them:", ...late_];
+            }
             question.answerMode = "construct";
             question.isValid = true;
             question.conclusion = "";
@@ -1196,6 +1281,7 @@ export function fillNdConclusion(ctx: GeneratorContext,
         if (!claims.length) return false;
         question.depth = Number.isFinite(shallowest) ? shallowest : 0;
         question.construct = claims;
+        question.explanation = claims.flatMap(c => explainPair(layout, c.a, c.b));
         question.answerMode = "construct";
         question.isValid = true;
         question.conclusion = "";
@@ -1229,6 +1315,9 @@ export function fillNdConclusion(ctx: GeneratorContext,
         if (!right || !wrong || right.text === wrong.text) return false;
 
         question.depth = depthOf(pair[0], pair[1]);
+        // Walked on the axis the wrong option lies about, which is the one to check.
+        const why = explainPair(layout, pair[0], pair[1], wrong.axis >= 0 ? wrong.axis : undefined);
+        if (why.length) question.explanation = [...why, `so it is \u201c${right.text}\u201d.`];
         const order = shuffle([right.text, wrong.text]);
         question.choices = order;
         question.correctChoice = order.indexOf(right.text);
@@ -2328,4 +2417,15 @@ function assignTestimony(ctx: GeneratorContext, layout: NdLayout) {
     }
 
     return null;
+}
+
+/** One of `items`, each as likely as its weight. */
+function weightedPick<T>(items: T[], weight: (item: T) => number): T {
+    const weights = items.map(weight);
+    let r = Math.random() * weights.reduce((sum, w) => sum + w, 0);
+    for (let i = 0; i < items.length; i++) {
+        r -= weights[i];
+        if (r < 0) return items[i];
+    }
+    return items[items.length - 1];
 }
