@@ -455,8 +455,25 @@ if (!fs.existsSync(ANKI)) {
  * Faithful enough to catch a missing element or a bad call, and honest about
  * what it is not: it says nothing about how any of it looks.
  */
-test("the page renders an archive without throwing", () => {
+/**
+ * The page's scripts in a vm, against the smallest DOM the render path
+ * touches, with every id the markup defines. `opts.storage` stands in for this
+ * browser's localStorage; `opts.setTimeout` lets a test run a deferred read.
+ */
+function loadPage(opts = {}) {
   const vm = require("vm");
+  const listeners = {};
+  /* A working storage when the test hands one in, so the page can read a
+     trainer's records out of it and write its own cache back; otherwise the
+     empty one the render test has always used. */
+  const store = new Map(Object.entries(opts.storage || {}));
+  const storage = opts.storage ? {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    key: (i) => [...store.keys()][i] ?? null,
+    get length() { return store.size; },
+  } : { getItem: () => null, setItem() {}, key: () => null, length: 0 };
 
   /* `appendChild` accumulates into innerHTML, because the render path builds
      its cards as elements and the assertions below are about what a reader
@@ -493,12 +510,14 @@ test("the page renders an archive without throwing", () => {
       getElementById: (id) => nodes[id] || null,
       createElement: () => el(),
       querySelectorAll: () => [],
-      addEventListener() {},
+      visibilityState: "visible",
+      addEventListener: (type, fn) => { (listeners["document:" + type] ??= []).push(fn); },
     },
-    localStorage: { getItem: () => null, setItem() {}, key: () => null, length: 0 },
+    localStorage: storage,
+    clearTimeout() {},
     Date, JSON, Math, Number, String, Object, Array, Blob: function () {},
     URL: { createObjectURL: () => "", revokeObjectURL() {} },
-    setTimeout: () => 0,
+    setTimeout: opts.setTimeout || (() => 0),
     FileReader: function () {},
     /*
      * The real reason this test passed while the page was dead.
@@ -521,7 +540,10 @@ test("the page renders an archive without throwing", () => {
     },
   };
   ctx.window = {
-    addEventListener: (type, fn) => { if (type === "DOMContentLoaded") onReady = fn; },
+    addEventListener: (type, fn) => {
+      if (type === "DOMContentLoaded") onReady = fn;
+      else (listeners[type] ??= []).push(fn);
+    },
   };
   vm.createContext(ctx);
 
@@ -534,6 +556,11 @@ test("the page renders an archive without throwing", () => {
     vm.runInContext(strip(f), ctx, { filename: f });
   }
 
+  return { ctx, nodes, onReady, listeners, store };
+}
+
+test("the page renders an archive without throwing", () => {
+  const { ctx, nodes, onReady } = loadPage();
   assert.ok(onReady, "app.js never asked to run when the page was ready");
   onReady();                                   // wiring: must not throw
 
@@ -1266,6 +1293,55 @@ test("synth: a storage snapshot reads the same as an export", () => {
   const viaStorage = readSynth({ synth5_en: JSON.stringify(synthExport([synthSession()]).data) });
   assert.deepStrictEqual(viaStorage.records, viaExport.records,
     "'Read this browser' and the app's own export must agree");
+});
+
+test("the page reads this browser by itself, and says nothing when nothing is new", () => {
+  /*
+   * "Read this browser" was a button, so the archive held whatever was in
+   * storage the last time somebody pressed it. Now the page reads on load, on
+   * coming back into view, and after a trainer elsewhere writes — and a read
+   * that finds only what the archive already holds must leave no trace: a log
+   * line, an undo or an "import not in any file" warning on every visit would
+   * teach the reader to ignore all three.
+   */
+  const one = synthExport([synthSession()]).data;
+  const page = loadPage({
+    storage: { synth5_en: JSON.stringify(one) },
+    setTimeout: (fn) => { fn(); return 0; },
+  });
+  page.onReady();
+  assert.ok(page.ctx.archive.records.length > 0, "opening the page read nothing from this browser");
+  assert.strictEqual(page.ctx.unsavedImports, 1, "the read was not counted as an import the file lacks");
+  const log = page.nodes.log.innerHTML;
+  assert.ok(/read this browser/.test(log), "the read was not reported");
+
+  // Read again with nothing new.
+  page.ctx.readThisBrowser();
+  assert.strictEqual(page.nodes.log.innerHTML, log, "a read that found nothing new still wrote to the log");
+  assert.strictEqual(page.ctx.unsavedImports, 1, "a read that found nothing new still asked for a download");
+
+  /* The next visit, which is the case that went wrong in the browser: a new
+     page over the same storage, whose archive comes from the cache. The cache
+     keeps records without `raw`, so the same storage folded back in as
+     "1 updated", and every visit counted one more import the file lacked. */
+  const visit = loadPage({ storage: Object.fromEntries(page.store), setTimeout: (fn) => { fn(); return 0; } });
+  visit.onReady();
+  assert.strictEqual(visit.nodes.log.innerHTML, "", "a later visit with nothing new wrote to the log");
+  assert.strictEqual(visit.ctx.unsavedImports, 1, "a later visit with nothing new asked for another download");
+
+  // A trainer in another tab saves a session: the storage event brings it in.
+  const before = page.ctx.archive.records.length;
+  page.store.set("synth5_en", JSON.stringify(synthExport([synthSession(), synthSession({
+    t: Date.parse("2026-09-07T10:00:00Z"), m: "game-search",
+  })]).data));
+  assert.ok((page.listeners.storage || []).length, "nothing listens for another tab's writes");
+  page.listeners.storage.forEach((fn) => fn({ key: "synth5_en" }));
+  assert.ok(page.ctx.archive.records.length > before, "a session saved in another tab was not read");
+  assert.strictEqual(page.ctx.unsavedImports, 2);
+
+  // And coming back to the tab reads too.
+  assert.ok((page.listeners["document:visibilitychange"] || []).length,
+    "nothing reads when the tab comes back into view");
 });
 
 test("synth: re-importing an export changes nothing", () => {

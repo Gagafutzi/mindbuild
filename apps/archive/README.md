@@ -37,10 +37,17 @@ is idempotent: running it twice costs nothing and changes nothing.
   file, not its name, because a third-party export always arrives called
   `export (3).json`.
 - **Drop the archive itself** to restore it after a reset.
-- **Read this browser** pulls straight from Syllogimous, Isomorph, RNB, CCT, eWMT and Synth when the page is
-  served from the same origin they are — on GitHub Pages every repo of one
-  account shares an origin, so on the deployed site no export is needed. Locally
-  they are separate origins and it finds nothing.
+- **This browser is read by itself.** Syllogimous, Isomorph, RNB, CCT, eWMT,
+  Synth, Precision, Rotation, Running Order and every trainer writing the
+  Chimera record are pulled straight from storage when the page is served from
+  the same origin they are — on GitHub Pages every repo of one account shares
+  an origin, and the APK serves everything from one, so there no export is
+  needed. It happens when the page opens, when its tab comes back into view,
+  and a few seconds after a trainer in another tab saves. A read that finds
+  nothing new leaves no trace — no log line, no undo, no download warning — so
+  the warning only ever means something arrived. The **Read this browser**
+  button does the same on demand and reports every source, changed or not.
+  Locally the trainers are separate origins and it finds nothing.
 - **Write notes** for anything no export knows: a test score, an illness, a
   change of dose, a month you felt slow. See below.
 - **Download archive** writes the file. Do this whenever you have imported

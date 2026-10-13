@@ -259,6 +259,7 @@ function undoImport() {
   undoState = null;
   cacheSave(archive);
   if (unsavedImports > 0) { unsavedImports--; storeSaveState(); }
+  writeMemo({});
   note("last import undone — back to " + archive.records.length + " records");
   render();
 }
@@ -341,8 +342,9 @@ function takeFiles(fileList) {
  * without an export at all. Locally they are separate origins and this finds
  * nothing, which is why it is a convenience and never the way data arrives.
  */
-function importNeighbours() {
-  var found = 0;
+function neighbourTexts() {
+  var out = [];
+  var take = function (text, name) { out.push({ text: text, name: name }); };
 
   try {
     var syl = {};
@@ -352,7 +354,7 @@ function importNeighbours() {
         syl[key] = localStorage.getItem(key);
       }
     }
-    if (syl.SYL_HISTORY || syl.SYL_HISTORY_IDX) { importText(JSON.stringify(syl), "syllogimous (this browser)"); found++; }
+    if (syl.SYL_HISTORY || syl.SYL_HISTORY_IDX) { take(JSON.stringify(syl), "syllogimous (this browser)"); }
   } catch (e) { /* storage off */ }
 
   /* Isomorph, which was the same codebase writing the same key names under a
@@ -370,7 +372,7 @@ function importNeighbours() {
         if (isoKey === "ISO/SYL_HISTORY" || isoKey === "ISO/SYL_HISTORY_IDX") hasIso = true;
       }
     }
-    if (hasIso) { importText(JSON.stringify(iso), "isomorph (this browser)"); found++; }
+    if (hasIso) { take(JSON.stringify(iso), "isomorph (this browser)"); }
   } catch (e) { /* storage off */ }
 
   /* Sources that keep everything under a single localStorage key. The first two
@@ -398,8 +400,7 @@ function importNeighbours() {
       if (!val) continue;
       var wrap = {};
       wrap[singles[s].key] = val;
-      importText(JSON.stringify(wrap), singles[s].label + " (this browser)");
-      found++;
+      take(JSON.stringify(wrap), singles[s].label + " (this browser)");
     }
   } catch (e) { /* storage off */ }
 
@@ -416,8 +417,7 @@ function importNeighbours() {
     for (var ci = 0; ci < chimeraKeys.length; ci++) {
       var cv = localStorage.getItem(chimeraKeys[ci]);
       if (!cv) continue;
-      importText(cv, chimeraKeys[ci].split(".")[1] + " (this browser)");
-      found++;
+      take(cv, chimeraKeys[ci].split(".")[1] + " (this browser)");
     }
   } catch (e) { /* storage off */ }
 
@@ -426,11 +426,130 @@ function importNeighbours() {
     var list = profiles && profiles.list ? profiles.list : [];
     for (var j = 0; j < list.length; j++) {
       var raw = localStorage.getItem("rnb.progress.v2." + list[j].id);
-      if (raw) { importText(raw, "rnb: " + list[j].name + " (this browser)"); found++; }
+      if (raw) { take(raw, "rnb: " + list[j].name + " (this browser)"); }
     }
   } catch (e) { /* storage off, or no rnb here */ }
 
-  if (!found) note("Nothing found in this browser's storage — drop the exports in instead.");
+  return out;
+}
+
+/** The button: every source found, each reported, even when nothing changed. */
+function importNeighbours() {
+  var found = neighbourTexts();
+  for (var i = 0; i < found.length; i++) importText(found[i].text, found[i].name);
+  if (!found.length) note("Nothing found in this browser's storage — drop the exports in instead.");
+  var memo = readMemo();
+  for (var j = 0; j < found.length; j++) memo[found[j].name] = fingerprint(found[j].text);
+  writeMemo(memo);
+}
+
+/**
+ * Reading this browser without being asked.
+ *
+ * The button was the only way in, so the archive held whatever was there the
+ * last time somebody remembered to press it — and a record that has to be
+ * remembered to be kept is the one that is not kept. Now the page reads by
+ * itself: when it opens, when its tab comes back into view, and a few seconds
+ * after a trainer in another tab of this site writes its storage.
+ *
+ * Quiet unless something changed. Every source folds into one pass, and only
+ * a pass that added or updated something takes an undo snapshot, writes one
+ * line to the log and counts as an import the file does not have yet. A read
+ * that found only what the archive already holds — every visit after the
+ * first, until the next session — leaves nothing behind: no log line, no undo,
+ * and no warning to download a file that is already up to date.
+ *
+ * An unreadable source is reported once per page load. Saying it on every
+ * visit would bury the log; saying it never would hide a broken adapter.
+ */
+var autoErrors = {};
+
+/*
+ * What each source's storage said the last time it was read, as a
+ * fingerprint, so a visit that finds the same text skips it before parsing.
+ *
+ * The merge cannot be the judge of "nothing new" here. The cache keeps records
+ * without their bulky `raw` half, so after a reload the same storage folds in
+ * as "1 updated" — measured in the browser: every visit counted another import
+ * the file lacked, and the warning stopped meaning anything. The text a
+ * trainer left in storage is the honest test of whether it has said anything
+ * since; it also spares re-reading a long history on every visit.
+ *
+ * Cleared whenever the archive is replaced from outside — a restored file, an
+ * undone import — since the archive may then lack what the memo says it read.
+ */
+var READ_KEY = "archive.read.v1";
+
+function readMemo() {
+  try { return JSON.parse(localStorage.getItem(READ_KEY) || "{}") || {}; } catch (e) { return {}; }
+}
+
+function writeMemo(memo) {
+  try { localStorage.setItem(READ_KEY, JSON.stringify(memo)); } catch (e) { /* storage off */ }
+}
+
+/** Length and FNV-1a: enough to tell one storage text from the next. */
+function fingerprint(text) {
+  var h = 0x811c9dc5;
+  for (var i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return text.length + ":" + h.toString(36);
+}
+
+function readThisBrowser() {
+  var found = neighbourTexts();
+  if (!found.length) return;
+  var memo = readMemo(), seen = {};
+  var fresh = found.filter(function (f) {
+    seen[f.name] = fingerprint(f.text);
+    return memo[f.name] !== seen[f.name];
+  });
+  if (!fresh.length) return;
+  var before = null;
+  try { before = JSON.stringify(archive); } catch (e) { before = null; }
+
+  var total = { added: 0, updated: 0, days: 0 }, from = [];
+  for (var i = 0; i < fresh.length; i++) {
+    var reading = readFile(fresh[i].text);
+    if (reading.error) {
+      var said = fresh[i].name + ": " + reading.error;
+      if (!autoErrors[said]) { autoErrors[said] = true; note(said, true); }
+      // Not remembered, so a fixed adapter reads it on the next visit.
+      delete seen[fresh[i].name];
+      continue;
+    }
+    // A trainer's storage is never one of our own exports; only the button
+    // and a drop restore those.
+    if (reading.archive) continue;
+    var r = fold(archive, reading, fresh[i].name);
+    total.added += r.added; total.updated += r.updated; total.days += r.days;
+    if ((r.added || r.updated || r.days) && from.indexOf(reading.source) < 0) from.push(reading.source);
+  }
+  if (!from.length) { writeMemo(Object.assign(memo, seen)); return; }
+
+  undoState = before;
+  var saved = cacheSave(archive);
+  // Only once the cache holds it: a read the cache could not keep is read again.
+  if (saved) writeMemo(Object.assign(memo, seen));
+  note("read this browser → " + from.join(", ") + ": " + total.added + " new, "
+    + total.updated + " updated, " + total.days + " new days"
+    + (saved ? "" : " (cache full — keep the archive file)"));
+  markUnsaved();
+  render();
+}
+
+/*
+ * Debounced, because a trainer writes its storage on every answer: a session
+ * would otherwise mean a read per item. Deferred while the tab is hidden —
+ * coming back into view reads anyway.
+ */
+var readTimer = 0;
+
+function readSoon(delay) {
+  clearTimeout(readTimer);
+  readTimer = setTimeout(function () {
+    if (document.visibilityState === "hidden") return;
+    readThisBrowser();
+  }, delay);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1529,6 +1648,10 @@ function loadArchive(text) {
     + (archive.notes.length ? ", " + visibleNotes(archive).length + " notes" : "")
     + (archive.study.length ? ", " + visibleStudy(archive).length + " study entries" : ""));
   render();
+  /* The file may be older than what this browser holds; anything newer comes
+     straight back in, and counts as not yet in a file — which it is not. */
+  writeMemo({});
+  readThisBrowser();
   return true;
 }
 
@@ -1652,6 +1775,12 @@ window.addEventListener("DOMContentLoaded", function () {
   $("filterTo").value = filterTo;
 
   render();
+
+  readThisBrowser();
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") readSoon(300);
+  });
+  window.addEventListener("storage", function () { readSoon(3000); });
 
   try { watchSections(); } catch (e) { /* highlight only; the page works without it */ }
 });
