@@ -39,7 +39,7 @@
       what: "N-back with a tighter response window" },
     { id: "rotation", name: "3D Rotation", path: "rotation/", colour: "#db6d9d",
       what: "Mental rotation of molecules" },
-    { id: "cct", name: "CCT", path: "cct/", colour: "#a371f7",
+    { id: "cct", name: "CCT", path: "cct/", colour: "#a371f7", more: true,
       what: "Spoken arithmetic against the clock" },
     { id: "ewmt", name: "eWMT", path: "ewmt/", colour: "#ff7b72",
       what: "Attentional shield n-back" },
@@ -52,7 +52,7 @@
        with no adapter of their own. */
     { id: "relations", name: "Relation Algebra", path: "relations/", colour: "#d2a8ff",
       what: "Nested relations in space, numbers, notes, days, headings, orientations and poses; routes on a cube" },
-    { id: "listening", name: "Listening Integration", path: "listening/", colour: "#7ee787",
+    { id: "listening", name: "Listening Integration", path: "listening/", colour: "#7ee787", more: true,
       what: "Relations between spoken numbers, places and pitches, by ear, no input" },
     /* Written as a single page elsewhere and brought in here. It writes the
        Chimera record too, so it is counted the same way as the two above. */
@@ -79,6 +79,10 @@
    * adapter yet, so the day cannot see them. They sit in their own box on the
    * hub and their own directory in the repository, apps/more/. Giving one an
    * adapter is what moves it up into the list above. */
+  /* `more: true` on an entry above is the other half of that box: shown
+   * among the other trainers, but still in TRAINERS, so still summed. Where a
+   * card sits and whether its minutes count are separate questions, and each
+   * card says which answer it has. */
   var MORE = [
     { id: "dorsalflow", name: "DorsalFlow", path: "more/dorsalflow/", colour: "#6e9bff",
       what: "Motion in noise, by eye or — AudioFlow — by ear" },
@@ -317,13 +321,15 @@
   function renderGrid() {
     var grid = $("grid");
     grid.textContent = "";
-    TRAINERS.forEach(function (t) { grid.appendChild(card(t, true)); });
+    TRAINERS.forEach(function (t) { if (!t.more) grid.appendChild(card(t, true)); });
 
     var more = $("grid-more");
     if (!more) return;
     more.textContent = "";
+    var boxed = TRAINERS.filter(function (t) { return t.more; });
+    boxed.forEach(function (t) { more.appendChild(card(t, true)); });
     MORE.forEach(function (t) { more.appendChild(card(t, false)); });
-    $("more-count").textContent = String(MORE.length);
+    $("more-count").textContent = String(boxed.length + MORE.length);
   }
 
   /* ---------------------------------------------------------------- *

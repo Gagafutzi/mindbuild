@@ -35,18 +35,21 @@
   <h2 id="today-h">Trainers</h2>
   <div class="grid" id="grid"></div>
 
-  <!-- Trainers that run here but are not counted toward the day: no adapter
-       reads their storage yet, so the meter cannot see them. Boxed apart from
+  <!-- Other trainers. Two kinds share this box: ones marked `more: true` in
+       shell.js, which count like any trainer and are only shown here, and
+       ones that are not counted toward the day: no adapter reads their
+       storage yet, so the meter cannot see them. Boxed apart from
        the counted ones rather than mixed in, for the same reason the archive
        is — the rule the gate enforces should be visible in the layout. -->
   <details class="more" id="more" open>
     <summary class="more__head">
-      <span class="more__title">More trainers</span>
+      <span class="more__title">Other trainers</span>
       <span class="more__count" id="more-count"></span>
     </summary>
     <p class="more__note">
-      These run here like the nine above, but <b>their time is not counted</b>
-      toward today or the quota — nothing reads their records yet.
+      These run here like the ones above. A card that says <b>Not counted</b>
+      is not added to today or the quota — nothing reads its records yet; the
+      others count like any trainer above.
     </p>
     <div class="grid" id="grid-more"></div>
   </details>
