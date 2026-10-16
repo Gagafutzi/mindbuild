@@ -1892,14 +1892,26 @@ export class GameService implements GeneratorContext {
         this.tone(notes[kind], kind === "wrong" ? "triangle" : "sine");
     }
 
+    /*
+     * One context for the whole session. Building one per sound put an audio
+     * graph's construction on the answer's click path every time — a few
+     * milliseconds of main thread per answer, and on some phones the first
+     * note of each was clipped while the device woke up.
+     */
+    private audioCtx: AudioContext | null = null;
+
     private tone(notes: Array<[number, number]>, type: OscillatorType) {
         // The single point every sound in the app passes through, which is what
         // makes one switch able to silence all of them.
         if (!soundIsOn()) return;
         try {
-            const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
-            if (!Ctx) return;
-            const ctx = new Ctx();
+            if (!this.audioCtx || this.audioCtx.state === "closed") {
+                const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+                if (!Ctx) return;
+                this.audioCtx = new Ctx() as AudioContext;
+            }
+            const ctx = this.audioCtx;
+            if (ctx.state === "suspended") ctx.resume().catch(() => {});
             for (const [freq, offset] of notes) {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
@@ -1914,7 +1926,6 @@ export class GameService implements GeneratorContext {
                 osc.start(t0);
                 osc.stop(t0 + 0.18);
             }
-            setTimeout(() => ctx.close().catch(() => {}), 700);
         } catch { /* autoplay policy, or no audio device */ }
     }
 

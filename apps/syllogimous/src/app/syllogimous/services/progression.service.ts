@@ -699,26 +699,8 @@ export class ProgressionService {
     /* ---------------- per-mode posteriors ---------------- */
 
     abilityFor(type: EnumQuestionType): AbilityState {
-        const key = familyOf(type);
-        try {
-            const raw = localStorage.getItem(LS_ABILITY + key);
-            if (raw) {
-                const p = JSON.parse(raw);
-                /*
-                 * Any length at or past the starting grid.
-                 *
-                 * This demanded exactly `bins`, which was right while every
-                 * grid was that long. Grids grow per posterior now — a player
-                 * past the old ceiling has a longer one — so an exact check
-                 * discarded precisely the states belonging to the strongest
-                 * players and handed them the cold-start prior. Their modes
-                 * then opened at two premises with no clock.
-                 */
-                if (Array.isArray(p?.logPost) && p.logPost.length >= this.abilityConfig.bins) {
-                    return { logPost: p.logPost, trials: p.trials ?? 0, lastSeen: p.lastSeen ?? Date.now() };
-                }
-            }
-        } catch { /* fall through */ }
+        const stored = this.readLedger(LS_ABILITY + familyOf(type));
+        if (stored) return stored;
 
         // A family whose ledger does not exist yet, but whose members do: their
         // evidence was always about the same skill, so it is carried across
@@ -745,14 +727,8 @@ export class ProgressionService {
 
         const states: AbilityState[] = [];
         for (const member of members) {
-            try {
-                const raw = localStorage.getItem(LS_ABILITY + member);
-                if (!raw) continue;
-                const p = JSON.parse(raw);
-                if (Array.isArray(p?.logPost) && p.logPost.length >= this.abilityConfig.bins) {
-                    states.push({ logPost: p.logPost, trials: p.trials ?? 0, lastSeen: p.lastSeen ?? Date.now() });
-                }
-            } catch { /* skip a member that will not parse */ }
+            const st = this.readLedger(LS_ABILITY + member);
+            if (st) states.push(st);
         }
         if (!states.length) return null;
 
@@ -789,7 +765,10 @@ export class ProgressionService {
         // Width does not transfer, so the widest spaces open at their own floor
         // however good the player is. See FLOOR_START_MODES.
         if (agg.modes > 0 && !FLOOR_START_MODES.has(type)) {
-            return priorForNewMode(agg, this.abilityConfig);
+            // The same for every mode that has none of its own, and asked for
+            // once per unplayed mode on every render: made once per aggregate.
+            if (this.priorMemo?.agg !== agg) this.priorMemo = { agg, prior: priorForNewMode(agg, this.abilityConfig) };
+            return this.priorMemo.prior;
         }
 
         try {
@@ -831,6 +810,7 @@ export class ProgressionService {
                 JSON.stringify({ logPost, trials: s.trials, lastSeen: s.lastSeen }));
         } catch { /* private mode */ }
         this.configCache = {};
+        this.aggMemo = null;
     }
 
     estimateFor(type: EnumQuestionType) {
@@ -1322,6 +1302,69 @@ export class ProgressionService {
 
     /* ---------------- the skill number ---------------- */
 
+    /*
+     * Why the ledgers are read through a cache, and the aggregate remembered.
+     *
+     * The skill number is a getter (`GameService.score`), and so are the tier,
+     * the settings and the unlocked row that hang off it — all read by
+     * templates, so all evaluated on every change-detection pass: every key,
+     * every timer tick, several times per answer. Each pass parsed every
+     * mode's posterior out of storage and refitted the aggregate, and `tier`
+     * did that once per tier. The cost of a pass grew with how many modes had
+     * been played, which is the game getting slower the longer it is played.
+     *
+     * A parsed ledger is kept with the exact string it came from and reused
+     * while storage still holds that string, so anything that writes storage
+     * directly (an import, a test) is seen at once rather than after an
+     * invalidation somebody has to remember. The aggregate is kept until a
+     * ledger changes, and for thirty seconds at most, since it decays with
+     * time away and a number that stood still for a day would be wrong.
+     */
+    private ledgerCache = new Map<string, { raw: string; state: AbilityState | null }>();
+    private ledgerVersion = 0;
+    private aggMemo: { version: number; sig: string; at: number; value: Aggregate } | null = null;
+    private priorMemo: { agg: Aggregate; prior: AbilityState } | null = null;
+    private estimateMemo = new WeakMap<AbilityState, { sig: string; est: ReturnType<typeof abilityEstimate> }>();
+
+    /** What the fits depend on besides the ledgers: a remembered fit is only good under the same. */
+    private configSig(): string {
+        const c = this.abilityConfig;
+        return [c.minSeconds, c.maxSeconds, c.crossModeSd, c.decayPerDay, this.config.memoryAnswers,
+            c.widthPerBit, c.levelsPerUnneededPremise, c.bins].join("|");
+    }
+
+    /** One posterior out of storage, parsed once per distinct stored string. */
+    private readLedger(lsKey: string): AbilityState | null {
+        let raw: string | null = null;
+        try { raw = localStorage.getItem(lsKey); } catch { /* private mode */ }
+        const hit = this.ledgerCache.get(lsKey);
+        if (!raw) {
+            if (hit) { this.ledgerCache.delete(lsKey); this.ledgerVersion++; }
+            return null;
+        }
+        if (hit && hit.raw === raw) return hit.state;
+        let state: AbilityState | null = null;
+        try {
+            const p = JSON.parse(raw);
+            /*
+             * Any length at or past the starting grid.
+             *
+             * This demanded exactly `bins`, which was right while every grid
+             * was that long. Grids grow per posterior now — a player past the
+             * old ceiling has a longer one — so an exact check discarded
+             * precisely the states belonging to the strongest players and
+             * handed them the cold-start prior. Their modes then opened at two
+             * premises with no clock.
+             */
+            if (Array.isArray(p?.logPost) && p.logPost.length >= this.abilityConfig.bins) {
+                state = { logPost: p.logPost, trials: p.trials ?? 0, lastSeen: p.lastSeen ?? Date.now() };
+            }
+        } catch { /* a ledger that will not parse is no ledger */ }
+        this.ledgerCache.set(lsKey, { raw, state });
+        this.ledgerVersion++;
+        return state;
+    }
+
     private aggregateNow(): Aggregate {
         const states: Array<{ state: AbilityState; type: EnumQuestionType }> = [];
         // One entry per *ledger*. Counting a shared family once per member would
@@ -1332,16 +1375,15 @@ export class ProgressionService {
             const key = familyOf(type);
             if (counted.has(key)) continue;
             counted.add(key);
-            try {
-                const raw = localStorage.getItem(LS_ABILITY + key);
-                if (!raw) continue;
-                const p = JSON.parse(raw);
-                if (Array.isArray(p?.logPost) && p.logPost.length >= this.abilityConfig.bins) {
-                    states.push({ type, state: { logPost: p.logPost, trials: p.trials ?? 0, lastSeen: p.lastSeen ?? Date.now() } });
-                }
-            } catch { /* skip */ }
+            const state = this.readLedger(LS_ABILITY + key);
+            if (state) states.push({ type, state });
         }
-        return aggregate(states, this.abilityConfig);
+        const now = Date.now(), sig = this.configSig();
+        const memo = this.aggMemo;
+        if (memo && memo.version === this.ledgerVersion && memo.sig === sig && now - memo.at < 30_000) return memo.value;
+        const value = aggregate(states, this.abilityConfig);
+        this.aggMemo = { version: this.ledgerVersion, sig, at: now, value };
+        return value;
     }
 
     /** Precision-weighted ability across modes, and the number shown for it. */
@@ -1361,13 +1403,17 @@ export class ProgressionService {
      */
     unlockEvidence(): UnlockEvidence {
         const agg = this.aggregateNow();
+        const sig = this.configSig();
         let bestLevel = 0;
         let anyExhausted = false;
 
         for (const type of Object.values(EnumQuestionType)) {
             const state = this.abilityFor(type);
             if (!state.trials) continue;
-            bestLevel = Math.max(bestLevel, abilityEstimate(state, this.abilityConfig).level);
+            // States come out of the ledger cache, so one fit per stored ledger.
+            let memo = this.estimateMemo.get(state);
+            if (!memo || memo.sig !== sig) { memo = { sig, est: abilityEstimate(state, this.abilityConfig) }; this.estimateMemo.set(state, memo); }
+            bestLevel = Math.max(bestLevel, memo.est.level);
 
             const choice = this.configFor(type, false);
             const params = QUESTION_TYPE_SETTING_PARAMS[type];
