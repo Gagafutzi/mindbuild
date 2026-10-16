@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>aPOSNER</title>
+<style>
+  /* The hub's look: sage on near-black, one monospace family, no rounded
+     corners, and hierarchy from size and letter-spacing rather than colour.
+     The tokens are the shell's own (shell/css/shell.css), so the trainer and
+     the frame around it read as one page. No webfont: it runs offline. */
+  :root{
+    --bg:#080d0b;--bg-2:#0d1512;--panel:rgba(15,23,19,.82);--panel-hi:rgba(26,40,33,.9);
+    --ink:#c9e0d3;--ink-strong:#e6f4ec;--muted:#7e9a8a;
+    --accent:#8fbda4;--accent-2:#b7d8c5;--accent-rgb:143,189,164;--accent-ink:#08100c;
+    --ok:#a9d2bb;--ok-soft:rgba(169,210,187,.16);--bad:#e08a7c;--bad-soft:rgba(224,138,124,.14);
+    --line:rgba(var(--accent-rgb),.30);--line-soft:rgba(var(--accent-rgb),.13);
+    --tile:rgba(15,23,19,.9);--edge:rgba(var(--accent-rgb),.55);
+    --center:#8fbda4;--center-ink:#08100c;--dot:rgba(var(--accent-rgb),.16);
+    --mono:ui-monospace,"JetBrains Mono","IBM Plex Mono","SF Mono",SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{background:var(--bg) linear-gradient(180deg,var(--bg-2),var(--bg) 60%) fixed;color:var(--ink);
+       font:14px/1.55 var(--mono);-webkit-tap-highlight-color:transparent}
+  [hidden]{display:none!important}
+  .wrap{max-width:760px;margin:0 auto;padding:24px 16px 40px}
+  h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-strong);font-weight:600}
+  h2{font-size:11px;margin:0 0 12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .sub{color:var(--muted);margin:6px 0 22px;letter-spacing:.04em}
+  .muted{color:var(--muted)}
+  .small{font-size:12px}
+  .small.ok{color:var(--ok)}
+  .small.warn{color:var(--bad)}
+  b{color:var(--ink-strong)}
+  .card{background:var(--panel);border:1px solid var(--line-soft);padding:16px 18px;margin-bottom:14px}
+  .rules ol{margin:0 0 12px;padding-left:20px}
+  .rules li{margin:6px 0}
+  .rules p{margin:6px 0 0;font-size:12.5px;color:var(--muted)}
+  details summary{cursor:pointer;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);list-style:none;display:flex;justify-content:space-between;align-items:center}
+  details summary::-webkit-details-marker{display:none}
+  details summary::after{content:"+";font-size:16px;letter-spacing:0;line-height:1}
+  details[open] summary::after{content:"\2212"}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px 16px;margin-top:14px}
+  .grid-head{grid-column:1/-1;margin:8px 0 -4px;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);border-top:1px solid var(--line-soft);padding-top:12px}
+  label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
+  label.f input,label.f select{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:0;padding:8px 10px;width:100%;min-width:0}
+  label.f input:focus,label.f select:focus{outline:none;border-color:var(--accent)}
+  label.f.is-off{opacity:.4}
+  label.chk{display:flex;align-items:center;gap:8px;font-size:13px}
+  label.chk input{width:16px;height:16px;margin:0;accent-color:var(--accent)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .btn{font:inherit;font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;border-radius:0;border:1px solid var(--line);background:transparent;color:var(--ink);padding:10px 16px;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--ink-strong)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);padding:12px 26px;font-size:13px}
+  .btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2);color:var(--accent-ink)}
+  .warn{color:var(--bad);font-size:13px;margin:10px 0 0}
+  .history table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+  .history th,.history td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line-soft)}
+  .history th{color:var(--muted);font-weight:500;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase}
+  .history tr:last-child td{border-bottom:0}
+
+  /* game */
+  #game{display:flex;flex-direction:column;align-items:center;min-height:calc(100vh - 64px);min-height:calc(100dvh - 64px);user-select:none;-webkit-user-select:none}
+  .hud{width:100%;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:flex-end;padding-bottom:12px;border-bottom:1px solid var(--line-soft)}
+  .stat{display:flex;flex-direction:column}
+  .stat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--muted)}
+  .stat .val{font-size:18px;font-weight:600;color:var(--ink-strong);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .stat .unit{font-size:12px;font-weight:500;color:var(--muted)}
+  .stat .val.low{color:var(--bad)}
+  .delta{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:0;text-transform:none;opacity:0}
+  .delta.faster{color:var(--ok)}
+  .delta.slower{color:var(--bad)}
+  .delta.manual{color:var(--accent-2)}
+  .isi-ctl{display:inline-flex;align-items:center;gap:8px}
+  .mini{width:30px;height:30px;flex:none;border-radius:0;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:17px;font-weight:600;line-height:1;padding:0;cursor:pointer;touch-action:manipulation;display:inline-flex;align-items:center;justify-content:center}
+  .mini:hover{border-color:var(--accent)}
+  .mini:disabled{opacity:.3;cursor:default}
+  .delta.show{animation:fadeUp 1.4s ease-out forwards}
+  @keyframes fadeUp{0%{opacity:1;transform:translateY(3px)}70%{opacity:1}100%{opacity:0;transform:translateY(-5px)}}
+  .streaks{display:flex;flex-direction:column;gap:5px;margin-left:auto}
+  .dots{display:flex;gap:5px;align-items:center;font-size:10px;letter-spacing:.1em;color:var(--muted)}
+  .dots i{width:9px;height:9px;background:var(--dot);display:inline-block;transition:background-color .12s}
+  .dots.ok i.on{background:var(--ok)}
+  .dots.bad i.on{background:var(--bad)}
+  .dots span{margin-left:4px}
+
+  .stage{--t:min(26vw,18vh,140px);flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:22px 0;width:100%}
+  .cross{display:grid;grid-template-columns:repeat(3,var(--t));grid-template-rows:repeat(3,var(--t));gap:10px;grid-template-areas:". n ." "w c e" ". s ."}
+  .tile{position:relative;display:flex;align-items:center;justify-content:center;border:1px solid var(--edge);border-radius:0;background:var(--tile);color:var(--ink-strong);font:inherit;font-size:calc(var(--t) * .34);font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer;touch-action:manipulation;padding:0;transition:background-color .1s,border-color .1s,opacity .15s,transform .06s}
+  .tile:active{transform:scale(.97)}
+  .tile[data-dir="N"]{grid-area:n}.tile[data-dir="S"]{grid-area:s}.tile[data-dir="E"]{grid-area:e}.tile[data-dir="W"]{grid-area:w}
+  .tile .k{position:absolute;font-size:10px;font-weight:500;color:var(--muted);line-height:1}
+  .tile[data-dir="N"] .k{top:6px;left:50%;transform:translateX(-50%)}
+  .tile[data-dir="S"] .k{bottom:6px;left:50%;transform:translateX(-50%)}
+  .tile[data-dir="W"] .k{left:7px;top:50%;transform:translateY(-50%)}
+  .tile[data-dir="E"] .k{right:7px;top:50%;transform:translateY(-50%)}
+  .tile.is-empty{cursor:default;border-style:dashed;border-color:var(--line-soft)}
+  .tile.is-ok{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+  .tile.is-bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+  .tile.is-reveal{border-color:var(--ok);box-shadow:inset 0 0 0 2px var(--ok)}
+  .tile.is-picked{background:var(--panel-hi)}
+  .tile.is-dim{opacity:.3}
+  .center{grid-area:c;position:relative;display:flex;align-items:center;justify-content:center;background:var(--center);color:var(--center-ink);font-size:calc(var(--t) * .58);font-weight:700;line-height:1;border:1px solid var(--center)}
+  .center.is-idle{background:transparent;border:1px dashed var(--line);color:var(--muted);font-size:calc(var(--t) * .28)}
+  .center .nb{position:absolute;bottom:6px;right:7px;font-size:10px;font-weight:600;letter-spacing:.08em;opacity:.7}
+  .center.pop{animation:pop .16s ease-out}
+  @keyframes pop{from{transform:scale(.88)}to{transform:scale(1)}}
+  .barwrap{width:calc(var(--t) * 3 + 20px);height:3px;background:var(--line-soft);margin-top:20px;overflow:hidden}
+  .bar{height:100%;background:var(--accent);transform-origin:left center;transform:scaleX(0)}
+  .status{min-height:24px;margin-top:12px;font-size:13px;letter-spacing:.06em;color:var(--muted);text-align:center}
+  .status.bad{color:var(--bad);font-weight:600}
+  .digit{min-height:20px;font-size:12px;color:var(--muted)}
+  .controls{display:flex;gap:10px}
+  .keys{font-size:11px;letter-spacing:.04em;color:var(--muted);margin:10px 0 0;text-align:center}
+  @media (hover:none){.keys,.tile .k{display:none}}
+
+  /* results */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+  .kpi{background:var(--panel);border:1px solid var(--line-soft);padding:12px 14px}
+  .kpi .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--muted)}
+  .kpi .val{font-size:20px;font-weight:600;color:var(--ink-strong);font-variant-numeric:tabular-nums}
+  #chart svg{width:100%;height:auto;display:block}
+  #chart .grid line{stroke:var(--line-soft)}
+  #chart text{fill:var(--muted);font-size:10px;font-family:var(--mono)}
+  #chart .isi{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:miter}
+  #chart .thr{fill:none;stroke:var(--accent-2);stroke-width:1;stroke-dasharray:3 3}
+  #chart .c{fill:var(--ok)}
+  #chart .w{fill:var(--bad)}
+  #chart .m{fill:var(--bg);stroke:var(--bad);stroke-width:1.5}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ SETUP ============ -->
+  <section id="setup">
+    <h1>aPOSNER</h1>
+    <p class="sub">Paced auditory arithmetic with a four-way answer cross</p>
+
+    <div class="card rules">
+      <ol>
+        <li>A voice says a digit (1–9) at a steady pace. The first <span class="n-txt">one</span>: just remember <span class="n-pl">it</span>.</li>
+        <li>With each new digit, the centre tile shows <b>+</b> or <b>−</b>. Combine the new digit with the <b id="nRuleTxt">digit you heard just before it</b> — not with your previous answer.</li>
+        <li>Pick the right answer among the four tiles: tap/click it, or use the arrow keys (WASD / ZQSD work too). No answer before the next digit counts as wrong.</li>
+      </ol>
+      <p id="sessLine"></p>
+      <p id="ruleLine"></p>
+      <p id="subLine"></p>
+      <p id="noSpeech" class="warn" hidden>This browser has no speech synthesis. Turn on “Show the digit on screen” in Settings to practise visually.</p>
+    </div>
+
+    <details class="card" id="settingsCard" open>
+      <summary>Settings</summary>
+      <div class="grid">
+        <label class="f">N back
+          <select data-key="nBack">
+            <option value="1">1 — the digit just before</option>
+            <option value="2">2 — two digits back</option>
+            <option value="3">3 — three digits back</option>
+            <option value="4">4 — four digits back</option>
+            <option value="5">5 — five digits back</option>
+          </select>
+        </label>
+        <label class="f">Speed mode
+          <select id="speedMode" data-key="speedMode">
+            <option value="bayes">Bayesian (target accuracy)</option>
+            <option value="adaptive">Streaks (n right / n wrong)</option>
+            <option value="manual">Manual (you set the interval)</option>
+          </select>
+        </label>
+        <label class="f">Session ends after
+          <select id="endMode" data-key="endMode">
+            <option value="time">A set time (timer)</option>
+            <option value="answers">A number of answers</option>
+          </select>
+        </label>
+        <label class="f end-time">Session length (minutes, up to 180)<input type="number" data-key="durationMin" min="0.5" max="180" step="0.5"></label>
+        <label class="f end-answers">Scored answers per session<input type="number" data-key="responses" min="1" max="10000" step="1"></label>
+
+        <div class="grid-head">Pace</div>
+        <label class="f">Starting interval (ms)<input type="number" data-key="startIsi" min="100" step="50"></label>
+        <label class="f">Fastest interval (ms)<input type="number" data-key="minIsi" min="100" step="50"></label>
+        <label class="f">Slowest interval (ms)<input type="number" data-key="maxIsi" min="100" step="50"></label>
+        <label class="f not-bayes">Step (ms)<input type="number" data-key="step" min="10" step="10"></label>
+        <label class="f bayes-only">Target accuracy (%)<input type="number" data-key="bayesTarget" min="50" max="95" step="1"></label>
+        <label class="f bayes-only">Memory (answers)<input type="number" data-key="bayesMemory" min="8" max="100" step="1"></label>
+        <label class="f adaptive-only">Correct in a row to speed up<input type="number" data-key="upStreak" min="1" step="1"></label>
+        <label class="f adaptive-only">Wrong in a row to slow down<input type="number" data-key="downStreak" min="1" step="1"></label>
+
+        <div class="grid-head">Arithmetic and voice</div>
+        <label class="f">Subtraction rule
+          <select data-key="subMode">
+            <option value="prev-cur">earlier − current (can be negative)</option>
+            <option value="cur-prev">current − earlier (can be negative)</option>
+            <option value="abs">larger − smaller (never negative)</option>
+          </select>
+        </label>
+        <label class="f">Voice language
+          <select id="lang" data-key="lang">
+            <option value="en">English</option>
+            <option value="fr">Français</option>
+            <option value="es">Español</option>
+            <option value="de">Deutsch</option>
+            <option value="zh">中文</option>
+          </select>
+        </label>
+        <label class="f">Voice<select id="voice" data-key="voiceURI"><option value="">Automatic</option></select></label>
+        <label class="f">Speech rate<span id="rateHint"> (at the starting interval)</span><input type="number" data-key="rate" min="0.5" max="3" step="0.1"></label>
+        <label class="f">Voice speed vs interval
+          <select data-key="voiceCurve">
+            <option value="strong">Follows closely (proportional)</option>
+            <option value="gentle">Follows gently (square root)</option>
+            <option value="off">Fixed speed</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid">
+        <label class="chk"><input type="checkbox" data-key="feedback">Show right / wrong feedback</label>
+        <label class="chk"><input type="checkbox" data-key="showBar">Show timer bar</label>
+        <label class="chk"><input type="checkbox" data-key="showDigit">Show the digit on screen (practice)</label>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="testBtn" type="button">Test voice speed</button>
+        <button class="btn" id="resetBtn" type="button">Reset defaults</button>
+      </div>
+      <p class="small muted" id="voiceCheck" style="margin:10px 0 0"></p>
+    </details>
+
+    <div class="row" style="margin:18px 0 22px">
+      <button class="btn primary" id="startBtn" type="button">Start</button>
+    </div>
+
+    <div class="card history" id="history" hidden>
+      <h2>Recent sessions</h2>
+      <table>
+        <thead><tr><th>When</th><th>Session</th><th>Answers</th><th>Accuracy</th><th>Threshold</th><th>Level</th></tr></thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ GAME ============ -->
+  <section id="game" hidden>
+    <div class="hud">
+      <div class="stat"><span class="lbl">Interval<span id="hudMode"></span><span id="hudDelta" class="delta"></span></span>
+        <span class="val isi-ctl">
+          <button class="mini" id="fasterBtn" type="button" tabindex="-1" title="Faster (− key)" aria-label="Faster">−</button>
+          <span><span id="hudIsi">2000</span> <span class="unit">ms</span></span>
+          <button class="mini" id="slowerBtn" type="button" tabindex="-1" title="Slower (+ key)" aria-label="Slower">+</button>
+        </span>
+      </div>
+      <div class="stat"><span class="lbl">N</span><span class="val" id="hudN">1</span></div>
+      <div class="stat"><span class="lbl" id="timeLbl">Time left</span><span class="val" id="hudTime">3:00</span></div>
+      <div class="stat"><span class="lbl">Answers</span><span class="val" id="hudTrial">0</span></div>
+      <div class="stat"><span class="lbl">Accuracy</span><span class="val" id="hudAcc">—</span></div>
+      <div class="stat" id="thrStat"><span class="lbl" id="thrLbl">Threshold</span><span class="val"><span id="hudThr">—</span><span class="unit"> ms</span></span></div>
+      <div class="stat" id="voiceStat"><span class="lbl">Voice</span><span class="val"><span id="hudRate">×1.2</span><span class="unit" id="hudDur"></span></span></div>
+      <div class="streaks" id="streaks">
+        <div class="dots ok" id="okDots"></div>
+        <div class="dots bad" id="badDots"></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="cross">
+        <button class="tile is-empty" data-dir="N" tabindex="-1" type="button"><span class="v"></span><span class="k">↑</span></button>
+        <button class="tile is-empty" data-dir="W" tabindex="-1" type="button"><span class="v"></span><span class="k">←</span></button>
+        <div class="center is-idle" id="center"></div>
+        <button class="tile is-empty" data-dir="E" tabindex="-1" type="button"><span class="v"></span><span class="k">→</span></button>
+        <button class="tile is-empty" data-dir="S" tabindex="-1" type="button"><span class="v"></span><span class="k">↓</span></button>
+      </div>
+      <div class="barwrap" id="barwrap"><div class="bar" id="bar"></div></div>
+      <div class="status" id="status"></div>
+      <div class="digit" id="digit"></div>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="pauseBtn" type="button">Pause</button>
+      <button class="btn" id="stopBtn" type="button">Stop</button>
+    </div>
+    <p class="keys">Arrows / WASD / ZQSD to answer · − / + = faster / slower · Space = pause · Esc = stop</p>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="results" hidden>
+    <h1>Session results</h1>
+    <p class="sub" id="resSub"></p>
+    <div class="kpis" id="kpis"></div>
+    <div class="card">
+      <h2>Interval per answer (ms)</h2>
+      <div id="chart"></div>
+      <div class="legend">
+        <span><i style="background:var(--ok)"></i>correct</span>
+        <span><i style="background:var(--bad)"></i>wrong</span>
+        <span><i style="border:1.5px solid var(--bad)"></i>missed</span>
+        <span id="thrLegend"><i style="border-top:1px dashed var(--accent-2);height:0;vertical-align:3px"></i>80% threshold</span>
+      </div>
+    </div>
+    <p class="muted small" id="latNote"></p>
+    <div class="row">
+      <button class="btn primary" id="againBtn" type="button">Play again</button>
+      <button class="btn" id="csvBtn" type="button">Download CSV</button>
+      <button class="btn" id="setupBtn" type="button">Settings</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- constants & helpers ---------- */
+const DIRS=['N','E','S','W'];
+const KEYMAP={ArrowUp:'N',ArrowRight:'E',ArrowDown:'S',ArrowLeft:'W',KeyW:'N',KeyD:'E',KeyS:'S',KeyA:'W'}; // physical keys: WASD on QWERTY = ZQSD on AZERTY
+const LANGS={en:'en-US',fr:'fr-FR',es:'es-ES',de:'de-DE',zh:'zh-CN'};
+const DEFAULTS={endMode:'time',durationMin:3,responses:60,startIsi:2000,step:100,minIsi:500,maxIsi:3000,upStreak:4,downStreak:3,
+  speedMode:'bayes',bayesTarget:80,bayesMemory:25,nBack:1,
+  subMode:'prev-cur',lang:'en',voiceURI:'',rate:1.2,voiceCurve:'strong',feedback:true,showBar:true,showDigit:false};
+const MAX_MINUTES=180;     // three hours
+const SKEY='aposner.settings.v1', HKEY='aposner.history.v1';
+/* The Chimera record: what the hub's meter, the archive and the gate read. */
+const RECORD_KEY="chimera.aposner.record.v1";
+const APP_VERSION='2.0.0';
+const hasSpeech=('speechSynthesis' in window)&&('SpeechSynthesisUtterance' in window);
+
+const $=id=>document.getElementById(id);
+const store={
+  get(k,fb){try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(e){return fb;}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v)); return true;}catch(e){return false;}}
+};
+const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
+const fmt=v=>v<0?'−'+Math.abs(v):String(v);
+const fmtClock=sec=>{sec=Math.max(0,Math.round(sec)); const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=String(sec%60).padStart(2,'0');
+  return h?`${h}:${String(m).padStart(2,'0')}:${s}`:`${m}:${s}`;};
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const mean=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):null;
+const ORD=['','one','two','three','four','five'];
+
+const storedSettings=store.get(SKEY,{});
+let settings=Object.assign({},DEFAULTS,storedSettings);
+if(!storedSettings.voiceCurve&&storedSettings.voiceFollows===false) settings.voiceCurve='off'; // older version's checkbox
+delete settings.voiceFollows;
+let voices=[], voice=null, S=null, screen='setup', statusTimer=null, flashing=false, clockTimer=null;
+
+/* ---------- Bayesian staircase ----------
+   CCT's, with the guess rate this task has. A posterior over T, the interval
+   (log10 ms) at which you score the target, on a grid. One answer at interval
+   x is a right answer with probability
+
+       γ + (1 − γ − λ) · logistic(β(x − T) + c)
+
+   with c chosen so the curve passes through the target at x = T. γ is 1/4:
+   four tiles, so a blind tap is right a quarter of the time. λ is the lapse
+   rate, the answers lost however slow the pace.
+
+   Forgetting is tempering: before each update the log-posterior is scaled by
+   (1 − 1/memory), so the estimate rests on roughly the last `memory` answers
+   and follows you when your form changes, instead of having to outvote the
+   whole session.
+
+   CONTROLLER: in Bayesian mode each digit is placed at the current estimate
+   for the chosen target, a step capped at 15% so the pace never lurches.
+
+   METER: a second posterior runs in every mode at a fixed 80%, so the level a
+   session records does not depend on which controller ran it or what target
+   was set. */
+const BAY_GRID=(()=>{const g=[]; for(let t=Math.log10(150); t<=Math.log10(8000)+1e-9; t+=0.01) g.push(t); return g;})();
+const BAY_SLOPE=10, BAY_GUESS=0.25, BAY_LAPSE=0.04, BAY_STEP_CAP=0.15;
+const METER_TARGET=0.80, METER_MEMORY=30, METER_MIN_ANSWERS=20;
+
+function bayesCreate(startIsi,target,memory){
+  const mu=Math.log10(startIsi), sd=0.25;
+  return {target,memory,n:0,log:BAY_GRID.map(t=>-0.5*((t-mu)/sd)**2)};
+}
+function bayesP(x,t,target){
+  const span=1-BAY_GUESS-BAY_LAPSE;
+  const q=clamp((target-BAY_GUESS)/span,0.01,0.99);
+  const c=Math.log(q/(1-q));
+  return BAY_GUESS+span/(1+Math.exp(-(BAY_SLOPE*(x-t)+c)));
+}
+function bayesObserve(b,isi,ok){
+  const x=Math.log10(Math.max(1,isi)), keep=1-1/Math.max(2,b.memory);
+  let max=-Infinity;
+  for(let i=0;i<BAY_GRID.length;i++){
+    const p=clamp(bayesP(x,BAY_GRID[i],b.target),1e-6,1-1e-6);
+    b.log[i]=b.log[i]*keep+Math.log(ok?p:1-p);
+    if(b.log[i]>max) max=b.log[i];
+  }
+  for(let i=0;i<b.log.length;i++) b.log[i]-=max;
+  b.n++;
+}
+function bayesMean(b){
+  let z=0,m=0; b.log.forEach((l,i)=>{const w=Math.exp(l); z+=w; m+=w*BAY_GRID[i];});
+  return m/z;
+}
+const bayesThresholdMs=b=>Math.round(Math.pow(10,bayesMean(b)));
+
+/* The level a session records, as CCT's: answers a minute at the 80%
+   threshold, weighted for the depth held. 1 + log2(n): 1, 2, 2.58, 3, 3.32
+   for n = 1…5 — holding a second digit doubles the work, each further one
+   adds less. A judgement rather than a measurement, kept in one place. */
+const nWeight=n=>1+Math.log2(Math.max(1,n||1));
+function difficulty(thresholdIsi,n){
+  if(!(thresholdIsi>0)) return null;
+  return Math.round(60000/thresholdIsi*nWeight(n)*10)/10;
+}
+
+/* ---------- settings form ---------- */
+const fields=Array.from(document.querySelectorAll('[data-key]'));
+
+function writeForm(){
+  fields.forEach(f=>{const k=f.dataset.key; if(f.type==='checkbox') f.checked=!!settings[k]; else f.value=settings[k];});
+  fillVoices(); syncModeFields(); ruleLine();
+}
+function syncModeFields(){
+  const mode=$('speedMode').value;
+  const off=(sel,on)=>document.querySelectorAll(sel).forEach(l=>{l.classList.toggle('is-off',!on); l.querySelector('input').disabled=!on;});
+  off('.adaptive-only',mode==='adaptive');
+  off('.bayes-only',mode==='bayes');
+  document.querySelectorAll('.bayes-only').forEach(l=>{l.hidden=mode!=='bayes';});
+  document.querySelectorAll('.adaptive-only').forEach(l=>{l.hidden=mode!=='adaptive';});
+  const byTime=$('endMode').value==='time';
+  document.querySelector('.end-time').hidden=!byTime;
+  document.querySelector('.end-answers').hidden=byTime;
+}
+function readForm(){
+  const s=Object.assign({},settings);
+  fields.forEach(f=>{
+    const k=f.dataset.key;
+    if(k==='voiceURI'&&f.options.length<=1) return; // voices not loaded yet: keep saved choice
+    if(f.type==='checkbox') s[k]=f.checked;
+    else if(f.type==='number'){const n=parseFloat(f.value); s[k]=Number.isFinite(n)?n:DEFAULTS[k];}
+    else s[k]=f.value;
+  });
+  const int=(v,lo,hi)=>Math.min(hi,Math.max(lo,Math.round(v)));
+  s.nBack=int(Number(s.nBack)||1,1,5);
+  s.responses=int(s.responses,1,10000);
+  s.durationMin=Math.min(MAX_MINUTES,Math.max(0.5,Math.round(s.durationMin*10)/10));
+  s.minIsi=int(s.minIsi,100,10000);
+  s.maxIsi=int(s.maxIsi,s.minIsi,20000);
+  s.startIsi=int(s.startIsi,s.minIsi,s.maxIsi);
+  s.step=int(s.step,1,5000);
+  s.upStreak=int(s.upStreak,1,50);
+  s.downStreak=int(s.downStreak,1,50);
+  s.bayesTarget=int(s.bayesTarget,50,95);
+  s.bayesMemory=int(s.bayesMemory,8,100);
+  s.rate=Math.min(3,Math.max(0.5,s.rate));
+  if(!['bayes','adaptive','manual'].includes(s.speedMode)) s.speedMode=DEFAULTS.speedMode;
+  return s;
+}
+function ruleLine(){
+  const s=readForm(), n=s.nBack;
+  document.querySelectorAll('.n-txt').forEach(e=>{e.textContent=n===1?'one':`${ORD[n]||n}`;});
+  document.querySelectorAll('.n-pl').forEach(e=>{e.textContent=n===1?'it':'them';});
+  $('nRuleTxt').textContent=n===1?'digit you heard just before it':`digit you heard ${n} digits before it`;
+  $('sessLine').textContent=s.endMode==='time'
+    ? `Session: ${fmtClock(s.durationMin*60)} on the clock (up to 3 hours). The timer stops while paused, and the digit playing when it reaches 0:00 is the last one.`
+    : `Session: ${s.responses} scored answers.`;
+  $('ruleLine').textContent=s.speedMode==='manual'
+    ? `Manual speed: a digit every ${s.startIsi} ms, and it only changes when you change it — use the − / + buttons or keys during play (${s.step} ms per press, between ${s.minIsi} and ${s.maxIsi} ms).`
+    : s.speedMode==='bayes'
+    ? `Bayesian speed: starts at ${s.startIsi} ms and after every answer moves toward the interval at which you would score ${s.bayesTarget}%, estimated from roughly your last ${s.bayesMemory} answers (never more than 15% per step, between ${s.minIsi} and ${s.maxIsi} ms).`
+    : `Starts at ${s.startIsi} ms between digits. ${s.upStreak} correct in a row → ${s.step} ms faster (never below ${s.minIsi} ms). ${s.downStreak} wrong or missed in a row → ${s.step} ms slower (never above ${s.maxIsi} ms). You can also nudge it yourself with − / + during play.`;
+  const sub={'prev-cur':'earlier − current','cur-prev':'current − earlier','abs':'larger − smaller'}[s.subMode];
+  let voiceTxt;
+  if(s.voiceCurve==='off') voiceTxt=` The voice keeps the same speed (×${s.rate.toFixed(2)}).`;
+  else{
+    const pts=[s.startIsi,Math.round((s.startIsi+s.minIsi)/200)*100,s.minIsi].filter((v,i,a)=>a.indexOf(v)===i);
+    voiceTxt=' The voice speeds up with the digits: '+pts.map(p=>`×${rateFor(p,s).toFixed(2)} at ${p} ms`).join(', ')+'.';
+  }
+  $('subLine').textContent=`“+” = earlier + current. “−” = ${sub}.`+voiceTxt;
+  $('rateHint').hidden=(s.voiceCurve==='off');
+}
+// online voices (e.g. Chrome's "Google …" voices) generally don't go beyond ×2
+function maxRate(){const v=voice||pickVoice(); return v&&!v.localService?2:3;}
+// speech rate for a given interval, relative to the starting interval
+//   strong: rate ∝ 1/interval (interval −25 % → voice +33 %)
+//   gentle: rate ∝ 1/√interval
+function rateFor(isi,s){
+  s=s||settings;
+  if(s.voiceCurve==='off') return s.rate;
+  const ratio=s.startIsi/isi;
+  const r=s.rate*(s.voiceCurve==='gentle'?Math.sqrt(ratio):ratio);
+  return Math.round(Math.min(maxRate(),Math.max(0.5,r))*100)/100;
+}
+fields.forEach(f=>f.addEventListener('change',()=>{
+  if(f.dataset.key==='lang') fillVoices();
+  settings=readForm(); store.set(SKEY,settings); syncModeFields(); ruleLine();
+}));
+$('resetBtn').addEventListener('click',()=>{settings=Object.assign({},DEFAULTS); store.set(SKEY,settings); writeForm();});
+
+/* ---------- speech ---------- */
+const langOf=v=>(v.lang||'').toLowerCase().replace('_','-');
+function fillVoices(){
+  const sel=$('voice'), lang=$('lang').value;
+  const list=voices.filter(v=>langOf(v).startsWith(lang));
+  sel.innerHTML='';
+  const o0=document.createElement('option'); o0.value='';
+  o0.textContent=list.length?'Automatic':'Automatic (no matching voice found)';
+  sel.appendChild(o0);
+  list.forEach(v=>{const o=document.createElement('option'); o.value=v.voiceURI; o.textContent=`${v.name} (${v.lang})${v.localService?'':' · online'}`; sel.appendChild(o);});
+  sel.value=list.some(v=>v.voiceURI===settings.voiceURI)?settings.voiceURI:'';
+}
+function pickVoice(){
+  const m=v=>langOf(v).startsWith(settings.lang);
+  // local voices start faster than network voices
+  return voices.find(v=>v.voiceURI===settings.voiceURI&&m(v)) || voices.find(v=>m(v)&&v.localService) || voices.find(m) || null;
+}
+let currentUtter=null;
+// h.onstart(), h.onend(durationMs) — duration is only reported when the utterance played to the end
+function speak(text,rate,h){
+  if(!hasSpeech) return null;
+  h=h||{};
+  try{
+    if(speechSynthesis.speaking||speechSynthesis.pending){ if(currentUtter) currentUtter._cut=true; speechSynthesis.cancel(); }
+    const u=new SpeechSynthesisUtterance(String(text));
+    if(voice){u.voice=voice; u.lang=voice.lang;} else u.lang=LANGS[settings.lang]||'en-US';
+    u.rate=rate||settings.rate; u.volume=1;
+    u.onstart=()=>{u._t0=performance.now(); if(h.onstart) h.onstart();};
+    u.onend=()=>{ if(!u._cut&&u._t0!=null&&h.onend) h.onend(Math.round(performance.now()-u._t0)); };
+    u.onerror=()=>{u._cut=true; if(h.onerror) h.onerror();};
+    currentUtter=u;
+    speechSynthesis.speak(u);
+    if(speechSynthesis.paused) speechSynthesis.resume();
+    return u;
+  }catch(e){return null;}
+}
+function speakAsync(text,rate){
+  return new Promise(res=>{
+    let done=false; const fin=v=>{if(!done){done=true; res(v);}};
+    const u=speak(text,rate,{onend:fin,onerror:()=>fin(null)});
+    if(!u) return fin(null);
+    setTimeout(()=>fin(null),8000);
+  });
+}
+if(hasSpeech){
+  const load=()=>{voices=speechSynthesis.getVoices()||[]; fillVoices();};
+  load();
+  if(speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged',load);
+  else speechSynthesis.onvoiceschanged=load;
+}else{
+  $('noSpeech').hidden=false;
+}
+// plays the same digits slow then fast and times them, to check the voice really changes speed
+$('testBtn').addEventListener('click',async e=>{
+  const btn=e.currentTarget; if(btn.disabled) return;
+  settings=readForm(); voice=pickVoice();
+  const out=$('voiceCheck');
+  if(!hasSpeech){out.textContent='This browser has no speech synthesis.'; out.className='small warn'; return;}
+  const name=voice?voice.name:'The default voice';
+  const fast=Math.min(maxRate(),2);
+  btn.disabled=true; out.className='small muted';
+  out.textContent=`Playing at ×1, then at ×${fast}…`;
+  const d1=await speakAsync('3, 7, 5, 2',1);
+  await new Promise(r=>setTimeout(r,350));
+  const d2=await speakAsync('3, 7, 5, 2',fast);
+  btn.disabled=false;
+  if(d1==null||d2==null){
+    out.textContent=`Couldn't time ${name}: the browser didn't report when the speech ended.`; out.className='small warn';
+  }else if(d2/d1>0.85){
+    out.textContent=`${name} ignores speed changes (${d1} ms at ×1, ${d2} ms at ×${fast}). Pick another voice above; voices without “online” usually work.`; out.className='small warn';
+  }else{
+    out.textContent=`${name} responds to speed: ${d1} ms at ×1 → ${d2} ms at ×${fast}.`; out.className='small ok';
+  }
+});
+
+/* ---------- arithmetic & answer options ---------- */
+function apply(prev,cur,op){
+  if(op==='+') return prev+cur;
+  if(settings.subMode==='cur-prev') return cur-prev;
+  if(settings.subMode==='abs') return Math.abs(prev-cur);
+  return prev-cur;
+}
+function inRange(v,op){
+  if(op==='+') return v>=2&&v<=18;
+  return settings.subMode==='abs' ? (v>=0&&v<=8) : (v>=-8&&v<=8);
+}
+/* `others` are the digits a step nearer and a step further back than the
+   one asked for. Combining with the wrong one is the n-back mistake, so its
+   answer is the most telling distractor there is: it is only offered when
+   the two digits differ, otherwise it is the right answer. */
+function makeOptions(prev,cur,op,prevAnswer,others){
+  const correct=apply(prev,cur,op);
+  const used=new Set([correct]), picks=[];
+  const add=(v,check)=>{ if(picks.length<3&&Number.isFinite(v)&&!used.has(v)&&(!check||inRange(v,op))){used.add(v); picks.push(v);} };
+  // "smart" distractors = typical mistakes
+  const smart=[apply(prev,cur,op==='+'?'-':'+')];                 // used the wrong operation
+  if(op==='-'&&settings.subMode!=='abs') smart.push(-correct);      // subtracted the wrong way round
+  if(prevAnswer!=null) smart.push(apply(prevAnswer,cur,op));         // combined with previous answer (running total)
+  (others||[]).forEach(d=>{ if(d!=null&&d!==prev) smart.push(apply(d,cur,op)); });  // the wrong digit back
+  shuffle(smart).slice(0,rnd(1,2)).forEach(v=>add(v,false));
+  // near misses
+  shuffle([-3,-2,-1,1,2,3]).forEach(d=>add(correct+d,true));
+  for(let d=4;picks.length<3&&d<=20;d++){add(correct+d,true); add(correct-d,true);}
+  for(let d=1;picks.length<3;d++) add(correct+d,false);
+  const vals=shuffle([correct,...picks]);
+  const options={}; let correctDir='';
+  DIRS.forEach((dir,i)=>{options[dir]=vals[i]; if(vals[i]===correct) correctDir=dir;});
+  return {correct,options,correctDir};
+}
+
+/* ---------- board ---------- */
+const tiles={};
+document.querySelectorAll('.tile').forEach(b=>{
+  tiles[b.dataset.dir]=b;
+  b.addEventListener('pointerdown',e=>{e.preventDefault(); respond(b.dataset.dir);});
+});
+
+function show(name){
+  screen=name;
+  ['setup','game','results'].forEach(n=>{$(n).hidden=(n!==name);});
+  window.scrollTo(0,0);
+}
+function setStatus(txt,cls){const s=$('status'); s.textContent=txt; s.className='status'+(cls?' '+cls:'');}
+function flash(txt,cls,ms){
+  clearTimeout(statusTimer); flashing=true; setStatus(txt,cls);
+  statusTimer=setTimeout(()=>{flashing=false; setStatus('');},ms||700);
+}
+function runBar(ms){
+  const b=$('bar');
+  b.style.transition='none'; b.style.transform='scaleX(1)'; void b.offsetWidth;
+  b.style.transition=`transform ${ms}ms linear`; b.style.transform='scaleX(0)';
+}
+function stopBar(){const b=$('bar'); b.style.transition='none'; b.style.transform='scaleX(0)';}
+
+function clearBoard(){
+  DIRS.forEach(d=>{tiles[d].className='tile is-empty'; tiles[d].querySelector('.v').textContent='';});
+  const c=$('center'); c.className='center is-idle'; c.textContent='';
+  $('digit').textContent=''; stopBar();
+}
+function renderTrial(t){
+  const c=$('center');
+  c.className='center'+(t.op?'':' is-idle');
+  c.textContent=t.op?(t.op==='+'?'+':'−'):'•';
+  if(t.op&&S.n>1){const nb=document.createElement('span'); nb.className='nb'; nb.textContent=S.n+'←'; c.appendChild(nb);}
+  void c.offsetWidth; c.classList.add('pop');
+  DIRS.forEach(d=>{
+    tiles[d].className='tile'+(t.op?'':' is-empty');
+    tiles[d].querySelector('.v').textContent=t.op?fmt(t.options[d]):'';
+  });
+  $('digit').textContent=settings.showDigit?('Heard: '+t.digit):'';
+  if(!t.op){
+    clearTimeout(statusTimer); flashing=false;
+    const left=S.n-S.chain.length;
+    setStatus(S.n===1?'Listen — remember this number':`Listen — remember these (${S.n-left+1} of ${S.n})`);
+  }
+  else if(!flashing) setStatus('');
+  runBar(t.isi);
+}
+function showFeedback(t,dir,ok){
+  DIRS.forEach(d=>{
+    const b=tiles[d];
+    if(d===dir) b.classList.add(settings.feedback?(ok?'is-ok':'is-bad'):'is-picked');
+    else if(settings.feedback&&!ok&&d===t.correctDir) b.classList.add('is-reveal');
+    else b.classList.add('is-dim');
+  });
+}
+function buildDots(){
+  const mk=(id,n,label)=>{
+    const box=$(id); box.innerHTML='';
+    for(let i=0;i<n;i++) box.appendChild(document.createElement('i'));
+    const s=document.createElement('span'); s.textContent=label; box.appendChild(s);
+  };
+  mk('okDots',settings.upStreak,'faster');
+  mk('badDots',settings.downStreak,'slower');
+}
+function updateHud(){
+  $('hudIsi').textContent=S.isi;
+  $('hudN').textContent=S.n+'-back';
+  $('hudTrial').textContent=S.endMode==='time'?String(S.scored):`${S.scored} / ${settings.responses}`;
+  $('hudAcc').textContent=S.scored?Math.round(100*S.correct/S.scored)+'%':'—';
+  $('okDots').querySelectorAll('i').forEach((d,i)=>d.classList.toggle('on',i<S.okRun));
+  $('badDots').querySelectorAll('i').forEach((d,i)=>d.classList.toggle('on',i<S.badRun));
+  $('hudMode').textContent=S.mode==='manual'?' · manual':S.mode==='bayes'?' · bayes':'';
+  /* In Bayesian mode the estimate is the controller's, at your target; in the
+     others it is the 80% meter's, once it has enough answers to mean anything. */
+  const ctl=S.mode==='bayes'&&S.ctrl&&S.ctrl.n>=3;
+  $('thrLbl').textContent=ctl?`Est. at ${Math.round(S.ctrl.target*100)}%`:'Est. at 80%';
+  $('hudThr').textContent=ctl?bayesThresholdMs(S.ctrl):(S.meter.n>=METER_MIN_ANSWERS?bayesThresholdMs(S.meter):'—');
+  $('voiceStat').hidden=!hasSpeech;
+  $('hudRate').textContent='×'+rateFor(S.isi).toFixed(2);
+  $('hudDur').textContent=S.lastDur!=null?` · ${S.lastDur} ms`:'';
+  $('fasterBtn').disabled=S.isi<=settings.minIsi;
+  $('slowerBtn').disabled=S.isi>=settings.maxIsi;
+}
+function deltaPulse(delta,manual){
+  const d=$('hudDelta');
+  d.textContent=(delta<0?'−':'+')+Math.abs(delta);
+  d.className='delta '+(manual?'manual':delta<0?'faster':'slower');
+  void d.offsetWidth; d.classList.add('show');
+}
+
+/* ---------- session engine ---------- */
+function start(){
+  settings=readForm(); store.set(SKEY,settings); voice=pickVoice();
+  if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();
+  // unlock audio inside the click (needed on iOS / some Chrome builds)
+  if(hasSpeech){try{speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u);}catch(e){}}
+  S={running:true,paused:false,isi:settings.startIsi,okRun:0,badRun:0,scored:0,correct:0,wrong:0,miss:0,
+     speedUps:0,slowDowns:0,manualChanges:0,pendingChange:'',mode:settings.speedMode,lastDur:null,n:settings.nBack,
+     endMode:settings.endMode,durMs:Math.round(settings.durationMin*60000),playMs:0,playStart:null,timeUp:false,
+     startedAt:Date.now(),trials:[],cur:null,chain:[],prevAnswer:null,timer:null,nextAt:0,
+     ctrl:bayesCreate(settings.startIsi,settings.bayesTarget/100,settings.bayesMemory),
+     meter:bayesCreate(settings.startIsi,METER_TARGET,METER_MEMORY),bestThr:null,thrTrace:[]};
+  show('game'); buildDots(); clearBoard(); updateHud();
+  clearInterval(clockTimer); clockTimer=setInterval(renderClock,200); renderClock();
+  $('streaks').hidden=(S.mode!=='adaptive');
+  $('barwrap').style.visibility=settings.showBar?'visible':'hidden';
+  $('pauseBtn').textContent='Pause';
+  setStatus('Get ready…');
+  S.timer=setTimeout(()=>{S.nextAt=performance.now(); S.playStart=performance.now(); runTrial();},1200);
+}
+
+// session clock: counts only time spent playing (not "get ready", not pauses)
+function elapsed(){return S.playMs+(S.playStart!=null?performance.now()-S.playStart:0);}
+function stopClock(){if(S&&S.playStart!=null){S.playMs+=performance.now()-S.playStart; S.playStart=null;}}
+function renderClock(){
+  if(!S) return;
+  const el=$('hudTime');
+  if(S.endMode==='time'){
+    const left=Math.ceil(Math.max(0,S.durMs-elapsed())/1000);
+    $('timeLbl').textContent='Time left';
+    el.textContent=fmtClock(left);
+    el.classList.toggle('low',left<=10);
+  }else{
+    $('timeLbl').textContent='Time';
+    el.textContent=fmtClock(Math.floor(elapsed()/1000));
+    el.classList.remove('low');
+  }
+}
+
+/* `chain` holds the last n digits heard, oldest first. A digit is combined
+   with chain[0] — the one heard n digits before it — so the first n digits of
+   a session, and of every stretch after a pause, are only to be held. */
+function runTrial(){
+  if(!S||!S.running||S.paused) return;
+  if(S.endMode==='time'){ if(elapsed()>=S.durMs){S.timeUp=true; finish(); return;} }
+  else if(S.scored>=settings.responses){finish(); return;}
+  const digit=rnd(1,9);
+  const back=S.chain.length>=S.n?S.chain[S.chain.length-S.n]:null;
+  const t={n:S.trials.length+1,digit,prev:back,op:'',answer:null,options:null,correctDir:'',
+           response:'',respValue:null,outcome:'start',rt:null,isi:S.isi,rate:rateFor(S.isi),change:S.pendingChange,audioLatency:null,speechDur:null,tSession:Math.round(elapsed()),t0:performance.now()};
+  S.pendingChange='';
+  if(back!==null){
+    t.op=Math.random()<0.5?'+':'-';
+    const L=S.chain.length;
+    const others=[S.n>1?S.chain[L-S.n+1]:null, L>S.n?S.chain[L-S.n-1]:null];
+    const o=makeOptions(back,digit,t.op,S.n===1?S.prevAnswer:null,others);
+    t.answer=o.correct; t.options=o.options; t.correctDir=o.correctDir; t.outcome='pending';
+  }
+  S.cur=t; S.trials.push(t);
+  renderTrial(t);
+  const sess=S;
+  speak(digit,t.rate,{
+    onstart:()=>{t.audioLatency=Math.round(performance.now()-t.t0);},
+    onend:d=>{t.speechDur=d; if(S===sess&&S.running){S.lastDur=d; $('hudDur').textContent=` · ${d} ms`;}}
+  });
+  // fixed pace, drift-corrected
+  S.nextAt+=t.isi;
+  S.timer=setTimeout(endTrial,Math.max(0,S.nextAt-performance.now()));
+}
+
+function endTrial(){
+  if(!S||!S.running||S.paused) return;
+  const t=S.cur;
+  if(t.outcome==='pending'){t.outcome='miss'; S.miss++; score(false,t); flash('Too slow','bad',700);}
+  S.chain.push(t.digit);
+  if(S.chain.length>S.n+1) S.chain.shift();
+  S.prevAnswer=t.answer;
+  runTrial();
+}
+
+function respond(dir){
+  if(!S||!S.running||S.paused) return;
+  const t=S.cur;
+  if(!t||t.outcome!=='pending') return;   // one answer per digit
+  t.response=dir; t.respValue=t.options[dir]; t.rt=Math.round(performance.now()-t.t0);
+  const ok=(dir===t.correctDir);
+  t.outcome=ok?'correct':'wrong';
+  if(ok) S.correct++; else S.wrong++;
+  showFeedback(t,dir,ok);
+  score(ok,t);
+}
+
+function score(ok,t){
+  S.scored++;
+  /* Both posteriors learn from the interval this digit actually ran at,
+     before anything moves the interval. */
+  bayesObserve(S.meter,t.isi,ok);
+  if(S.meter.n>=METER_MIN_ANSWERS){
+    const thr=bayesThresholdMs(S.meter);
+    if(S.bestThr==null||thr<S.bestThr) S.bestThr=thr;
+    t.thr80=thr;
+  }
+  if(S.mode==='bayes'){
+    bayesObserve(S.ctrl,t.isi,ok);
+    const want=bayesThresholdMs(S.ctrl), before=S.isi;
+    const step=clamp(want,S.isi*(1-BAY_STEP_CAP),S.isi*(1+BAY_STEP_CAP));
+    S.isi=clamp(Math.round(step/10)*10,settings.minIsi,settings.maxIsi);
+    if(S.isi!==before){
+      if(S.isi<before) S.speedUps++; else S.slowDowns++;
+      S.pendingChange='bayes';
+      if(Math.abs(S.isi-before)>=20) deltaPulse(S.isi-before);
+    }
+  }else if(S.mode==='adaptive'){
+    if(ok){
+      S.badRun=0; S.okRun++;
+      if(S.okRun>=settings.upStreak){
+        S.okRun=0; const before=S.isi;
+        S.isi=Math.max(settings.minIsi,S.isi-settings.step);
+        if(S.isi<before){S.speedUps++; S.pendingChange='adaptive'; deltaPulse(S.isi-before);}
+      }
+    }else{
+      S.okRun=0; S.badRun++;
+      if(S.badRun>=settings.downStreak){
+        S.badRun=0; const before=S.isi;
+        S.isi=Math.min(settings.maxIsi,S.isi+settings.step);
+        if(S.isi>before){S.slowDowns++; S.pendingChange='adaptive'; deltaPulse(S.isi-before);}
+      }
+    }
+  }
+  updateHud();   // the new interval applies from the next digit
+}
+
+// manual speed control: sign −1 = faster (shorter interval), +1 = slower
+function adjustIsi(sign){
+  if(!S||!S.running) return;
+  const before=S.isi;
+  S.isi=Math.min(settings.maxIsi,Math.max(settings.minIsi,S.isi+sign*settings.step));
+  if(S.isi===before) return;
+  S.manualChanges++; S.okRun=0; S.badRun=0; S.pendingChange='manual';
+  deltaPulse(S.isi-before,true);
+  updateHud();   // applies from the next digit
+}
+
+function pause(){
+  if(!S||!S.running||S.paused) return;
+  S.paused=true; clearTimeout(S.timer); stopClock(); renderClock();
+  if(hasSpeech) try{speechSynthesis.cancel();}catch(e){}
+  if(S.cur&&S.cur.outcome==='pending') S.cur.outcome='void';  // interrupted digit isn't scored
+  S.chain=[]; S.prevAnswer=null;                              // the chain restarts after a pause
+  clearTimeout(statusTimer); flashing=false;
+  clearBoard();
+  setStatus('Paused — press Space or Resume');
+  $('pauseBtn').textContent='Resume';
+}
+function resume(){
+  if(!S||!S.running||!S.paused) return;
+  S.paused=false; $('pauseBtn').textContent='Pause';
+  setStatus('Get ready…');
+  S.timer=setTimeout(()=>{S.nextAt=performance.now(); S.playStart=performance.now(); runTrial();},900);
+}
+function finish(){
+  if(!S||!S.running) return;
+  stopClock(); clearInterval(clockTimer); renderClock();
+  S.running=false; clearTimeout(S.timer); clearTimeout(statusTimer); flashing=false;
+  if(hasSpeech) try{speechSynthesis.cancel();}catch(e){}
+  if(S.cur&&S.cur.outcome==='pending') S.cur.outcome='void';
+  stopBar();
+  show('results');
+  const r=renderResults();
+  const modeTxt={manual:'Manual speed',adaptive:'Streak speed',bayes:`Bayesian speed, ${Math.round(S.ctrl.target*100)}% target`}[S.mode];
+  let endTxt;
+  if(S.endMode==='time') endTxt=S.timeUp
+    ? `${fmtClock(S.durMs/1000)} session, ${r.n} answers.`
+    : `stopped after ${fmtClock(S.playMs/1000)} of ${fmtClock(S.durMs/1000)}, ${r.n} answers.`;
+  else endTxt=r.n<settings.responses?`stopped after ${r.n} of ${settings.responses} answers.`:`${r.n} answers.`;
+  $('resSub').textContent=`${S.n}-back · ${modeTxt} · ${endTxt}`;
+  saveHistory(r);
+  saveRecord(r);
+}
+
+/* ---------- results ---------- */
+function renderResults(){
+  const sc=S.trials.filter(t=>t.outcome==='correct'||t.outcome==='wrong'||t.outcome==='miss');
+  const n=sc.length;
+  const rts=sc.filter(t=>t.outcome==='correct').map(t=>t.rt);
+  const lat=S.trials.map(t=>t.audioLatency).filter(v=>v!=null);
+  const fastest=n?Math.min(...sc.map(t=>t.isi)):null;
+  const acc=n?Math.round(100*S.correct/n):null;
+  const mrt=mean(rts);
+  const level=difficulty(S.bestThr,S.n);
+  const kpis=[
+    ['Accuracy',acc==null?'—':acc+'%'],
+    ['Correct',S.correct],['Wrong',S.wrong],['Missed',S.miss],
+    ['Mean RT (correct)',mrt==null?'—':mrt+' ms'],
+    ['80% threshold',S.bestThr==null?'—':S.bestThr+' ms'],
+    ['Level',level==null?'—':level],
+    ['Fastest interval',fastest==null?'—':fastest+' ms'],
+    ['Final interval',S.isi+' ms'],
+    ['Time played',fmtClock(S.playMs/1000)],
+    S.mode==='manual'
+      ? ['Manual changes',S.manualChanges]
+      : ['Faster / slower',`${S.speedUps} / ${S.slowDowns}`+(S.manualChanges?` · ${S.manualChanges} manual`:'')]
+  ];
+  $('kpis').innerHTML=kpis.map(([l,v])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${v}</div></div>`).join('');
+  // how long digits actually lasted at the slowest vs fastest interval played
+  const timed=S.trials.filter(t=>t.speechDur!=null);
+  let durTxt='';
+  if(timed.length){
+    const hiI=Math.max(...timed.map(t=>t.isi)), loI=Math.min(...timed.map(t=>t.isi));
+    const at=i=>mean(timed.filter(t=>t.isi===i).map(t=>t.speechDur));
+    durTxt=hiI===loI
+      ? ` Each digit lasted about ${at(hiI)} ms.`
+      : ` Digits lasted about ${at(hiI)} ms at ${hiI} ms intervals and ${at(loI)} ms at ${loI} ms.`;
+  }
+  const levelTxt=level==null
+    ? ` The level needs ${METER_MIN_ANSWERS} answers.`
+    : ` Level is answers a minute at the 80% threshold × ${nWeight(S.n).toFixed(2)} for ${S.n}-back.`;
+  $('latNote').textContent=(lat.length
+    ? `Speech started on average ${mean(lat)} ms after the tiles appeared (depends on browser and voice).`
+    : (hasSpeech?'This browser did not report when speech started.':''))+durTxt+levelTxt;
+  drawChart(sc);
+  return {n,acc,fastest,final:S.isi,mode:S.mode,sec:Math.round(S.playMs/1000),thr:S.bestThr,level,mrt};
+}
+function drawChart(ts){
+  const box=$('chart');
+  if(!ts.length){box.innerHTML='<p class="muted small">No scored answers.</p>'; return;}
+  const W=Math.max(300,box.clientWidth||600), H=220, pl=46, pr=10, pt=12, pb=26;
+  const isis=ts.map(t=>t.isi);
+  const thrs=ts.map(t=>t.thr80).filter(v=>v!=null);
+  const all=isis.concat(thrs);
+  let lo=Math.max(0,Math.floor((Math.min(...all)-100)/100)*100);
+  let hi=Math.ceil((Math.max(...all)+100)/100)*100;
+  if(hi-lo<400) hi=lo+400;
+  const iw=W-pl-pr, ih=H-pt-pb;
+  const x=i=>pl+(ts.length===1?iw/2:i*iw/(ts.length-1));
+  const y=v=>pt+(hi-v)*ih/(hi-lo);
+  const stepY=Math.max(100,Math.ceil((hi-lo)/4/100)*100);
+  let g='';
+  for(let v=lo;v<=hi;v+=stepY) g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl-8}" y="${y(v)+4}" text-anchor="end">${v}</text>`;
+  let d=`M${x(0)},${y(isis[0])}`;
+  for(let i=1;i<ts.length;i++) d+=` L${x(i)},${y(isis[i-1])} L${x(i)},${y(isis[i])}`;
+  let td='';
+  ts.forEach((t,i)=>{ if(t.thr80!=null) td+=(td?' L':'M')+`${x(i)},${y(t.thr80)}`; });
+  $('thrLegend').hidden=!td;
+  const r=ts.length>120?2.2:3.5;
+  const dots=ts.length>1500?'':ts.map((t,i)=>`<circle class="${t.outcome[0]}" cx="${x(i)}" cy="${y(t.isi)}" r="${r}"><title>#${i+1}: ${t.outcome}, ${t.isi} ms</title></circle>`).join('');
+  const xs=[0,Math.floor((ts.length-1)/2),ts.length-1].filter((v,i,a)=>a.indexOf(v)===i);
+  const xl=xs.map(i=>`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${i+1}</text>`).join('');
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Interval per answer"><g class="grid">${g}</g>${td?`<path class="thr" d="${td}"/>`:''}<path class="isi" d="${d}"/>${dots}${xl}</svg>`;
+}
+function downloadCsv(){
+  if(!S) return;
+  const head=['trial','session_time_ms','n_back','digit','combined_with','operation','correct_answer','N','E','S','W','correct_dir','response_dir','response_value','outcome','rt_ms','interval_ms','speed_mode','interval_change','threshold_80_ms','speech_rate','speech_onset_ms','speech_duration_ms'];
+  const val=v=>(v===null||v===undefined)?'':v;
+  const rows=S.trials.map(t=>[t.n,val(t.tSession),S.n,t.digit,val(t.prev),t.op==='+'?'add':t.op==='-'?'sub':'',val(t.answer),
+    ...DIRS.map(d=>t.options?t.options[d]:''),t.correctDir,t.response,val(t.respValue),t.outcome,val(t.rt),t.isi,S.mode,t.change||'',val(t.thr80),t.rate,val(t.audioLatency),val(t.speechDur)]);
+  const csv=[head,...rows].map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  const ts=new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  a.download=`aposner-${ts}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+
+/* ---------- history ---------- */
+function saveHistory(r){
+  if(!r.n) return;
+  const h=store.get(HKEY,[]);
+  h.unshift({d:Date.now(),m:r.mode,nb:S.n,sec:r.sec,n:r.n,acc:r.acc,fastest:r.fastest,final:r.final,thr:r.thr,level:r.level});
+  store.set(HKEY,h.slice(0,20));
+}
+function renderHistory(){
+  const h=store.get(HKEY,[]);
+  if(!h.length){$('history').hidden=true; return;}
+  $('history').hidden=false;
+  const modeName={manual:'Manual',adaptive:'Streaks',bayes:'Bayes'};
+  $('histBody').innerHTML=h.slice(0,5).map(r=>{
+    const dt=new Date(r.d);
+    const when=dt.toLocaleDateString(undefined,{day:'numeric',month:'short'})+' '+dt.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+    return `<tr><td>${when}</td><td>${r.nb||1}-back · ${modeName[r.m]||r.m}${r.sec!=null?' · '+fmtClock(r.sec):''}</td><td>${r.n}</td><td>${r.acc}%</td><td>${r.thr!=null?r.thr+' ms':'—'}</td><td>${r.level!=null?r.level:'—'}</td></tr>`;
+  }).join('');
+}
+
+/* ---------- the Chimera record ----------
+   One session per sitting, in the format every trainer on the hub writes
+   (apps/relations/harness/FORMAT.md). It is what the hub's meter counts — the
+   minutes are activeSeconds, pauses excluded — and what the archive charts:
+   `level` is the difficulty above, which rises as the task gets harder, like
+   every other level there.
+
+   A three-hour session at a fast pace is thousands of answers, so the trial
+   log is kept on the latest sessions only; older ones keep their summary row.
+   If storage is still full, every log goes before the session would. */
+const LOGGED_SESSIONS=5;
+function saveRecord(r){
+  if(!(S.playMs>=5000)&&!r.n) return;
+  let rec=store.get(RECORD_KEY,null);
+  if(!rec||rec.format!=='chimera-record'||!Array.isArray(rec.sessions))
+    rec={format:'chimera-record',version:1,app:'aposner',appVersion:APP_VERSION,units:{level:'difficulty'},sessions:[]};
+  rec.appVersion=APP_VERSION;
+  const sc=S.trials.filter(t=>t.outcome==='correct'||t.outcome==='wrong'||t.outcome==='miss');
+  const completed=S.endMode==='time'?S.timeUp:r.n>=settings.responses;
+  const modeName={manual:'manual',adaptive:'streaks',bayes:'Bayesian'}[S.mode];
+  rec.sessions.push({
+    id:'aposner-'+S.startedAt, start:S.startedAt, end:Date.now(),
+    activeSeconds:Math.round(S.playMs/1000), completed,
+    mode:`${S.n}-back, ${modeName}`, modalities:['audio'],
+    level:r.level, trials:r.n, correct:S.correct,
+    accuracy:r.n?S.correct/r.n:null, misses:S.miss,
+    rtMeanMs:r.mrt, input:'keyboard',
+    settings:{nBack:S.n,speedMode:S.mode,startIsi:settings.startIsi,minIsi:settings.minIsi,maxIsi:settings.maxIsi,
+              bayesTarget:settings.bayesTarget,bayesMemory:settings.bayesMemory,subMode:settings.subMode,durationMin:settings.durationMin},
+    extra:{n:S.n,threshold80Ms:r.thr,fastestIsiMs:r.fastest,finalIsiMs:r.final,wrong:S.wrong,missed:S.miss},
+    trialLog:sc.map((t,i)=>({i,t:t.tSession,level:t.isi,stimulus:t.digit,target:true,
+      response:t.respValue==null?null:t.respValue,correct:t.outcome==='correct',rtMs:t.rt,
+      extra:{op:t.op,combinedWith:t.prev,answer:t.answer}}))
+  });
+  rec.sessions.forEach((s,i)=>{ if(i<rec.sessions.length-LOGGED_SESSIONS) delete s.trialLog; });
+  if(!store.set(RECORD_KEY,rec)){
+    rec.sessions.forEach(s=>{delete s.trialLog;});
+    store.set(RECORD_KEY,rec);
+  }
+}
+
+/* ---------- wiring ---------- */
+$('startBtn').addEventListener('click',start);
+$('againBtn').addEventListener('click',start);
+$('setupBtn').addEventListener('click',()=>{renderHistory(); show('setup');});
+$('csvBtn').addEventListener('click',downloadCsv);
+$('pauseBtn').addEventListener('click',e=>{e.currentTarget.blur(); if(S&&S.paused) resume(); else pause();});
+$('stopBtn').addEventListener('click',e=>{e.currentTarget.blur(); finish();});
+[['fasterBtn',-1],['slowerBtn',1]].forEach(([id,sign])=>{
+  $(id).addEventListener('pointerdown',e=>{e.preventDefault(); adjustIsi(sign);});
+});
+
+document.addEventListener('keydown',e=>{
+  if(screen!=='game'||!S||!S.running) return;
+  const dir=KEYMAP[e.code];
+  if(dir){e.preventDefault(); if(!e.repeat) respond(dir); return;}
+  if(e.key==='-'||e.key==='_'||e.code==='NumpadSubtract'){e.preventDefault(); adjustIsi(-1); return;}
+  if(e.key==='+'||e.key==='='||e.code==='NumpadAdd'){e.preventDefault(); adjustIsi(1); return;}
+  if(e.code==='Space'||e.code==='KeyP'){e.preventDefault(); if(!e.repeat){ if(S.paused) resume(); else pause(); }}
+  else if(e.code==='Escape'){e.preventDefault(); finish();}
+});
+document.addEventListener('visibilitychange',()=>{ if(document.hidden&&S&&S.running&&!S.paused) pause(); });
+
+writeForm();
+renderHistory();
+
+// exposed for testing in the console
+window.__aposner={makeOptions,apply,adjustIsi,rateFor,bayesCreate,bayesObserve,bayesThresholdMs,difficulty,
+  respond,finish,get state(){return S;},get settings(){return settings;}};
+})();
+</script>
+</body>
+</html>

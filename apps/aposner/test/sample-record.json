@@ -1,0 +1,110 @@
+{
+  "format": "chimera-record",
+  "version": 1,
+  "app": "aposner",
+  "appVersion": "2.0.0",
+  "units": {
+    "level": "difficulty"
+  },
+  "sessions": [
+    {
+      "id": "aposner-1792127956561",
+      "start": 1792127956561,
+      "end": 1792127970415,
+      "activeSeconds": 13,
+      "completed": true,
+      "mode": "2-back, Bayesian",
+      "modalities": [
+        "audio"
+      ],
+      "level": 389.6,
+      "trials": 25,
+      "correct": 22,
+      "accuracy": 0.88,
+      "misses": 0,
+      "rtMeanMs": 167,
+      "input": "keyboard",
+      "settings": {
+        "nBack": 2,
+        "speedMode": "bayes",
+        "startIsi": 900,
+        "minIsi": 300,
+        "maxIsi": 3000,
+        "bayesTarget": 80,
+        "bayesMemory": 25,
+        "subMode": "prev-cur",
+        "durationMin": 3
+      },
+      "extra": {
+        "n": 2,
+        "threshold80Ms": 308,
+        "fastestIsiMs": 300,
+        "finalIsiMs": 300,
+        "wrong": 3,
+        "missed": 0
+      },
+      "trialLog": [
+        {
+          "i": 0,
+          "t": 1800,
+          "level": 900,
+          "stimulus": 6,
+          "target": true,
+          "response": -5,
+          "correct": true,
+          "rtMs": 170,
+          "extra": {
+            "op": "-",
+            "combinedWith": 1,
+            "answer": -5
+          }
+        },
+        {
+          "i": 1,
+          "t": 2700,
+          "level": 770,
+          "stimulus": 7,
+          "target": true,
+          "response": -3,
+          "correct": true,
+          "rtMs": 170,
+          "extra": {
+            "op": "-",
+            "combinedWith": 4,
+            "answer": -3
+          }
+        },
+        {
+          "i": 2,
+          "t": 3470,
+          "level": 650,
+          "stimulus": 6,
+          "target": true,
+          "response": 12,
+          "correct": true,
+          "rtMs": 160,
+          "extra": {
+            "op": "+",
+            "combinedWith": 6,
+            "answer": 12
+          }
+        },
+        {
+          "i": 3,
+          "t": 4120,
+          "level": 570,
+          "stimulus": 5,
+          "target": true,
+          "response": 12,
+          "correct": true,
+          "rtMs": 170,
+          "extra": {
+            "op": "+",
+            "combinedWith": 7,
+            "answer": 12
+          }
+        }
+      ]
+    }
+  ]
+}

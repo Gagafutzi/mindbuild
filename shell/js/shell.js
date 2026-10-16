@@ -54,6 +54,10 @@
       what: "Nested relations in space, numbers, notes, days, headings, orientations and poses; routes on a cube" },
     { id: "listening", name: "Listening Integration", path: "listening/", colour: "#7ee787",
       what: "Relations between spoken numbers, places and pitches, by ear, no input" },
+    /* Written as a single page elsewhere and brought in here. It writes the
+       Chimera record too, so it is counted the same way as the two above. */
+    { id: "aposner", name: "aPOSNER", path: "aposner/", colour: "#e3b341",
+      what: "Paced spoken arithmetic, n back, on a four-way cross" },
   ];
 
   /* Stageable, but never a trainer.

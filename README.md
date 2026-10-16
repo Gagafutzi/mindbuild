@@ -4,8 +4,9 @@ Ten trainers, one record, one day's total — and a quota the desktop enforces.
 
 ```
 apps/       the seven grafted in with git subtree, histories intact; rrt,
-            which was written here; and relations and listening, copied in
-            from Chimera Hub, where they were written
+            which was written here; relations and listening, copied in
+            from Chimera Hub, where they were written; and aposner, a
+            single page brought in and given the hub's look
 apps/more/  DorsalFlow, offered by the hub in its own box, not yet counted
 shell/      the hub: a menu, a frame to run a trainer in, and the meter
 gate/       the quota, and the window that holds you to it

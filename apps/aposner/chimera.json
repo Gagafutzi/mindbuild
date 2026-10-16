@@ -1,0 +1,10 @@
+{
+  "id": "aposner",
+  "name": "aPOSNER",
+  "what": "Paced spoken arithmetic, n back, on a four-way cross",
+  "categories": ["working-memory", "speed"],
+  "unit": "difficulty",
+  "license": null,
+  "maintainer": "Gagafutzi",
+  "build": null
+}
