@@ -369,7 +369,7 @@ let voices=[], voice=null, S=null, screen='setup', statusTimer=null, flashing=fa
 
    METER: a second posterior runs in every mode at a fixed 80%, so the level a
    session records does not depend on which controller ran it or what target
-   was set. */
+   was set. The level uses its estimate at the end of the session. */
 const BAY_GRID=(()=>{const g=[]; for(let t=Math.log10(150); t<=Math.log10(8000)+1e-9; t+=0.01) g.push(t); return g;})();
 const BAY_SLOPE=10, BAY_GUESS=0.25, BAY_LAPSE=0.04, BAY_STEP_CAP=0.15;
 const METER_TARGET=0.80, METER_MEMORY=30, METER_MIN_ANSWERS=20;
@@ -707,7 +707,7 @@ function start(){
      endMode:settings.endMode,durMs:Math.round(settings.durationMin*60000),playMs:0,playStart:null,timeUp:false,
      startedAt:Date.now(),trials:[],cur:null,chain:[],prevAnswer:null,timer:null,nextAt:0,
      ctrl:bayesCreate(settings.startIsi,settings.bayesTarget/100,settings.bayesMemory),
-     meter:bayesCreate(settings.startIsi,METER_TARGET,METER_MEMORY),bestThr:null,thrTrace:[]};
+     meter:bayesCreate(settings.startIsi,METER_TARGET,METER_MEMORY),sessThr:null,thrTrace:[]};
   show('game'); buildDots(); clearBoard(); updateHud();
   clearInterval(clockTimer); clockTimer=setInterval(renderClock,200); renderClock();
   $('streaks').hidden=(S.mode!=='adaptive');
@@ -795,7 +795,10 @@ function score(ok,t){
   bayesObserve(S.meter,t.isi,ok);
   if(S.meter.n>=METER_MIN_ANSWERS){
     const thr=bayesThresholdMs(S.meter);
-    if(S.bestThr==null||thr<S.bestThr) S.bestThr=thr;
+    /* The latest estimate, not the best: the fastest value a noisy running
+       estimate passes through is its luckiest moment, and read the level a
+       quarter too high in a simulated session (548 ms best, 700 ms true). */
+    S.sessThr=thr;
     t.thr80=thr;
   }
   if(S.mode==='bayes'){
@@ -885,12 +888,12 @@ function renderResults(){
   const fastest=n?Math.min(...sc.map(t=>t.isi)):null;
   const acc=n?Math.round(100*S.correct/n):null;
   const mrt=mean(rts);
-  const level=difficulty(S.bestThr,S.n);
+  const level=difficulty(S.sessThr,S.n);
   const kpis=[
     ['Accuracy',acc==null?'—':acc+'%'],
     ['Correct',S.correct],['Wrong',S.wrong],['Missed',S.miss],
     ['Mean RT (correct)',mrt==null?'—':mrt+' ms'],
-    ['80% threshold',S.bestThr==null?'—':S.bestThr+' ms'],
+    ['80% threshold',S.sessThr==null?'—':S.sessThr+' ms'],
     ['Level',level==null?'—':level],
     ['Fastest interval',fastest==null?'—':fastest+' ms'],
     ['Final interval',S.isi+' ms'],
@@ -917,7 +920,7 @@ function renderResults(){
     ? `Speech started on average ${mean(lat)} ms after the tiles appeared (depends on browser and voice).`
     : (hasSpeech?'This browser did not report when speech started.':''))+durTxt+levelTxt;
   drawChart(sc);
-  return {n,acc,fastest,final:S.isi,mode:S.mode,sec:Math.round(S.playMs/1000),thr:S.bestThr,level,mrt};
+  return {n,acc,fastest,final:S.isi,mode:S.mode,sec:Math.round(S.playMs/1000),thr:S.sessThr,level,mrt};
 }
 function drawChart(ts){
   const box=$('chart');
@@ -1009,7 +1012,7 @@ function saveRecord(r){
     rtMeanMs:r.mrt, input:'keyboard',
     settings:{nBack:S.n,speedMode:S.mode,startIsi:settings.startIsi,minIsi:settings.minIsi,maxIsi:settings.maxIsi,
               bayesTarget:settings.bayesTarget,bayesMemory:settings.bayesMemory,subMode:settings.subMode,durationMin:settings.durationMin},
-    extra:{n:S.n,threshold80Ms:r.thr,fastestIsiMs:r.fastest,finalIsiMs:r.final,wrong:S.wrong,missed:S.miss},
+    extra:{n:S.n,threshold80Ms:r.thr,thresholdRule:'end',fastestIsiMs:r.fastest,finalIsiMs:r.final,wrong:S.wrong,missed:S.miss},
     trialLog:sc.map((t,i)=>({i,t:t.tSession,level:t.isi,stimulus:t.digit,target:true,
       response:t.respValue==null?null:t.respValue,correct:t.outcome==='correct',rtMs:t.rt,
       extra:{op:t.op,combinedWith:t.prev,answer:t.answer}}))

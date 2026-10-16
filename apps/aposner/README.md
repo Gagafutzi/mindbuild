@@ -27,8 +27,8 @@ Three modes:
 
 A second posterior runs in every mode at a fixed 80%, so the level a session
 records does not depend on the controller or the target. As in CCT, the level
-is answers a minute at the best 80% threshold of the session (once it has 20
-answers), times `1 + log₂ n` for the depth held.
+is answers a minute at the 80% threshold as it stands at the end of the
+session (once it has 20 answers), times `1 + log₂ n` for the depth held.
 
 ## Record
 

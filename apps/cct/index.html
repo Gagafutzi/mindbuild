@@ -2393,8 +2393,8 @@ const bayesThresholdMs = b => Math.round(Math.pow(10, bayesStats(b).mean));
    at 1000 ms came out the same.
 
    Now: items per minute at the THRESHOLD — the interval the always-on 80%
-   posterior settled at, best over the session once it has 20 trials behind
-   it — times a weight for the depth held. The weight is 1 + log2(n): the step
+   posterior settled at by the END of the session, once it has 20 trials
+   behind it — times a weight for the depth held. The weight is 1 + log2(n): the step
    from 1-back to 2-back doubles the work (one number held becomes an ordered
    pair that shifts every trial), and each further step adds less, since what
    grows is the length of a list you already know how to rotate. 1, 2, 2.58,
@@ -2409,7 +2409,7 @@ function cctDifficulty(thresholdISI, n){
 
 let bayesCtrl = null;      // the controller, when Bayesian adaption is on
 let bayesMeter = null;     // the difficulty posterior, always on
-let bestThresholdISI = null;
+let sessionThresholdISI = null;
 const METER_TARGET = 0.80, METER_MEMORY = 30, METER_MIN_TRIALS = 20;
 
 function adaptISI(ok){
@@ -2421,7 +2421,12 @@ function adaptISI(ok){
     bayesObserve(bayesMeter, currentISI, ok);
     if(bayesMeter.n >= METER_MIN_TRIALS){
       const t=bayesThresholdMs(bayesMeter);
-      if(bestThresholdISI==null || t<bestThresholdISI) bestThresholdISI=t;
+      /* The latest estimate, not the best one. The posterior is a noisy
+         running estimate, and the fastest value it passes through is its
+         luckiest moment: in a simulated session with a true threshold of
+         700 ms the best was 548 ms, a level a quarter too high. Records
+         written before this say thresholdRule absent, and took the best. */
+      sessionThresholdISI=t;
     }
   }
 
@@ -2912,7 +2917,7 @@ function startSession(){
   taWindow=[];
   bayesCtrl = bayesCreate(currentISI, (settings.bayesTargetPct||80)/100, settings.bayesMemory||25);
   bayesMeter = bayesCreate(currentISI, METER_TARGET, METER_MEMORY);
-  bestThresholdISI = null;
+  sessionThresholdISI = null;
   trialHistory=[]; numberSequence=[]; correctAnswer=prevCorrectAnswer=null;
   prevAnswerMissed=false; answerProcessed=true; coyoteActive=false; ictTrial=false;
   rrtArrowGiven=null; ndmArrowGiven=null;
@@ -3120,8 +3125,9 @@ function showResults(){
     ict: settings.ict,
     /* The 80% threshold and the n-weighted figure made from it; absent when
        the session was too short to say (under 20 answered trials). */
-    ...(bestThresholdISI ? { thresholdISI: bestThresholdISI,
-                             difficulty: cctDifficulty(bestThresholdISI, settings.nback) } : {}),
+    ...(sessionThresholdISI ? { thresholdISI: sessionThresholdISI,
+                             difficulty: cctDifficulty(sessionThresholdISI, settings.nback),
+                             thresholdRule: 'end' } : {}),
     adapt: settings.bayesAdapt ? 'bayes' : settings.targetAcc ? 'target' : settings.smoothAdapt ? 'smooth' : 'standard',
   });
   if(prog.history.length>100) prog.history=prog.history.slice(0,100); // keep last 100
@@ -3132,9 +3138,9 @@ function showResults(){
     mkStat('Correct Answers',`${totalCorrect} / ${totalAttempts}`)+
     mkStat('Accuracy',acc+'%','accent-val')+
     mkStat('Lowest Interval',lowestISI+' ms')+
-    (bestThresholdISI
-      ? mkStat('80% Threshold',bestThresholdISI+' ms')+
-        mkStat('Difficulty',cctDifficulty(bestThresholdISI,settings.nback),'accent-val')
+    (sessionThresholdISI
+      ? mkStat('80% Threshold',sessionThresholdISI+' ms')+
+        mkStat('Difficulty',cctDifficulty(sessionThresholdISI,settings.nback),'accent-val')
       : mkStat('Difficulty','needs 20 trials'));
   $('resultCumStats').innerHTML=
     mkStat('Sessions',prog.sessions)+
