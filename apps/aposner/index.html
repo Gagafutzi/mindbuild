@@ -163,6 +163,7 @@
             <option value="3">3 — three digits back</option>
             <option value="4">4 — four digits back</option>
             <option value="5">5 — five digits back</option>
+            <option value="6">6 — six digits back</option>
           </select>
         </label>
         <label class="f">Speed mode
@@ -340,7 +341,7 @@ const fmtClock=sec=>{sec=Math.max(0,Math.round(sec)); const h=Math.floor(sec/360
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 const mean=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):null;
-const ORD=['','one','two','three','four','five'];
+const ORD=['','one','two','three','four','five','six'];
 
 const storedSettings=store.get(SKEY,{});
 let settings=Object.assign({},DEFAULTS,storedSettings);
@@ -402,8 +403,8 @@ function bayesMean(b){
 const bayesThresholdMs=b=>Math.round(Math.pow(10,bayesMean(b)));
 
 /* The level a session records, as CCT's: answers a minute at the 80%
-   threshold, weighted for the depth held. 1 + log2(n): 1, 2, 2.58, 3, 3.32
-   for n = 1…5 — holding a second digit doubles the work, each further one
+   threshold, weighted for the depth held. 1 + log2(n): 1, 2, 2.58, 3, 3.32, 3.58
+   for n = 1…6 — holding a second digit doubles the work, each further one
    adds less. A judgement rather than a measurement, kept in one place. */
 const nWeight=n=>1+Math.log2(Math.max(1,n||1));
 function difficulty(thresholdIsi,n){
@@ -439,7 +440,7 @@ function readForm(){
     else s[k]=f.value;
   });
   const int=(v,lo,hi)=>Math.min(hi,Math.max(lo,Math.round(v)));
-  s.nBack=int(Number(s.nBack)||1,1,5);
+  s.nBack=int(Number(s.nBack)||1,1,6);
   s.responses=int(s.responses,1,10000);
   s.durationMin=Math.min(MAX_MINUTES,Math.max(0.5,Math.round(s.durationMin*10)/10));
   s.minIsi=int(s.minIsi,100,10000);

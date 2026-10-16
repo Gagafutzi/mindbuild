@@ -461,7 +461,7 @@
         <div class="field">
           <label class="label">N-Back Depth</label>
           <div class="row">
-            <input type="number" class="num-input" id="nbackInput" min="1" max="5" value="1">
+            <input type="number" class="num-input" id="nbackInput" min="1" max="6" value="1">
             <span style="font-size:.85rem;color:var(--text-dim)" id="nbackDesc">Add to the immediately preceding number</span>
           </div>
           <div class="hint" id="nbackHint">1-back: current + n–1</div>
@@ -1414,7 +1414,7 @@ function updateNbackUI(n){
   $('nbackDesc').textContent=d[0]; $('nbackHint').textContent=d[1];
 }
 updateNbackUI(settings.nback);
-$('nbackInput').addEventListener('input',()=>{ settings.nback=clamp(+$('nbackInput').value||1,1,5); updateNbackUI(settings.nback); saveSettings(); });
+$('nbackInput').addEventListener('input',()=>{ settings.nback=clamp(+$('nbackInput').value||1,1,6); updateNbackUI(settings.nback); saveSettings(); });
 
 /* Toggles */
 function wireToggle(id,subId,init,cb){
@@ -2398,7 +2398,7 @@ const bayesThresholdMs = b => Math.round(Math.pow(10, bayesStats(b).mean));
    from 1-back to 2-back doubles the work (one number held becomes an ordered
    pair that shifts every trial), and each further step adds less, since what
    grows is the length of a list you already know how to rotate. 1, 2, 2.58,
-   3, 3.32 for n = 1…5. A judgement rather than a measurement — kept in one
+   3, 3.32, 3.58 for n = 1…6. A judgement rather than a measurement — kept in one
    function so it can be revised against the record.
 ── */
 const nbackWeight = n => 1 + Math.log2(Math.max(1, n||1));
