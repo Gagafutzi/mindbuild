@@ -23,7 +23,7 @@
 
         <div class="lin">
             <span class="lin__name">
-                How far apart things sit
+                Spread
                 <small class="d-block text-muted">
         50 is the calibrated middle. Not yet priced into difficulty, so a large
         change makes items harder than your level says. Composed spaces only.
@@ -186,7 +186,10 @@
         <div class="axes__head"><strong>{{ row.type }}</strong></div>
 
         <div class="lin" *ngFor="let rung of row.rungs">
-            <span class="lin__name">{{ rungLabel(rung) }}</span>
+            <span class="lin__name">
+                {{ rungLabel(rung) }}
+                <small class="d-block text-muted" *ngIf="rungHint(rung)">{{ rungHint(rung) }}</small>
+            </span>
             <span class="lin__tri" role="group" [attr.aria-label]="rungLabel(rung)">
                 <button type="button" class="btn btn-sm" [disabled]="!enabled"
                         [class.is-on]="rungOf(row.type, rung) === null"

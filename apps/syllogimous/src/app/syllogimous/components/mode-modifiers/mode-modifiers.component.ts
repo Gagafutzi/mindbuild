@@ -65,7 +65,10 @@ export class ModeModifiersComponent {
             // Off-ladder rungs included: they cannot be earned, so a row here
             // is the only way to reach them at all.
             rungs: settableRungsFor(type)
-                .filter(r => !ModeModifiersComponent.COVERED.has(r)),
+                .filter(r => !ModeModifiersComponent.COVERED.has(r))
+                // A tombstone only holds a retired rung's slot; it does nothing,
+                // has no name, and printed its id here as one more row.
+                .filter(r => !r.startsWith("retired-")),
         }))
         .filter(row => row.rungs.length > 0);
 
@@ -77,9 +80,13 @@ export class ModeModifiersComponent {
         this.overrides.setRung(type, rung, value);
     }
 
-    /** Rung names are kebab ids; this is what they are called out loud. */
     /**
-     * What a rung is, in words.
+     * What a rung is called, and what it is.
+     *
+     * The name is the shortest one that says it, and where the rung is a real
+     * concept — a Möbius strip, a light cone, knights and knaves — it is called
+     * what that concept is called, so it can be looked up. The sentence that
+     * used to be the name is kept as the hint under it.
      *
      * Forty-three of the fifty-seven settable rungs used to fall through to the
      * fallback and print their own id — `checkpoint`, `min-span-3`,
@@ -92,113 +99,116 @@ export class ModeModifiersComponent {
      * the next one added is named before it ships rather than after somebody
      * goes looking for it.
      */
-    rungLabel(rung: string) {
-        return ({
-            /* --- everywhere --- */
-            "negation": "Negated premises — “is not above”, here only",
-            "meta": "Relations about relations, here only",
+    private static RUNGS: Record<string, [string, string]> = {
+        /* --- everywhere --- */
+        "negation": ["Negation", "Negated premises — “is not above”, here only"],
+        "meta": ["Meta-relations", "Relations about relations, here only"],
 
-            /* --- how the conclusion is asked --- */
-            "checkpoint": "A halfway conclusion as well as the final one",
-            "choose-conclusion": "Pick which conclusion follows, instead of true or false",
-            "construct-conclusion": "Build the conclusion yourself, one slot per dimension",
-            "construct-distance": "Build it with distances, not only directions",
-            "analogy": "Analogy conclusions — one pair against another",
-            "near-miss": "The wrong pair differs on one axis only",
-            "five": "Five kinds round the circle, not three",
+        /* --- how the conclusion is asked --- */
+        "checkpoint": ["Halfway conclusion", ""],
+        "choose-conclusion": ["Choose the conclusion", "Pick which conclusion follows, instead of true or false"],
+        "construct-conclusion": ["Build the conclusion", "Build the conclusion yourself, one slot per dimension"],
+        "construct-distance": ["Build with distances", "Build it with distances, not only directions"],
+        "analogy": ["Analogies", "One pair against another"],
+        "near-miss": ["Near misses", "The wrong pair differs on one axis only"],
+        "five": ["Rock paper scissors lizard Spock", "Five kinds round the circle, not three"],
 
-            /* --- shape of the premise network --- */
-            "branching": "Branching premises, not a single chain",
-            "wide-premises": "Two links in one sentence — “A is above B, which is above C”",
-            "overlap": "Ties allowed — two things can share a place",
-            "min-span-3": "Longer routes",
-            "cycles": "Cycles in the hierarchy",
-            "reaches": "Reachability, not just direct links",
-            "180": "Backtracking arrangements",
-            "hierarchy": "Set hierarchies, not only two-premise syllogisms",
+        /* --- shape of the premise network --- */
+        "branching": ["Branching", "Branching premises, not a single chain"],
+        "wide-premises": ["Two links per premise", "Two links in one sentence — “A is above B, which is above C”"],
+        "overlap": ["Ties", "Ties allowed — two things can share a place"],
+        "min-span-3": ["Longer routes", ""],
+        "cycles": ["Cycles", "Cycles in the hierarchy"],
+        "reaches": ["Reachability", "Reachability, not just direct links"],
+        "180": ["Backtracking", "Backtracking arrangements"],
+        "hierarchy": ["Set hierarchies", "Set hierarchies, not only two-premise syllogisms"],
 
-            /* --- composed spaces --- */
-            "circular": "One axis wraps around",
-            "circular-2": "A second axis wraps around",
-            "indeterminate": "Some pairs are left undetermined",
-            "facing": "Relations from an object’s own facing, not the map’s",
-            "mirror-twins": "Some have their left and right swapped",
-            "bridges": "One dimension’s gap given by another’s — “as many steps east as later”",
-            "local-clocks": "Some times read on local clocks, one step later per step east",
-            "cone": "Could one bell’s ring have reached another in time? Distance is a shared budget",
-            "signals": "Some times given only as “rang the moment the ring arrived”",
-            "reach": "Some times only bounded — “rang only after the ring arrived”",
-            "kinds": "Two kinds reckon directions differently — east for one is west for the other",
-            "walking-totals": "Totals of steps across every dimension — “6 steps in all”, and which is nearer",
-            "ranked": "One sorted list — “listed before” means height only for things at the same time",
-            "twisted-seam": "A loop with a twist in it — crossing it swaps two directions",
-            "level": "The hour is set by one direction, and the answer read on another",
-            "meet": "Whether two movers ever share a place, not just a line",
-            "heading": "Facing with a head — left and right for someone lying down or upside down",
-            "speakers": "Premises reported by speakers, and some of them lie",
-            "testimony": "Reports that have to be checked against each other",
-            "transform-1": "One transformation applied to the arrangement",
-            "transform-2": "Two transformations applied",
-            "transform-depth-1": "One extra transformation",
-            "transform-depth-2": "Two extra transformations",
-            "edit-1": "One premise rewritten, so the first arrangement never existed",
-            "edit-2": "Two premises rewritten",
-            "collide": "The two spaces share their vocabulary",
+        /* --- composed spaces --- */
+        "circular": ["Cylinder", "One axis wraps around"],
+        "circular-2": ["Torus", "A second axis wraps around"],
+        "indeterminate": ["Undetermined pairs", "Some pairs are left undetermined"],
+        "facing": ["Intrinsic frame", "Relations from an object’s own facing, not the map’s"],
+        "mirror-twins": ["Chirality", "Some have their left and right swapped"],
+        "bridges": ["Equal gaps", "One dimension’s gap given by another’s — “as many steps east as later”"],
+        "local-clocks": ["Time zones", "Some times read on local clocks, one step later per step east"],
+        "cone": ["Light cone", "Could one bell’s ring have reached another in time? Distance is a shared budget"],
+        "signals": ["Lightlike", "Some times given only as “rang the moment the ring arrived”"],
+        "reach": ["Causal future", "Some times only bounded — “rang only after the ring arrived”"],
+        "kinds": ["Parity", "Two kinds reckon directions differently — east for one is west for the other"],
+        "walking-totals": ["Taxicab distance", "Totals of steps across every dimension — “6 steps in all”, and which is nearer"],
+        "ranked": ["Lexicographic order", "One sorted list — “listed before” means height only for things at the same time"],
+        "twisted-seam": ["Möbius strip", "A loop with a twist in it — crossing it swaps two directions"],
+        "level": ["Drawing level", "The hour is set by one direction, and the answer read on another"],
+        "meet": ["Collision", "Whether two movers ever share a place, not just a line"],
+        "heading": ["Attitude", "Facing with a head — left and right for someone lying down or upside down"],
+        "speakers": ["Knights and knaves", "Premises reported by speakers, and some of them lie"],
+        "testimony": ["Testimony", "Reports that have to be checked against each other"],
+        "transform-1": ["1 transformation", ""],
+        "transform-2": ["2 transformations", ""],
+        "transform-depth-1": ["1 extra transformation", ""],
+        "transform-depth-2": ["2 extra transformations", ""],
+        "edit-1": ["1 rewritten premise", "One premise rewritten, so the first arrangement never existed"],
+        "edit-2": ["2 rewritten premises", "Two premises rewritten"],
+        "collide": ["Shared vocabulary", "The two spaces share their vocabulary"],
 
-            /* --- graph matching --- */
-            "which-differs": "Which group is the odd one out",
-            "distance": "How many changes apart the two are",
-            "as-relations": "Links stated as relations rather than drawn",
-            "structure-match": "Match the whole structure, not one node",
-            "structural": "Structural matching — no counting arrows",
-            "match-3": "Match a third node, not just two",
+        /* --- graph matching --- */
+        "which-differs": ["Odd one out", "Which group is the odd one out"],
+        "distance": ["Edit distance", "How many changes apart the two are"],
+        "as-relations": ["Links in words", "Links stated as relations rather than drawn"],
+        "structure-match": ["Whole structure", "Match the whole structure, not one node"],
+        "structural": ["No arrow counting", "Structural matching — no counting arrows"],
+        "match-3": ["Third node", "Match a third node, not just two"],
 
-            /* --- transformation matching --- */
-            "identify": "Work out which change was applied",
-            "apply": "Apply the change to a different structure",
-            "compose": "Two changes at once",
-            "sequence": "Continue the sequence of changes",
+        /* --- transformation matching --- */
+        "identify": ["Identify the change", "Work out which change was applied"],
+        "apply": ["Apply the change", "Apply the change to a different structure"],
+        "compose": ["Two changes at once", ""],
+        "sequence": ["Continue the sequence", "Continue the sequence of changes"],
 
-            /* --- structure match --- */
-            "same-degrees": "The wrong system has every entity's arrow counts, so counting cannot rule it out",
-            "five-entities": "Five entities a system, at the same number of arrows",
-            "converse": "Some arrows are stated from the far end",
+        /* --- structure match --- */
+        "same-degrees": ["Same degree sequence", "The wrong system has every entity's arrow counts, so counting cannot rule it out"],
+        "five-entities": ["Five entities", "A fifth entity per system, at the same number of arrows"],
+        "converse": ["Converse arrows", "Some arrows are stated from the far end"],
 
-            /* --- axis maps --- */
-            "compose-2": "Two changes composed",
-            "compose-3": "Three changes composed",
-            "compose-4": "Four changes composed",
-            "compose-5": "Five changes composed",
-            "offset": "A change that shifts everything",
-            "dense-examples": "Examples share axes, so which went where has to be worked out",
-            "op-join": "An object may move onto its reference, not only past it",
-            "op-follow": "An object may move by however far its reference stands out",
-            "op-mirror": "An object may hop over its reference and land beyond it",
-            "role-next": "The rule may point up the list as well as back down it",
-            "role-extremes": "The reference may be whichever began nearest or farthest",
-            "axes-3": "Three axes",
-            "axes-4": "Four axes",
-            "dim-3": "Three dimensions",
-            "dim-4": "Four dimensions",
-            "dim-5": "Five dimensions",
-            "dim-6": "Six dimensions",
-            "dim-7": "Seven dimensions",
+        /* --- axis maps --- */
+        "compose-2": ["2 composed changes", ""],
+        "compose-3": ["3 composed changes", ""],
+        "compose-4": ["4 composed changes", ""],
+        "compose-5": ["5 composed changes", ""],
+        "offset": ["Translation", "A change that shifts everything"],
+        "dense-examples": ["Dense examples", "Examples share axes, so which went where has to be worked out"],
+        "op-join": ["Move onto", "An object may move onto its reference, not only past it"],
+        "op-follow": ["Follow", "An object may move by however far its reference stands out"],
+        "op-mirror": ["Point reflection", "An object may hop over its reference and land beyond it"],
+        "role-next": ["Next up the list", "The rule may point up the list as well as back down it"],
+        "role-extremes": ["Nearest or farthest", "The reference may be whichever began nearest or farthest"],
+        "axes-3": ["3 axes", ""],
+        "axes-4": ["4 axes", ""],
+        "dim-3": ["3 dimensions", ""],
+        "dim-4": ["4 dimensions", ""],
+        "dim-5": ["5 dimensions", ""],
+        "dim-6": ["6 dimensions", ""],
+        "dim-7": ["7 dimensions", ""],
 
-            /* --- widest group --- */
-            "margin-1": "A margin of one between the groups, not two",
-            "rank": "Rank every candidate, not just the furthest",
-            "groups-2": "A second group, with its own change",
-            "groups-3": "Three groups to compare, not two",
-            "groups-4": "Four groups to compare, not two",
+        /* --- widest group --- */
+        "margin-1": ["Margin of one", "A margin of one between the groups, not two"],
+        "rank": ["Rank all", "Rank every candidate, not just the furthest"],
+        "groups-2": ["Second group", "A second group, with its own change"],
+        "groups-3": ["3 groups", ""],
+        "groups-4": ["4 groups", ""],
 
-            /* --- the rest --- */
-            "state-rule": "State the rule, rather than pick the odd one out",
-            "solo-turns": "An object steps round the shape on its own",
-            "incorrect-directions": "Near-miss distractors, wrong in one attribute at a time",
-            "compound": "Compound statements — “A and not B”",
-            "undetermined": "Some cases cannot be decided either way",
-        } as Record<string, string>)[rung] ?? rung;
-    }
+        /* --- the rest --- */
+        "state-rule": ["State the rule", "State the rule, rather than pick the odd one out"],
+        "solo-turns": ["Solo turns", "An object steps round the shape on its own"],
+        "incorrect-directions": ["Near-miss distractors", "Near-miss distractors, wrong in one attribute at a time"],
+        "compound": ["Compound statements", "Compound statements — “A and not B”"],
+        "undetermined": ["Undecidable cases", "Some cases cannot be decided either way"],
+    };
+
+    rungLabel(rung: string) { return ModeModifiersComponent.RUNGS[rung]?.[0] ?? rung; }
+
+    /** The longer description, shown under the name. */
+    rungHint(rung: string) { return ModeModifiersComponent.RUNGS[rung]?.[1] ?? ""; }
 
     get scramble() { return this.overrides.state.scrambleFactor ?? 100; }
 
@@ -250,12 +260,12 @@ export class ModeModifiersComponent {
     linearRows: Array<{ key: LinearToggle; label: string; hint: string }> = [
         {
             key: "branching",
-            label: "Branching premises (180)",
+            label: "Branching",
             hint: "Not a chain: A–B, A–C, B–D",
         },
         {
             key: "overlap",
-            label: "Overlapping positions",
+            label: "Ties",
             hint: "Two things can share a place, so “same” becomes a real answer. Needs branching",
         },
         {
@@ -275,27 +285,27 @@ export class ModeModifiersComponent {
         },
         {
             key: "constructDistance",
-            label: "…and the distance",
+            label: "Build with distances",
             hint: "How far as well as which way",
         },
         {
             key: "facing",
-            label: "Left and right",
+            label: "Intrinsic frame",
             hint: "Someone in the layout faces something else, and the claim is judged from there. Composed spaces only",
         },
         {
             key: "indeterminate",
-            label: "Under-specified premises",
+            label: "Undetermined pairs",
             hint: "Leave some relations unstated, and ask whether a claim *must* hold. Composed spaces only",
         },
         {
             key: "incorrectDirections",
-            label: "Plausible wrong answers",
+            label: "Near-miss distractors",
             hint: "A false direction the item used elsewhere, so “I never saw that” stops working. Direction modes",
         },
         {
             key: "analogy",
-            label: "Analogy conclusions",
+            label: "Analogies",
             hint: "Does A→B match C→D? Direction only, not distance",
         },
         /*
@@ -309,12 +319,12 @@ export class ModeModifiersComponent {
          */
         {
             key: "widePremises",
-            label: "Two relations per premise",
+            label: "Two links per premise",
             hint: "“A is above B, which is above C”. Merges only where the chain allows it, so some items are unaffected",
         },
         {
             key: "compact",
-            label: "Skip the axes that match",
+            label: "Omit matching axes",
             hint: "An unmentioned axis means “the same” rather than one less thing to read. Composed spaces only",
         },
     ];
