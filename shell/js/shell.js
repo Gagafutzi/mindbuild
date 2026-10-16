@@ -58,6 +58,8 @@
        Chimera record too, so it is counted the same way as the two above. */
     { id: "aposner", name: "aPOSNER", path: "aposner/", colour: "#e3b341",
       what: "Paced spoken arithmetic, n back, on a four-way cross" },
+    { id: "vmt", name: "Veridical Mapping", path: "vmt/", colour: "#7c83f5", more: true,
+      what: "Mapping one perceptual scale onto another, by eye and ear" },
   ];
 
   /* Stageable, but never a trainer.

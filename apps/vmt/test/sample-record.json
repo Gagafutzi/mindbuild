@@ -1,0 +1,21 @@
+{
+  "format": "chimera-record",
+  "version": 1,
+  "app": "vmt",
+  "units": {},
+  "sessions": [
+    {
+      "id": "vmt-1792131408463",
+      "start": 1792131408463,
+      "end": 1792131448522,
+      "activeSeconds": 40,
+      "completed": false,
+      "mode": "prothetic, spanning",
+      "trials": 10,
+      "correct": 4,
+      "accuracy": 0.4,
+      "rtMeanMs": 257,
+      "extra": { "pairs": 2, "newPairs": 2, "medianThreshold": 0.31104, "incongruenceMs": null }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "vmt",
+  "name": "Veridical Mapping",
+  "what": "Mapping one perceptual scale onto another, by eye and ear",
+  "categories": ["perception"],
+  "unit": null,
+  "license": null,
+  "maintainer": null,
+  "build": null
+}
