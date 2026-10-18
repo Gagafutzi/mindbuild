@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Synth Reader</title>
+<style>
+  /* Synth's own tokens (apps/synth), so a book reads in the same room the
+     colours were learned in. Monospace for the chrome, a serif for the book. */
+  :root{
+    --bg:#080d0b; --surface:#0f1713; --surface-2:#131d18; --line:#243329;
+    --text:#c9e0d3; --dim:#7e9a8a; --accent:#8fbda4;
+    --mono:ui-monospace,"JetBrains Mono","IBM Plex Mono","SF Mono",Menlo,Consolas,monospace;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.5 var(--mono)}
+  [hidden]{display:none!important}
+  .bar{position:fixed;left:0;right:0;top:0;height:48px;display:flex;align-items:center;gap:8px;
+       padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line);z-index:5}
+  .bar .title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+              letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--dim)}
+  .btn{font:inherit;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text);
+       background:transparent;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
+  .btn:hover{border-color:var(--accent)}
+  .btn.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+  select.btn{max-width:220px;text-transform:none;letter-spacing:0}
+  #viewer{position:fixed;left:56px;right:56px;top:60px;bottom:40px;background:var(--surface)}
+  .turn{position:fixed;top:60px;bottom:40px;width:48px;background:transparent;border:0;color:var(--dim);
+        font:28px var(--mono);cursor:pointer;z-index:4}
+  .turn:hover{color:var(--accent)}
+  #prev{left:4px} #next{right:4px}
+  .foot{position:fixed;left:0;right:0;bottom:0;height:32px;display:flex;align-items:center;justify-content:center;
+        gap:16px;color:var(--dim);font-size:11px;border-top:1px solid var(--line);background:var(--surface)}
+  #empty{position:fixed;inset:48px 0 32px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+         gap:18px;text-align:center;padding:24px}
+  #empty h1{margin:0;font-size:20px;letter-spacing:.24em;text-transform:uppercase;font-weight:600}
+  #empty p{margin:0;max-width:520px;color:var(--dim)}
+  #empty.drag{outline:1px dashed var(--accent);outline-offset:-24px}
+  .swatches{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;max-width:560px;font:600 22px/1 Georgia,serif}
+  .swatches span{width:22px;text-align:center}
+  @media (max-width:640px){ #viewer{left:8px;right:8px} .turn{width:34px;opacity:.5} .bar .hide-s{display:none} }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button class="btn" id="open">Open</button>
+  <input type="file" id="file" accept=".epub,application/epub+zip" hidden>
+  <span class="title" id="title">Synth Reader</span>
+  <select class="btn hide-s" id="toc" aria-label="Contents" hidden></select>
+  <button class="btn" id="smaller" aria-label="Smaller text">A−</button>
+  <button class="btn" id="larger" aria-label="Larger text">A+</button>
+  <button class="btn on" id="colour" title="Draw letters and digits in their Synth colours">Colours</button>
+  <button class="btn hide-s" id="mine" title="Use the colours you set in Synth's palette instead of the default" hidden>My palette</button>
+</div>
+
+<div id="empty">
+  <h1>Synth Reader</h1>
+  <div class="swatches" id="swatches"></div>
+  <p>Open an EPUB, or drop one here. Every letter and digit is drawn in its
+     colour from Synth's default palette, so reading becomes practice. The book
+     and your place in it stay in this browser.</p>
+  <button class="btn" id="open2">Open an EPUB</button>
+</div>
+
+<button class="turn" id="prev" aria-label="Previous page" hidden>‹</button>
+<div id="viewer"></div>
+<button class="turn" id="next" aria-label="Next page" hidden>›</button>
+<div class="foot" id="foot" hidden><span id="where"></span><span id="pct"></span></div>
+
+<script src="vendor/jszip-3.10.1.min.js"></script>
+<script src="vendor/epub-0.3.93.min.js"></script>
+<script>
+(function () {
+'use strict';
+
+/* Synth's default palette, copied from apps/synth/index.html (DEFAULT_COLORS)
+   — the colours as authored there. Lowercase takes its uppercase letter's
+   colour, as in Synth. */
+var DEFAULT_COLORS = {
+  A:'255,0,0', B:'0,0,255', C:'237,125,5', D:'125,61,5', E:'36,255,0', F:'97,115,94',
+  G:'19,178,0', H:'164,157,0', I:'176,111,217', J:'53,142,252', K:'184,232,139',
+  L:'117,2,189', M:'255,97,77', N:'168,255,28', O:'255,162,0', P:'163,3,110',
+  Q:'247,0,153', R:'181,18,0', S:'75,0,130', T:'77,255,169', U:'242,242,131',
+  V:'221,0,255', W:'235,145,157', X:'182,164,179', Y:'255,255,0', Z:'131,131,131',
+  '1':'0,54,255','2':'255,0,0','3':'19,203,4','4':'135,9,182','5':'255,162,0',
+  '6':'0,181,181','7':'117,1,125','8':'30,1,97','9':'228,255,0','0':'0,0,0'
+};
+/* Synth keeps a player's own edits here (same origin, so readable). */
+var SYNTH_COLORS_KEY = 'synth_colors_en';
+var PREFS_KEY = 'mindbuild.reader.prefs';
+var DB = 'mindbuild.reader', STORE = 'books', LAST = 'last';
+
+var $ = function (id) { return document.getElementById(id); };
+var prefs = (function () { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { return {}; } })();
+prefs.size = prefs.size || 110; if (prefs.colour == null) prefs.colour = true;
+function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) {} }
+
+function myColors() {
+  try { var c = JSON.parse(localStorage.getItem(SYNTH_COLORS_KEY) || 'null'); return c && typeof c === 'object' ? c : null; } catch (e) { return null; }
+}
+function palette() {
+  var mine = prefs.mine && myColors();
+  return mine ? Object.assign({}, DEFAULT_COLORS, mine) : DEFAULT_COLORS;
+}
+function lum(rgb) { var c = rgb.split(',').map(Number); return (0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2]) / 255; }
+
+/* One class per symbol, written into each chapter's document. Near-black
+   colours get Synth's faint white halo: 0 is pure black and would vanish on
+   the dark page. Display only — the colour itself is as authored. */
+function glyphCss() {
+  var p = palette(), out = [];
+  Object.keys(DEFAULT_COLORS).forEach(function (k) {
+    var c = p[k];
+    out.push('.sy-' + k + '{color:rgb(' + c + ')' +
+      (lum(c) < 0.2 ? ';text-shadow:0 0 3px rgba(255,255,255,.85)' : '') + '}');
+  });
+  return out.join('\n');
+}
+
+/* The symbol a character is drawn as: A–Z and 0–9, with accents stripped so
+   é reads as E. Anything else stays the page's own colour. */
+function symbolOf(ch) {
+  var base = ch.normalize ? ch.normalize('NFD').charAt(0) : ch;
+  var u = base.toUpperCase();
+  return DEFAULT_COLORS[u] ? u : null;
+}
+
+var SKIP = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1 };
+function colourise(doc) {
+  if (!doc || !doc.body || doc.body.getAttribute('data-sy')) return;
+  doc.body.setAttribute('data-sy', '1');
+  /* Synth's dark page, set inside the chapter itself: a book's own
+     stylesheet (or the browser's default white) would otherwise sit under
+     colours chosen for a dark background, and U and Y would vanish. */
+  var page = doc.createElement('style');
+  page.textContent = 'html,body{background:#0f1713 !important;color:#c9e0d3 !important}' +
+    'a{color:#8fbda4 !important}';
+  doc.head.appendChild(page);
+  var style = doc.createElement('style');
+  style.id = 'sy-style';
+  style.textContent = glyphCss();
+  doc.head.appendChild(style);
+  var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: function (n) {
+      return n.parentNode && SKIP[n.parentNode.nodeName.toUpperCase()] ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  var nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(function (node) {
+    var text = node.nodeValue;
+    if (!/[0-9A-Za-zÀ-ÿ]/.test(text)) return;
+    var frag = doc.createDocumentFragment(), run = '';
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i), sym = symbolOf(ch);
+      if (!sym) { run += ch; continue; }
+      if (run) { frag.appendChild(doc.createTextNode(run)); run = ''; }
+      var s = doc.createElement('span');
+      s.className = 'sy-' + sym;
+      s.textContent = ch;
+      frag.appendChild(s);
+    }
+    if (run) frag.appendChild(doc.createTextNode(run));
+    node.parentNode.replaceChild(frag, node);
+  });
+}
+
+/* Colours on and off without re-reading the book: the spans stay, and the
+   stylesheet that colours them is emptied or refilled. */
+function restyle(doc) {
+  var s = doc && doc.getElementById('sy-style');
+  if (s) s.textContent = prefs.colour ? glyphCss() : '';
+}
+
+/* ---------------- storage: the book itself, in IndexedDB ---------------- */
+function db(fn) {
+  try {
+    var rq = indexedDB.open(DB, 1);
+    rq.onupgradeneeded = function () { rq.result.createObjectStore(STORE); };
+    rq.onsuccess = function () { fn(rq.result); };
+    rq.onerror = function () {};
+  } catch (e) {}
+}
+function keepBook(buf, name) {
+  db(function (d) { var tx = d.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put({ buf: buf, name: name }, LAST); });
+}
+function lastBook(cb) {
+  db(function (d) {
+    var rq = d.transaction(STORE, 'readonly').objectStore(STORE).get(LAST);
+    rq.onsuccess = function () { cb(rq.result || null); };
+    rq.onerror = function () { cb(null); };
+  });
+}
+
+/* ---------------- the book ---------------- */
+var book = null, rendition = null, bookKey = null;
+
+function placeKey() { return 'mindbuild.reader.place.' + bookKey; }
+
+function open(buf, name) {
+  if (rendition) { try { rendition.destroy(); } catch (e) {} }
+  if (book) { try { book.destroy(); } catch (e) {} }
+  $('viewer').innerHTML = '';
+  bookKey = (name || 'book') + ':' + buf.byteLength;
+  book = ePub(buf);
+  rendition = book.renderTo('viewer', { width: '100%', height: '100%', spread: 'none', allowScriptedContent: false });
+  rendition.themes.default({
+    'html, body': { background: 'transparent !important', color: '#c9e0d3 !important' },
+    'body': { 'font-family': 'Georgia, "Iowan Old Style", "Palatino Linotype", serif !important', 'line-height': '1.6 !important' },
+    'a': { color: '#8fbda4 !important' },
+    'img, svg': { 'max-width': '100% !important' }
+  });
+  rendition.themes.fontSize(prefs.size + '%');
+  rendition.hooks.content.register(function (contents) {
+    colourise(contents.document);
+    restyle(contents.document);
+  });
+  rendition.on('relocated', function (loc) {
+    try { localStorage.setItem(placeKey(), loc.start.cfi); } catch (e) {}
+    var pct = book.locations && book.locations.length() ? Math.round(book.locations.percentageFromCfi(loc.start.cfi) * 100) + '%' : '';
+    $('pct').textContent = pct;
+    var item = book.navigation && book.navigation.get && loc.start.href ? findToc(loc.start.href) : null;
+    $('where').textContent = item ? item.label.trim() : '';
+    if (item) $('toc').value = item.href;
+  });
+  rendition.on('keyup', keys);
+  var saved = null;
+  try { saved = localStorage.getItem(placeKey()); } catch (e) {}
+  rendition.display(saved || undefined).catch(function () { rendition.display(); });
+  book.loaded.metadata.then(function (m) { $('title').textContent = (m.title || name || 'Book') + (m.creator ? ' — ' + m.creator : ''); });
+  book.loaded.navigation.then(function (nav) {
+    var sel = $('toc'); sel.innerHTML = '';
+    (function add(items, depth) {
+      items.forEach(function (it) {
+        var o = document.createElement('option');
+        o.value = it.href; o.textContent = new Array(depth + 1).join('  ') + it.label.trim();
+        sel.appendChild(o);
+        if (it.subitems && it.subitems.length) add(it.subitems, depth + 1);
+      });
+    })(nav.toc, 0);
+    sel.hidden = !nav.toc.length;
+  });
+  /* Page-accurate percentages need the book cut into locations once. */
+  book.ready.then(function () { return book.locations.generate(1600); }).then(function () {
+    if (rendition.location) rendition.emit('relocated', rendition.location);
+  }).catch(function () {});
+  ['empty'].forEach(function (id) { $(id).hidden = true; });
+  ['prev', 'next', 'foot'].forEach(function (id) { $(id).hidden = false; });
+}
+
+function findToc(href) {
+  var flat = [];
+  (function walk(items) { (items || []).forEach(function (i) { flat.push(i); walk(i.subitems); }); })(book.navigation.toc);
+  var base = href.split('#')[0];
+  var hit = null;
+  flat.forEach(function (i) { if (!hit && i.href.split('#')[0].split('/').pop() === base.split('/').pop()) hit = i; });
+  return hit;
+}
+
+function readFile(f) {
+  if (!f) return;
+  var r = new FileReader();
+  r.onload = function () { keepBook(r.result, f.name); open(r.result, f.name); };
+  r.readAsArrayBuffer(f);
+}
+
+/* ---------------- controls ---------------- */
+function keys(e) {
+  if (!rendition) return;
+  if (e.key === 'ArrowLeft' || e.key === 'PageUp') rendition.prev();
+  else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') rendition.next();
+}
+document.addEventListener('keyup', keys);
+$('prev').onclick = function () { rendition && rendition.prev(); };
+$('next').onclick = function () { rendition && rendition.next(); };
+$('open').onclick = $('open2').onclick = function () { $('file').click(); };
+$('file').onchange = function (e) { readFile(e.target.files[0]); e.target.value = ''; };
+$('toc').onchange = function (e) { rendition && rendition.display(e.target.value); };
+function size(d) {
+  prefs.size = Math.max(70, Math.min(220, prefs.size + d)); savePrefs();
+  if (rendition) rendition.themes.fontSize(prefs.size + '%');
+}
+$('smaller').onclick = function () { size(-10); };
+$('larger').onclick = function () { size(10); };
+function eachDoc(fn) {
+  if (!rendition) return;
+  rendition.getContents().forEach(function (c) { fn(c.document); });
+}
+$('colour').onclick = function () {
+  prefs.colour = !prefs.colour; savePrefs();
+  $('colour').classList.toggle('on', prefs.colour);
+  eachDoc(restyle);
+};
+$('colour').classList.toggle('on', prefs.colour);
+if (myColors()) {
+  $('mine').hidden = false;
+  $('mine').classList.toggle('on', !!prefs.mine);
+  $('mine').onclick = function () {
+    prefs.mine = !prefs.mine; savePrefs();
+    $('mine').classList.toggle('on', prefs.mine);
+    eachDoc(restyle); swatches();
+  };
+}
+var empty = $('empty');
+['dragenter', 'dragover'].forEach(function (t) { empty.addEventListener(t, function (e) { e.preventDefault(); empty.classList.add('drag'); }); });
+['dragleave', 'drop'].forEach(function (t) { empty.addEventListener(t, function (e) { e.preventDefault(); empty.classList.remove('drag'); }); });
+empty.addEventListener('drop', function (e) { readFile(e.dataTransfer.files[0]); });
+
+function swatches() {
+  var p = palette(), box = $('swatches'); box.innerHTML = '';
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').forEach(function (k) {
+    var s = document.createElement('span');
+    s.textContent = k; s.style.color = 'rgb(' + p[k] + ')';
+    if (lum(p[k]) < 0.2) s.style.textShadow = '0 0 3px rgba(255,255,255,.85)';
+    box.appendChild(s);
+  });
+}
+swatches();
+lastBook(function (b) { if (b && b.buf) open(b.buf, b.name); });
+
+window.__reader = { colourise: colourise, symbolOf: symbolOf, get rendition() { return rendition; } };
+})();
+</script>
+</body>
+</html>

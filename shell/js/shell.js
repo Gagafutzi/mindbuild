@@ -90,6 +90,8 @@
       what: "Motion in noise, by eye, by ear (AudioFlow), or both at once — same way or opposite" },
     { id: "hallucination", name: "Controlled Hallucination", path: "more/hallucination/", colour: "#d9a0ff",
       what: "Inducing visual hallucinations, and steering them top-down" },
+    { id: "reader", name: "Synth Reader", path: "more/reader/", colour: "#f2c94c",
+      what: "An EPUB reader that draws every letter and digit in Synth's colours" },
   ];
 
   var byId = {};

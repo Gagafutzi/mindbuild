@@ -161,6 +161,12 @@ following binocular rivalry (Pearson, Clifford & Tong 2008). A companion for
 emotion is sketched in `research/emotional-control.md` †, on predictive
 accounts of emotion (Barrett 2017; Seth and Critchley) — notes, not a trainer.
 
+### Synth Reader — not counted
+**Task.** Read any EPUB with every letter and digit drawn in its colour from
+Synth's default palette, so ordinary reading rehearses the same associations.
+**Research.** As for Synaesthesia colours: grapheme–colour associations can
+be trained in adults (Bor et al. 2014). Built on epub.js and JSZip.
+
 ---
 
 ## Not a trainer: the archive
