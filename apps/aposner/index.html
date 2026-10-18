@@ -311,6 +311,21 @@
 
 </div>
 
+<!-- The hub's colour slider. Absent when the page is opened outside the
+     built site, and then the stylesheet's sage simply stands. -->
+<script src="../shared/theme.js?v=1"></script>
+<script>
+if (window.HubTheme) HubTheme.follow(document.documentElement, function (p) {
+  var T = HubTheme;
+  return {
+    '--bg': T.hex(p.bg), '--bg-2': T.hex(p.bg2),
+    '--panel': T.rgba(p.panel, .82), '--panel-hi': T.rgba(p.panelHi, .9), '--tile': T.rgba(p.panel, .9),
+    '--ink': T.hex(p.ink), '--ink-strong': T.hex(p.inkStrong), '--muted': T.hex(p.dim),
+    '--accent': T.hex(p.accent), '--accent-2': T.hex(p.accent2), '--accent-rgb': T.triple(p.accent),
+    '--center': T.hex(p.accent), '--ok': T.hex(p.ok), '--ok-soft': T.rgba(p.ok, .16),
+  };
+});
+</script>
 <script>
 (function(){
 'use strict';

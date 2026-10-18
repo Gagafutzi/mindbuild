@@ -659,6 +659,7 @@
     }
     bgUrl = URL.createObjectURL(blob);
     document.documentElement.style.setProperty("--bg-image", 'url("' + bgUrl + '")');
+    applyTheme();
   }
 
   /* Downscaled before it is stored. A phone photograph is 4000px across and
@@ -691,6 +692,44 @@
       }, "image/jpeg", 0.86);
     };
     img.src = src;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * The colour                                                       *
+   * ---------------------------------------------------------------- */
+
+  /* One hue for the whole page, through shared/theme.js. Every token the
+     stylesheet colours with moves by the same angle; saturation and lightness
+     stay, so the contrast the theme was checked at does not change. The drawn
+     forest turns with it through a filter; a chosen photograph does not. */
+  function themeVars(p, shift) {
+    var T = window.HubTheme;
+    return {
+      "--bg": T.hex(p.bg),
+      "--bg-2": T.hex(p.bg2),
+      "--panel": T.rgba(p.panel, .62),
+      "--panel-hi": T.rgba(p.panelHi, .76),
+      "--ink": T.hex(p.ink),
+      "--ink-strong": T.hex(p.inkStrong),
+      "--dim": T.hex(p.dim),
+      "--accent": T.hex(p.accent),
+      "--accent-2": T.hex(p.accent2),
+      "--accent-rgb": T.triple(p.accent),
+      "--ok": T.hex(p.ok),
+      "--shade-rgb": T.triple(p.bg),
+      "--bg-hue": (bgUrl ? 0 : shift) + "deg",
+    };
+  }
+
+  function applyTheme() {
+    if (!window.HubTheme) return;
+    var h = HubTheme.apply(document.documentElement, themeVars);
+    var input = $("hue");
+    if (input && document.activeElement !== input) input.value = h === null ? HubTheme.BASE : h;
+    var note = $("hue-note");
+    if (note) note.textContent = h === null ? "Sage, the default." : "Kept in this browser.";
+    var reset = $("hue-reset");
+    if (reset) reset.disabled = h === null;
   }
 
   function bgClear() {
@@ -799,7 +838,21 @@
     /* Cleared so that picking the same file twice still fires a change. */
     e.target.value = "";
   });
-  $("bg-clear").addEventListener("click", bgClear);
+  $("bg-clear").addEventListener("click", function () { bgClear(); applyTheme(); });
+  if ($("hue")) {
+    $("hue").addEventListener("input", function (e) {
+      HubTheme.setHue(Number(e.target.value));
+      applyTheme();
+    });
+    $("hue-reset").addEventListener("click", function () {
+      HubTheme.setHue(null);
+      applyTheme();
+    });
+    window.addEventListener("storage", function (e) {
+      if (e.key === HubTheme.KEY) applyTheme();
+    });
+  }
+  applyTheme();
   bgLoad();
 
   /* The only thing on this page that speaks to the machine it is displayed on.

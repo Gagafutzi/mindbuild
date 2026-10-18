@@ -67,7 +67,20 @@
    overlay with it. A photograph the page has never seen can be bright, busy or
    pale, and the overlay is what keeps sage text on it readable regardless. */
 html {
-  background: var(--bg) var(--bg-image) center / cover no-repeat fixed;
+  background: var(--bg);
+}
+
+/* The picture on its own layer, behind the body's darkening, so the colour
+   slider can turn the drawn forest to the chosen hue with a filter. A
+   photograph somebody chose is never tinted: `--bg-hue` is reset for it. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--bg) var(--bg-image) center / cover no-repeat;
+  filter: hue-rotate(var(--bg-hue, 0deg));
+  pointer-events: none;
 }
 
 body {
@@ -78,9 +91,9 @@ body {
      present and visually gone, which is the worst of both. */
   background:
     linear-gradient(180deg,
-      rgba(8, 13, 11, .58) 0%,
-      rgba(8, 13, 11, .42) 40%,
-      rgba(8, 13, 11, .82) 100%);
+      rgba(var(--shade-rgb, 8, 13, 11), .58) 0%,
+      rgba(var(--shade-rgb, 8, 13, 11), .42) 40%,
+      rgba(var(--shade-rgb, 8, 13, 11), .82) 100%);
   color: var(--ink);
   font: 14px/1.65 var(--font-body);
   -webkit-font-smoothing: antialiased;
@@ -427,6 +440,26 @@ h2::after {
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .25);
 }
 .settings__num:disabled { color: var(--dim); }
+
+/* The colour slider: the track is the hue wheel itself, desaturated to the
+   theme's own strength, so the slider shows what it will pick. */
+.settings__hue {
+  -webkit-appearance: none; appearance: none;
+  width: 220px; height: 10px; margin: 0;
+  background: linear-gradient(90deg,
+    hsl(0 28% 65%), hsl(60 28% 65%), hsl(120 28% 65%), hsl(180 28% 65%),
+    hsl(240 28% 65%), hsl(300 28% 65%), hsl(359 28% 65%));
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.settings__hue::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 12px; height: 20px; background: var(--ink-strong); border: 1px solid var(--bg);
+}
+.settings__hue::-moz-range-thumb {
+  width: 12px; height: 20px; border-radius: 0; background: var(--ink-strong); border: 1px solid var(--bg);
+}
+.settings__hue:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 
 /* ---- buttons ---- */
 
