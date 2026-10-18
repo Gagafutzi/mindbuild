@@ -143,6 +143,11 @@ cross-modal correspondences (Spence 2011). Includes the Shepard tone (Shepard
 
 ### DorsalFlow — not counted yet
 **Task.** Detect motion direction in visual noise, or — as AudioFlow — by ear.
+Two mixed programs put the senses together: in Mixed Discrimination a Gabor
+drifts while a sound sweeps through pink static, and you answer whether they
+went the same way or opposite ways; Mixed Memory plays them one after the
+other, in either order, so the first must be held across the gap and the
+change of sense.
 **Research** (†, in the page): contrast sensitivity (Campbell & Robson 1968),
 psychophysical thresholds (Pelli 1985), perceptual learning and noise exclusion
 (Lu & Dosher 1999). Targets dorsal-stream motion sensitivity.

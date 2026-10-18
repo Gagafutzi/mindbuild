@@ -109,3 +109,24 @@
 /* Three program cards side by side once there is room; the compiled sheet
    stops at md:grid-cols-2. */
 @media (min-width: 1024px) { .af-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* The mixed programs: sight and sound at once, Same or Opposite. Amber, so
+   they read apart from motion's blue, memory's purple and AudioFlow's green. */
+.av-title { color: #fcd34d; }
+.av-kicker { color: #fbbf24; }
+.av-badge { background: rgba(120, 53, 15, .7); color: #fcd34d; border-color: rgba(217, 119, 6, .6); }
+.av-go { background: #d97706; }
+.av-go:hover { background: #f59e0b; }
+.av-prompt {
+  position: absolute; left: 0; right: 0; bottom: 9.5rem; z-index: 15; text-align: center;
+  font-size: .85rem; font-weight: 700; letter-spacing: .04em; color: #e2e8f0;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .8); pointer-events: none;
+}
+.av-icon { background: #451a03; color: #fbbf24; border: 1px solid rgba(180, 83, 9, .6); }
+.av-launch { background: #d97706; }
+.av-launch:hover { background: #f59e0b; }
+.av-tab--on { background: #d97706; }
+.av-lvl { background: #451a03; border: 1px solid rgba(217, 119, 6, .5); }
+.av-text { color: #fbbf24; }
+.av-cell--on { border-color: #f59e0b; background: #d97706; }
+.av-badge-sm { background: #451a03; color: #fbbf24; border: 1px solid rgba(180, 83, 9, .6); }

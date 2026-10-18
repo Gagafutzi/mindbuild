@@ -14228,6 +14228,8 @@ const Ei = ee(d0),
                   { id: "motion", label: "Standard Motion" },
                   { id: "two-step-direction", label: "2-Step Memory" },
                   { id: "audio-flow", label: "AudioFlow" },
+                  { id: "av-flow", label: "Mixed" },
+                  { id: "av-two-step", label: "Mixed Memory" },
                   { id: "custom-n-step", label: "Custom Lab" },
                 ].map((x) =>
                   r.jsx(
@@ -14704,6 +14706,12 @@ const Ei = ee(d0),
                                                       "text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-400 border border-emerald-800/60",
                                                     children: "AudioFlow",
                                                   }),
+                                                (x.mode === "av-flow" || x.mode === "av-two-step") &&
+                                                  r.jsx("span", {
+                                                    className:
+                                                      "text-[10px] font-bold px-2 py-0.5 rounded-md av-badge-sm",
+                                                    children: x.mode === "av-flow" ? "Mixed" : "Mixed Memory",
+                                                  }),
                                                 x.mode === "custom-n-step" &&
                                                   r.jsxs("span", {
                                                     className:
@@ -15127,11 +15135,15 @@ const Ei = ee(d0),
           ? e.currentMotionLevel
           : z === "audio-flow"
             ? e.currentAudioLevel || 1
-            : e.currentTwoStepLevel,
+            : AV_LEVEL_KEY[z]
+              ? e[AV_LEVEL_KEY[z]] || 1
+              : e.currentTwoStepLevel,
       f = Xe.find((w) => w.level === u) || Xe[0],
       x = (w) => {
         o(
-          z === "motion"
+          AV_LEVEL_KEY[z]
+            ? { [AV_LEVEL_KEY[z]]: w, activeProgram: z }
+            : z === "motion"
             ? { currentMotionLevel: w, activeProgram: "motion" }
             : z === "audio-flow"
               ? { currentAudioLevel: w, activeProgram: "audio-flow" }
@@ -15431,6 +15443,8 @@ const Ei = ee(d0),
                             }),
                           ],
                         }),
+                        avCard("av-flow", "Mixed Discrimination", "Sight and sound at once: a Gabor drifts and a sound sweeps through pink static in the same half second. Did they move the same way or opposite ways? Headphones needed.", e.currentMixedLevel || 1, i),
+                        avCard("av-two-step", "Mixed Memory", "The same two movements one after the other, sight then sound or sound then sight, with a gap to hold the first across. Same way or opposite? Headphones needed.", e.currentMixedMemLevel || 1, i),
                       ],
                     }),
                   ],
@@ -15506,6 +15520,8 @@ const Ei = ee(d0),
                                     }),
                                   ],
                                 }),
+                                avTab("av-flow", "Mixed", e.currentMixedLevel || 1, z, d),
+                                avTab("av-two-step", "Mixed Memory", e.currentMixedMemLevel || 1, z, d),
                               ],
                             }),
                             r.jsxs("div", {
@@ -15518,13 +15534,17 @@ const Ei = ee(d0),
                                       ? "text-blue-400 font-mono"
                                       : z === "audio-flow"
                                         ? "text-emerald-400 font-mono"
-                                        : "text-purple-400 font-mono",
+                                        : AV_LEVEL_KEY[z]
+                                          ? "av-text font-mono"
+                                          : "text-purple-400 font-mono",
                                   children: ["Level ", u],
                                 }),
                                 " • ",
                                 z === "audio-flow"
                                   ? afLevel(u).sweepName
-                                  : f.speedName,
+                                  : AV_LEVEL_KEY[z]
+                                    ? f.speedName + " • " + afLevel(u).sweepName
+                                    : f.speedName,
                               ],
                             }),
                           ],
@@ -15540,7 +15560,7 @@ const Ei = ee(d0),
                           "button",
                           {
                             onClick: () => x(w.level),
-                            className: `flex flex-col items-center justify-center rounded-xl p-2.5 text-xs font-bold transition-all border ${S ? (z === "motion" ? "border-blue-500 bg-blue-600 text-white shadow-lg scale-105" : z === "audio-flow" ? "border-emerald-500 bg-emerald-600 text-white shadow-lg scale-105" : "border-purple-500 bg-purple-600 text-white shadow-lg scale-105") : "border-slate-800 bg-slate-900/90 text-slate-400 hover:border-slate-700 hover:text-white"}`,
+                            className: `flex flex-col items-center justify-center rounded-xl p-2.5 text-xs font-bold transition-all border ${S ? (z === "motion" ? "border-blue-500 bg-blue-600 text-white shadow-lg scale-105" : AV_LEVEL_KEY[z] ? "av-cell--on text-white shadow-lg scale-105" : z === "audio-flow" ? "border-emerald-500 bg-emerald-600 text-white shadow-lg scale-105" : "border-purple-500 bg-purple-600 text-white shadow-lg scale-105") : "border-slate-800 bg-slate-900/90 text-slate-400 hover:border-slate-700 hover:text-white"}`,
                             children: [
                               r.jsx("span", {
                                 className: "font-mono text-sm",
@@ -16755,6 +16775,29 @@ class AfEngine {
     for (let h = 0; h < i.length; h++) i[h] /= c;
     return (this.white[t] = a);
   }
+  /* Static that runs for a whole session rather than one trial: the mixed
+     modes play pink static under everything, so the ear never gets a silent
+     gap to hear a sweep start against. Kept apart from `live`, which every
+     trial stops. */
+  startBed(scale, rms) {
+    const l = this.init();
+    this.stopBed();
+    const v = l.createBufferSource();
+    ((v.buffer = this.bed(scale)), (v.loop = !0));
+    const y = l.createGain();
+    (y.gain.setValueAtTime(0, l.currentTime),
+      y.gain.linearRampToValueAtTime(rms, l.currentTime + 0.4),
+      v.connect(y),
+      y.connect(this.master),
+      v.start(),
+      (this.bedSrc = v));
+  }
+  stopBed() {
+    if (this.bedSrc) {
+      try { this.bedSrc.stop(); } catch {}
+      this.bedSrc = null;
+    }
+  }
   stop() {
     for (const e of this.live)
       try {
@@ -16763,10 +16806,10 @@ class AfEngine {
     this.live = [];
   }
   close() {
-    (this.stop(), this.ctx && this.ctx.close().catch(() => {}), (this.ctx = null));
+    (this.stop(), this.stopBed(), this.ctx && this.ctx.close().catch(() => {}), (this.ctx = null));
   }
   /* Schedules one trial and says, in ms from now, when the sweep ends. */
-  play({ condition: e, level: t, contrast: n, direction: s }) {
+  play({ condition: e, level: t, contrast: n, direction: s, noBed: nb }) {
     const l = this.init();
     this.stop();
     const a = l.currentTime + 0.05,
@@ -16774,9 +16817,9 @@ class AfEngine {
       o = Ea / 1e3,
       c = i + o,
       h = c + AF_POST_S,
-      g = afNoiseRms(t),
+      g = nb ? 0 : afNoiseRms(t),
       v = l.createBufferSource();
-    v.buffer = this.bed(e.noiseGrainScale);
+    v.buffer = this.bed(nb ? 2 : e.noiseGrainScale);
     const y = l.createGain();
     (y.gain.setValueAtTime(0, a),
       y.gain.linearRampToValueAtTime(g, a + AF_FADE_S),
@@ -17235,6 +17278,481 @@ const AfHeadphones = ({ className: e }) =>
       ],
     });
   };
+/* ================================================================
+   Mixed — sight and sound at once, answered Same or Opposite.
+   ================================================================
+
+   Two programs on one component, written into this build by hand like
+   AudioFlow above and running on the same machinery: the visual renderer
+   (nl), AudioFlow's engine, the staircase (Hn / Pi / _i), the level table
+   (Xe) and the session record.
+
+     • Mixed Discrimination ("av-flow"): a Gabor drifts left or right while a
+       sound sweeps left or right across the head, both in the same half
+       second. Did they go the same way, or opposite ways?
+     • Mixed Memory ("av-two-step"): the same two movements one after the
+       other, in either order — sight then sound, or sound then sight — with
+       a gap between. The first has to be held across the gap and the change
+       of sense before it can be compared.
+
+   The two directions are drawn independently, so Same and Opposite are each
+   right half the time, and neither movement alone says which. One staircase
+   value sets both the Gabor's contrast and the sweep's level, so it settles
+   where the harder of the two still carries the answer.
+
+   Pink static runs under the whole session (startBed), at the level table's
+   noise figure, so the ear never hears a sweep begin out of silence. */
+const AV_PINK = 2,
+  AV_GAP_MS = 600;
+function avConditions() {
+  return Mi().map((c) => {
+    const b = AF_BANDS.find((x) => x.key === c.testSpatialFreqCpd) || AF_BANDS[0];
+    return { ...c, id: `av-${c.id}`, bandName: b.name, bandLoHz: b.lo, bandHiHz: b.hi };
+  });
+}
+const AvSession = ({
+    complexityLevel: e,
+    calibration: t,
+    memory: mem,
+    onFinishSession: n,
+    onExit: s,
+  }) => {
+    const cv = T.useRef(null),
+      vis = T.useRef(new nl()),
+      eng = T.useRef(null),
+      lvl = T.useMemo(() => afLevel(e), [e]),
+      o = T.useRef(avConditions()).current,
+      [c, h] = T.useState(0),
+      [g, v] = T.useState(() => Hn(o[0])),
+      y = T.useRef([]),
+      [N, b] = T.useState(!1),
+      [k, z] = T.useState(null),
+      [d, u] = T.useState(null),
+      [ph, setPh] = T.useState("idle"),
+      [ans, setAns] = T.useState("same"),
+      [fb, setFb] = T.useState(null),
+      [hit, setHit] = T.useState(null),
+      [order, setOrder] = T.useState(["visual", "audio"]),
+      visDir = T.useRef("left"),
+      t0 = T.useRef(0),
+      raf = T.useRef(0),
+      timers = T.useRef([]),
+      name = mem ? "Mixed Memory" : "Mixed Discrimination",
+      mode = mem ? "av-two-step" : "av-flow";
+    eng.current || (eng.current = new AfEngine());
+    const clear = () => {
+        (timers.current.forEach((x) => clearTimeout(x)), (timers.current = []));
+      },
+      later = (fn, ms) => {
+        timers.current.push(window.setTimeout(fn, ms));
+      };
+    T.useEffect(() => () => (clear(), eng.current.close()), []);
+    T.useEffect(() => {
+      const F = () => {
+        const _ = cv.current;
+        if (_) {
+          const R = window.devicePixelRatio || 1;
+          ((_.width = Math.round(window.innerWidth * R)),
+            (_.height = Math.round(window.innerHeight * R)));
+        }
+      };
+      return (
+        F(),
+        window.addEventListener("resize", F),
+        () => window.removeEventListener("resize", F)
+      );
+    }, []);
+    const intro = ph === "idle" && c === 0 && g.totalTrials === 0;
+    /* One trial. The visual half is drawn by the render loop below whenever
+       the phase is "visual"; the audio half is scheduled on the engine, and
+       the phase timers follow the engine's own clock. */
+    const J = T.useCallback(() => {
+      clear();
+      eng.current.bedSrc || eng.current.startBed(AV_PINK, afNoiseRms(lvl));
+      const V = Math.random() < 0.5 ? "left" : "right",
+        A = Math.random() < 0.5 ? "left" : "right",
+        ord = Math.random() < 0.5 ? ["visual", "audio"] : ["audio", "visual"];
+      (setAns(V === A ? "same" : "opposite"), setFb(null), setHit(null), setOrder(ord));
+      const sound = (dir) =>
+          eng.current.play({ condition: g.condition, level: lvl, contrast: g.currentContrast, direction: dir, noBed: !0 }).offsetMs,
+        sight = () => {
+          ((visDir.current = V), (t0.current = performance.now()), setPh("visual"));
+        };
+      if (!mem) {
+        setPh("pre");
+        const end = sound(A);
+        (later(sight, Math.max(0, end - Ea)),
+          later(() => setPh((F) => (F === "visual" ? "waiting_response" : F)), end + 20));
+        return;
+      }
+      const step = (k, next) => {
+        if (ord[k] === "visual") (sight(), later(next, Ea));
+        else (setPh("audio"), later(next, sound(A) + 20));
+      };
+      step(0, () => {
+        (setPh("gap"),
+          later(() => step(1, () => setPh("waiting_response")), AV_GAP_MS));
+      });
+    }, [g, lvl, mem]);
+    T.useEffect(() => {
+      let dead = !1;
+      const F = (R) => {
+        if (dead) return;
+        const I = cv.current;
+        if (I && !N) {
+          const B = R - t0.current,
+            U = window.devicePixelRatio || 1;
+          vis.current.render({
+            canvas: I,
+            testSpatialFreqCpd: g.condition.testSpatialFreqCpd,
+            testContrast: g.currentContrast,
+            levelConfig: lvl,
+            pixelsPerDegree: t.pixelsPerDegree * U,
+            direction: visDir.current,
+            elapsedMs: B,
+            showCenterMoving: ph === "visual" && B < Ea,
+            apertureShape: "elliptical-gabor",
+            noiseGrainScale: g.condition.noiseGrainScale,
+          });
+        }
+        raf.current = requestAnimationFrame(F);
+      };
+      return (
+        (raf.current = requestAnimationFrame(F)),
+        () => {
+          ((dead = !0), cancelAnimationFrame(raf.current));
+        }
+      );
+    }, [g, ph, lvl, t, N]);
+    /* Hidden by the hub or the browser: the trial on screen is dropped, the
+       static stops, and a fresh trial starts on return. */
+    T.useEffect(() => {
+      const p = () => {
+        document.hidden
+          ? !N && !intro && ph !== "paused" &&
+            (clear(), eng.current.stop(), eng.current.stopBed(), u(null), setPh("paused"))
+          : ph === "paused" && J();
+      };
+      return (
+        document.addEventListener("visibilitychange", p),
+        () => document.removeEventListener("visibilitychange", p)
+      );
+    }, [ph, J, N, intro]);
+    const fin = T.useCallback(
+        (p) => {
+          const M = p.filter((H) => H.testSpatialFreqCpd === 2),
+            F =
+              (M.length > 0
+                ? M.reduce((H, B) => H + B.contrastThreshold, 0) / M.length
+                : 0.05) <= Ti,
+            I = {};
+          [0.25, 0.5, 1, 2].forEach((H) => {
+            const B = p.filter((Y) => Y.testSpatialFreqCpd === H);
+            I[H] = B.length
+              ? B.reduce((Y, G) => Y + G.contrastSensitivity, 0) / B.length
+              : 0;
+          });
+          const A = {
+            id: `session-${mode}-${Date.now()}`,
+            date: new Date().toISOString(),
+            mode,
+            complexityLevel: e,
+            results: p,
+            meanCSByFreq: I,
+            passedLevel: F,
+          };
+          if ((eng.current.stopBed(), z(A), b(!0), n(A), F)) {
+            Bn.playCelebrationSound();
+            try {
+              Di({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+            } catch {}
+          }
+        },
+        [e, n, mode],
+      ),
+      quit = T.useCallback(() => {
+        (clear(), eng.current.stop(), eng.current.stopBed(),
+          y.current.length > 0 && !N && fin(y.current), s());
+      }, [fin, N, s]),
+      P = T.useCallback(
+        (p) => {
+          if (ph !== "waiting_response") return;
+          (clear(), setPh("idle"), setHit(p));
+          const { updatedState: M, isCorrect: F } = Pi(g, ans, p);
+          if ((setFb(F ? "correct" : "incorrect"), F || Bn.playErrorTone(), M.isComplete)) {
+            y.current.push({ ..._i(M), bandName: M.condition.bandName });
+            const I = c + 1;
+            if (I < o.length) {
+              const A = o[I];
+              (h(I),
+                v(Hn(A)),
+                u({ blockNumber: I + 1, band: A.bandName, noise: A.noiseGrainName, freq: A.testSpatialFreqCpd }),
+                later(() => u(null), 1100));
+            } else fin(y.current);
+          } else v(M);
+        },
+        [ph, ans, g, c, o, fin],
+      );
+    T.useEffect(() => {
+      if (N || d || ph !== "idle" || intro || document.hidden) return;
+      const p = window.setTimeout(J, 450);
+      return () => clearTimeout(p);
+    }, [g, d, ph, N, J, intro]);
+    T.useEffect(() => {
+      const p = (M) => {
+        if (N) return;
+        const K = M.key;
+        K === "s" || K === "S" || K === "1" || K === "ArrowLeft"
+          ? (M.preventDefault(), P("same"))
+          : K === "o" || K === "O" || K === "2" || K === "ArrowRight"
+            ? (M.preventDefault(), P("opposite"))
+            : K === " " && intro && (M.preventDefault(), J());
+      };
+      return (
+        window.addEventListener("keydown", p),
+        () => window.removeEventListener("keydown", p)
+      );
+    }, [P, J, N, intro]);
+    const live = ph === "waiting_response" && !d,
+      sense = (m) => (m === "visual" ? "sight" : "sound"),
+      prompt =
+        ph === "pre" || ph === "visual" || ph === "audio" || ph === "gap"
+          ? mem
+            ? ph === "gap"
+              ? "Hold it…"
+              : ph === "visual"
+                ? "Watch…"
+                : "Listen…"
+            : "Watch and listen…"
+          : ph === "waiting_response"
+            ? "Same way, or opposite?"
+            : ph === "paused"
+              ? "Paused"
+              : " ";
+    return r.jsxs("div", {
+      className: "af-stage select-none",
+      children: [
+        r.jsx("canvas", {
+          ref: cv,
+          className: "absolute inset-0 block h-full w-full",
+          style: { width: "100vw", height: "100vh" },
+        }),
+        !N &&
+          r.jsxs("div", {
+            className: "af-hud",
+            children: [
+              r.jsxs("div", {
+                children: [
+                  r.jsxs("div", { className: "af-hud__title av-title", children: [name, " • Level ", lvl.level] }),
+                  r.jsxs("div", {
+                    className: "af-hud__sub",
+                    children: [lvl.speedName, " • ", lvl.sweepName, " • Pink static ", (lvl.backgroundContrast * 100).toFixed(0), "%"],
+                  }),
+                  r.jsxs("div", {
+                    className: "af-hud__sub",
+                    children: ["Block ", c + 1, " of ", o.length, " • ", g.condition.testSpatialFreqCpd, " cpd + ", g.condition.bandName, " • ", g.condition.noiseGrainName],
+                  }),
+                  mem &&
+                    r.jsxs("div", {
+                      className: "af-hud__sub",
+                      children: ["This trial: ", sense(order[0]), " then ", sense(order[1])],
+                    }),
+                ],
+              }),
+              r.jsxs("div", {
+                className: "af-hud__right",
+                children: [
+                  r.jsxs("div", {
+                    className: "af-hud__sub",
+                    children: ["Contrast / level ", r.jsxs("strong", { children: [(g.currentContrast * 100).toFixed(2), "%"] })],
+                  }),
+                  r.jsx("button", { onClick: quit, className: "af-btn af-btn--ghost", children: "Exit" }),
+                ],
+              }),
+            ],
+          }),
+        !N && !intro && r.jsx("div", { className: "av-prompt", children: prompt }),
+        d &&
+          r.jsx("div", {
+            className: "af-overlay af-overlay--soft",
+            children: r.jsxs("div", {
+              className: "af-card af-card--small",
+              children: [
+                r.jsx("span", { className: "af-kicker av-kicker", children: "Block Complete" }),
+                r.jsxs("h3", { className: "af-h3", children: ["Block ", d.blockNumber, " of ", o.length] }),
+                r.jsxs("p", { className: "af-mono", children: [d.freq, " cpd + ", d.band, " • ", d.noise] }),
+                r.jsx("span", { className: "af-chip", children: "Independent Staircase • Resetting to 5.0%" }),
+              ],
+            }),
+          }),
+        intro &&
+          r.jsx("div", {
+            className: "af-overlay",
+            children: r.jsxs("div", {
+              className: "af-card",
+              children: [
+                r.jsx("div", { className: "af-badge av-badge", children: r.jsx(AfHeadphones, { className: "h-7 w-7" }) }),
+                r.jsxs("h2", { className: "af-h2", children: [name, ": Level ", lvl.level] }),
+                r.jsxs("p", {
+                  className: "af-dim",
+                  children: [lvl.speedName, " • ", lvl.sweepName, " • ", o.length, " blocks"],
+                }),
+                r.jsxs("div", {
+                  className: "af-box",
+                  children: [
+                    r.jsxs("p", {
+                      children: [
+                        r.jsx("strong", { children: "Put on headphones." }),
+                        " Pink static plays throughout; the sound's movement is carried by the difference between your ears.",
+                      ],
+                    }),
+                    r.jsx("p", {
+                      children: mem
+                        ? "A Gabor drifts left or right, and a sound sweeps left or right — one after the other, in either order, with a short gap. Hold the first while the second plays."
+                        : "A Gabor drifts left or right while, at the same moment, a sound sweeps left or right across your head.",
+                    }),
+                    r.jsxs("p", {
+                      children: [
+                        "Answer whether they moved the ",
+                        r.jsx("strong", { children: "same" }),
+                        " way (S, 1 or ←) or ",
+                        r.jsx("strong", { children: "opposite" }),
+                        " ways (O, 2 or →). Each is right half the time. Three right in a row make both fainter; a mistake makes both stronger.",
+                      ],
+                    }),
+                  ],
+                }),
+                r.jsxs("button", {
+                  onClick: () => J(),
+                  className: "af-btn af-btn--go av-go",
+                  children: [r.jsxs("span", { children: ["Begin ", name, " Session"] }), r.jsx(an, { className: "h-4 w-4" })],
+                }),
+              ],
+            }),
+          }),
+        !N &&
+          r.jsxs("div", {
+            className: "af-answers",
+            children: [
+              r.jsxs("div", {
+                className: "af-feedback",
+                children: [
+                  fb === "correct" && r.jsx("span", { className: "af-ok", children: "✓ Correct" }),
+                  fb === "incorrect" && r.jsx("span", { className: "af-bad", children: "✗ Error" }),
+                ],
+              }),
+              r.jsxs("div", {
+                className: "af-answers__row",
+                children: [
+                  r.jsxs("button", {
+                    onClick: () => P("same"),
+                    disabled: !live,
+                    className: `af-btn af-answer${hit === "same" ? " af-answer--hit" : ""}`,
+                    children: [r.jsx("span", { children: "⇉" }), r.jsx("span", { children: "Same" })],
+                  }),
+                  r.jsxs("button", {
+                    onClick: () => P("opposite"),
+                    disabled: !live,
+                    className: `af-btn af-answer${hit === "opposite" ? " af-answer--hit" : ""}`,
+                    children: [r.jsx("span", { children: "Opposite" }), r.jsx("span", { children: "⇄" })],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        N &&
+          k &&
+          r.jsx("div", {
+            className: "af-overlay",
+            children: r.jsxs("div", {
+              className: "af-card",
+              children: [
+                r.jsx("div", { className: "af-badge av-badge", children: r.jsx(on, { className: "h-8 w-8" }) }),
+                r.jsxs("h2", { className: "af-h2", children: [name, " Cycle Completed!"] }),
+                r.jsxs("p", {
+                  className: "af-dim",
+                  children: ["Complexity Level ", lvl.level, " • Same or opposite, sight against sound"],
+                }),
+                r.jsx("div", {
+                  className: k.passedLevel ? "af-verdict af-verdict--pass" : "af-verdict",
+                  children: k.passedLevel ? "Level Passed! Criterion Met" : "Criterion Not Met — Try Again",
+                }),
+                r.jsx("div", {
+                  className: "af-table",
+                  children: AF_BANDS.map((p) =>
+                    r.jsxs(
+                      "div",
+                      {
+                        className: "af-table__row",
+                        children: [
+                          r.jsxs("span", { children: [p.key, " cpd + ", p.name] }),
+                          r.jsxs("strong", { children: [(k.meanCSByFreq[p.key] || 0).toFixed(1), " CS"] }),
+                        ],
+                      },
+                      p.key,
+                    ),
+                  ),
+                }),
+                r.jsx("p", { className: "af-dim", children: "Target: 2.0 cpd + high band ≥ 100 CS (threshold ≤ 1.0%)." }),
+                r.jsxs("button", {
+                  onClick: s,
+                  className: "af-btn af-btn--go av-go",
+                  children: [r.jsx(on, { className: "h-4 w-4" }), r.jsx("span", { children: "Return to Dashboard" })],
+                }),
+              ],
+            }),
+          }),
+      ],
+    });
+  };
+/* One card on the dashboard per mixed program, and one tab in the level
+   matrix: written once here rather than twice in the dashboard's markup. */
+function avCard(id, title, text, level, launch) {
+  return r.jsxs("div", {
+    className:
+      "rounded-2xl border border-slate-800 bg-slate-900/70 p-5 space-y-4 hover:border-slate-700 transition-all flex flex-col justify-between",
+    children: [
+      r.jsxs("div", {
+        children: [
+          r.jsxs("div", {
+            className: "flex items-center justify-between",
+            children: [
+              r.jsx("div", {
+                className: "flex h-10 w-10 items-center justify-center rounded-xl av-icon",
+                children: r.jsx(AfHeadphones, { className: "h-5 w-5" }),
+              }),
+              r.jsx("span", { className: "text-[10px] font-mono text-slate-500", children: "SIGHT + SOUND" }),
+            ],
+          }),
+          r.jsx("h4", { className: "mt-3 text-base font-bold text-white", children: title }),
+          r.jsx("p", { className: "mt-1 text-xs text-slate-400 leading-relaxed", children: text }),
+        ],
+      }),
+      r.jsxs("button", {
+        onClick: () => launch(id),
+        className:
+          "av-launch flex items-center justify-center gap-2 rounded-xl py-3 text-xs sm:text-sm font-bold text-white active:scale-95 transition-all shadow-lg",
+        children: [
+          r.jsx(cn, { className: "h-4 w-4 fill-white" }),
+          r.jsxs("span", { children: ["Launch ", title, " (Level ", level, ")"] }),
+          r.jsx(an, { className: "h-3.5 w-3.5" }),
+        ],
+      }),
+    ],
+  });
+}
+function avTab(id, label, level, active, pick) {
+  return r.jsxs("button", {
+    onClick: () => pick(id),
+    className: `flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${active === id ? "av-tab--on text-white shadow-md" : "text-slate-400 hover:text-white"}`,
+    children: [
+      r.jsx(AfHeadphones, { className: "h-3.5 w-3.5" }),
+      r.jsx("span", { children: label }),
+      r.jsxs("span", { className: "font-mono px-1.5 py-0.2 rounded text-[10px] av-lvl", children: ["L", level] }),
+    ],
+  });
+}
+const AV_LEVEL_KEY = { "av-flow": "currentMixedLevel", "av-two-step": "currentMixedMemLevel" };
 const Rf = ({
     complexityLevel: e,
     calibration: t,
@@ -19186,7 +19704,9 @@ const Rf = ({
             ? c("motion")
             : f === "two-step-direction"
               ? c("two-step-direction")
-              : f === "audio-flow" && c("audio-flow"));
+              : f === "audio-flow"
+                ? c("audio-flow")
+                : AV_LEVEL_KEY[f] && c(f));
       },
       b = (f) => {
         (g("custom"), y(f), c("custom-session"));
@@ -19196,13 +19716,16 @@ const Rf = ({
         let x = t.currentMotionLevel,
           w = t.currentTwoStepLevel,
           A = t.currentAudioLevel || 1,
+          AV = {},
           S = t.replicationsAtCurrentLevel;
         f.passedLevel
           ? (f.mode === "two-step-direction"
               ? (w = Math.min(20, t.currentTwoStepLevel + 1))
               : f.mode === "audio-flow"
                 ? (A = Math.min(20, A + 1))
-                : (x = Math.min(20, t.currentMotionLevel + 1)),
+                : AV_LEVEL_KEY[f.mode]
+                  ? (AV[AV_LEVEL_KEY[f.mode]] = Math.min(20, (t[AV_LEVEL_KEY[f.mode]] || 1) + 1))
+                  : (x = Math.min(20, t.currentMotionLevel + 1)),
             (S = 0))
           : (S += 1);
         const j = {
@@ -19210,6 +19733,7 @@ const Rf = ({
           currentMotionLevel: x,
           currentTwoStepLevel: w,
           currentAudioLevel: A,
+          ...AV,
           replicationsAtCurrentLevel: S,
         };
         (n(j), Yo(j));
@@ -19260,6 +19784,14 @@ const Rf = ({
         o === "audio-flow" &&
           r.jsx(AfSession, {
             complexityLevel: t.currentAudioLevel || 1,
+            onFinishSession: k,
+            onExit: () => c("dashboard"),
+          }),
+        AV_LEVEL_KEY[o] &&
+          r.jsx(AvSession, {
+            complexityLevel: t[AV_LEVEL_KEY[o]] || 1,
+            calibration: e,
+            memory: o === "av-two-step",
             onFinishSession: k,
             onExit: () => c("dashboard"),
           }),

@@ -87,7 +87,7 @@
    * card says which answer it has. */
   var MORE = [
     { id: "dorsalflow", name: "DorsalFlow", path: "more/dorsalflow/", colour: "#6e9bff",
-      what: "Motion in noise, by eye or — AudioFlow — by ear" },
+      what: "Motion in noise, by eye, by ear (AudioFlow), or both at once — same way or opposite" },
     { id: "hallucination", name: "Controlled Hallucination", path: "more/hallucination/", colour: "#d9a0ff",
       what: "Inducing visual hallucinations, and steering them top-down" },
   ];
