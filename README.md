@@ -106,6 +106,25 @@ gate taken out. See below.
 own when it was grafted in; GitHub reads workflows from the root only, so those
 are inert history rather than eight competing deploys.
 
+**Running it on this machine.**
+
+```bash
+node tools/build-site.mjs       # once, and after any change
+node tools/serve.mjs            # → http://127.0.0.1:8080/mindbuild/
+node tools/serve.mjs --open     # and open it
+```
+
+Loopback only, no dependencies, and nothing else has to be running. The gate
+serves `dist/` too, on 8787, but that is the gate's server: it exists so a
+day's quota can be met with no network, and it is there only while the daemon
+is. `systemctl --user stop mindbuild-gate` takes the site down with it, and
+reading the record should not require the thing that nags you to add to it.
+
+Not `file://`. The build bakes its base into three files absolutely — the
+shell's `data-base`, Precision's module `src`, Syllogimous's `<base href>` —
+so opened from the filesystem the hub loads and those two trainers 404. Both
+servers read that base back out of the build and mount there.
+
 **Old engines.** The build also rewrites what an older browser cannot parse:
 
 ```bash
