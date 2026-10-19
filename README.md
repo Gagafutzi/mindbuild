@@ -106,6 +106,28 @@ gate taken out. See below.
 own when it was grafted in; GitHub reads workflows from the root only, so those
 are inert history rather than eight competing deploys.
 
+**Nothing is fetched at play time.** The build ends by scanning its own output
+for anything another server would have to answer for — scripts, stylesheets,
+fonts, images, importmap entries — and fails if it finds one:
+
+```bash
+node tools/check-offline.mjs dist   # the build runs this for you
+node tools/fetch-vendor.mjs         # fetch the libraries, once, to vendor/
+```
+
+This had been a promise rather than a fact. Three trainers loaded their
+libraries from a CDN, so with the network off EWMT and 3D Rotation drew
+nothing, and Precision lost its styling, its audio and its Performance chart
+at once — three.js, Tailwind, Tone and Chart.js, none of them present. They now
+sit in each app's own `vendor/`, the way `more/reader` has always carried jszip
+and epub.js, and `tools/fetch-vendor.mjs` is where the versions are pinned.
+
+An app with its own `vendor/` is an app that still works copied somewhere by
+itself, which is the same reason it is `vendor/` and not `shared/`. The one
+remaining outbound request is Google Analytics inside the Syllogimous fork; it
+is `async` and fails silently, and `ALLOWED` in `tools/check-offline.mjs` says
+why it is still there.
+
 **Visit counts.** Set a repository variable `GOATCOUNTER` to a
 [GoatCounter](https://www.goatcounter.com) site code and the deployed hub
 counts page views, one per hub visit and one per trainer opened (`/#/rrt`,
@@ -140,7 +162,8 @@ the same reason `dist/` is.
 It is not a browser pointed at the Pages site. The whole site is copied inside
 and it runs with the network off, which is the same promise the archive makes
 about a USB stick in five years and is worth more on a phone than anywhere
-else. It is also not gated: the build sets `APK=1`, which puts the **gate-free**
+else. That promise is now checked rather than assumed — see **Build** — because
+for three trainers it had quietly not been true. It is also not gated: the build sets `APK=1`, which puts the **gate-free**
 hub at the root, because on a phone there is no daemon to answer `127.0.0.1`
 and no screen for one to hold.
 

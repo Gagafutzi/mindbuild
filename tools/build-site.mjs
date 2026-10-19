@@ -227,4 +227,15 @@ if (process.env.APK) {
 }
 
 fs.writeFileSync(path.join(DIST, ".nojekyll"), "");
+
+/* The build has to be able to say it fetches nothing from anyone, because two
+ * things now depend on that and neither one notices quietly when it stops
+ * being true: the APK, which is a WebView with no network guarantee, and the
+ * gate, which serves this directory on loopback so that a day's quota can be
+ * met with the cable out. Three trainers were loading three.js, Tone, Chart
+ * and Tailwind off CDNs — see tools/fetch-vendor.mjs — and nothing said so.
+ *
+ * It runs last, over the output rather than the sources, because the only
+ * question worth asking is about what actually shipped. */
+run("node", [path.join(ROOT, "tools", "check-offline.mjs"), DIST], ROOT);
 log(`\nBuilt dist/ at base ${BASE}`);
