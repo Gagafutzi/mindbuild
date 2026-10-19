@@ -52,6 +52,8 @@
   <button class="btn" id="larger" aria-label="Larger text">A+</button>
   <button class="btn on" id="colour" title="Draw letters and digits in their Synth colours">Colours</button>
   <button class="btn hide-s" id="mine" title="Use the colours you set in Synth's palette instead of the default" hidden>My palette</button>
+  <button class="btn hide-s" id="halo" title="Outline the few colours that would otherwise disappear into the page">Halo</button>
+  <button class="btn hide-s" id="mix" title="Each letter is drawn at random as its colour, as plain text, or as a shape standing in for it">Mix</button>
 </div>
 
 <div id="empty">
@@ -94,6 +96,10 @@ var DB = 'mindbuild.reader', STORE = 'books', LAST = 'last';
 var $ = function (id) { return document.getElementById(id); };
 var prefs = (function () { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { return {}; } })();
 prefs.size = prefs.size || 110; if (prefs.colour == null) prefs.colour = true;
+/* On by default: without it a pure-black 0 is not faint, it is absent. */
+if (prefs.halo == null) prefs.halo = true;
+/* Off by default: it is a drill, not a way to read a book. */
+if (prefs.mix == null) prefs.mix = false;
 function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) {} }
 
 function myColors() {
@@ -103,19 +109,118 @@ function palette() {
   var mine = prefs.mine && myColors();
   return mine ? Object.assign({}, DEFAULT_COLORS, mine) : DEFAULT_COLORS;
 }
-function lum(rgb) { var c = rgb.split(',').map(Number); return (0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2]) / 255; }
+/* The chapter's background, in one place. The halo below asks how a glyph
+   reads against it, and a page colour that drifted from the figure deciding
+   the halo would be two answers to one question. */
+var PAGE_BG = '#0f1713';
+var HALO = '0 0 2px rgba(255,255,255,.55)';
 
-/* One class per symbol, written into each chapter's document. Near-black
-   colours get Synth's faint white halo: 0 is pure black and would vanish on
-   the dark page. Display only — the colour itself is as authored. */
+/* WCAG relative luminance, which is not the weighted mean it resembles: each
+   channel is linearised out of sRGB's gamma first. The difference is not
+   academic here — see `needsHalo`. */
+function relLum(rgb) {
+  var c = (typeof rgb === 'string' ? rgb.split(',').map(Number) : rgb).map(function (v) {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+}
+function hexRgb(h) {
+  return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+}
+function contrast(a, b) {
+  var x = relLum(a), y = relLum(b);
+  return (Math.max(x,y) + 0.05) / (Math.min(x,y) + 0.05);
+}
+
+/* Does this colour actually disappear into the page?
+ *
+ * This used to ask whether a naive weighted mean came under 0.2, which is the
+ * wrong question twice over. It is not relative luminance — sRGB has to be
+ * linearised first — and luminance alone is not legibility: what matters is
+ * the ratio against the page behind it.
+ *
+ * The effect was a halo on eight of the thirty-six symbols, B, L, P and S
+ * among them, which is most words on a page. Blue scores low on any luminance
+ * measure (green carries nearly three quarters of it) while reading perfectly
+ * well on a dark background — so B at contrast 2.12 glowed while D at 2.21 and
+ * R at 2.65 did not. The same legibility, opposite treatment.
+ *
+ * Asked as a contrast ratio it comes to three: 8 at 1.07, 0 at 1.15 — pure
+ * black, the case this exists for — and S at 1.41. Everything else clears 1.7,
+ * and past F there is a clean gap to 4.56. */
+function needsHalo(rgb) { return contrast(rgb, hexRgb(PAGE_BG)) < 1.5; }
+
+/* One class per symbol, written into each chapter's document. A colour that
+   would vanish into the page gets Synth's faint white halo. Display only: the
+   colour itself is as authored, which is why the fix is a halo and not a
+   lighter colour — 0 is black, and a legible grey 0 is a different letter.
+
+   Fainter than it was. At 3px and .85 alpha it read as a glow and pulled the
+   eye to the letter rather than letting it be read; the job is to stop a glyph
+   disappearing, not to mark it. Off entirely with the Halo button. */
 function glyphCss() {
   var p = palette(), out = [];
   Object.keys(DEFAULT_COLORS).forEach(function (k) {
     var c = p[k];
     out.push('.sy-' + k + '{color:rgb(' + c + ')' +
-      (lum(c) < 0.2 ? ';text-shadow:0 0 3px rgba(255,255,255,.85)' : '') + '}');
+      (prefs.halo && needsHalo(c) ? ';text-shadow:' + HALO : '') + '}');
   });
+  /* Last, so it wins on source order against the symbol rules above without
+     needing !important — the same way the symbol rules themselves sit under a
+     book's own stylesheet rather than fighting it. */
+  out.push('.sy-plain{color:inherit;text-shadow:none}');
   return out.join('\n');
+}
+
+/* Mix: every symbol on the page draws one of three lots.
+ *
+ *   colour  the letter in its own colour, which is the ordinary reading
+ *   plain   the letter in the page's text colour, the association withheld
+ *   shape   the letter gone, a shape standing in it, still in its colour
+ *
+ * The shape is deliberately not the letter's own. It is a blank: the colour is
+ * the only thing left pointing at which letter belongs there, which is the
+ * recall the mode exists to force. A shape that encoded the letter would be
+ * answering its own question.
+ *
+ * Drawn per occurrence and re-rolled on every render, so the same A is
+ * coloured in one word and missing from the next, and a page revisited is a
+ * fresh set of blanks rather than the ones already solved.
+ */
+var SHAPES = '\u25cf\u25a0\u25b2\u25c6\u25bc\u2605';
+var LOTS = ['colour', 'plain', 'shape'];
+
+function lot() {
+  /* Mix rides on colour: with no colours a shape has nothing to recall from,
+     so turning Colours off puts every letter back. */
+  return (prefs.colour && prefs.mix) ? LOTS[(Math.random() * LOTS.length) | 0] : 'colour';
+}
+
+/* The original character lives in data-ch while a shape stands in for it,
+   because the lot is re-rolled in place and a letter thrown away on the way
+   into a shape could not come back out of one. */
+function draw(span, sym, how) {
+  span.className = 'sy-' + sym + (how === 'plain' ? ' sy-plain' : '');
+  if (how === 'shape') {
+    if (!span.hasAttribute('data-ch')) span.setAttribute('data-ch', span.textContent);
+    span.textContent = SHAPES.charAt((Math.random() * SHAPES.length) | 0);
+  } else if (span.hasAttribute('data-ch')) {
+    span.textContent = span.getAttribute('data-ch');
+    span.removeAttribute('data-ch');
+  }
+}
+
+/* Re-roll a chapter that is already on screen, without re-reading the book:
+   the spans are already there, so only their class and their text change.
+   `sy-plain` cannot be mistaken for a symbol class — symbols are upper case. */
+function remix(doc) {
+  if (!doc || !doc.body) return;
+  var spans = doc.body.getElementsByTagName('span');
+  for (var i = 0; i < spans.length; i++) {
+    var m = /\bsy-([A-Z0-9])\b/.exec(spans[i].className);
+    if (m) draw(spans[i], m[1], lot());
+  }
 }
 
 /* The symbol a character is drawn as: A–Z and 0–9, with accents stripped so
@@ -157,8 +262,8 @@ function colourise(doc) {
       if (!sym) { run += ch; continue; }
       if (run) { frag.appendChild(doc.createTextNode(run)); run = ''; }
       var s = doc.createElement('span');
-      s.className = 'sy-' + sym;
       s.textContent = ch;
+      draw(s, sym, lot());
       frag.appendChild(s);
     }
     if (run) frag.appendChild(doc.createTextNode(run));
@@ -290,9 +395,26 @@ function eachDoc(fn) {
 $('colour').onclick = function () {
   prefs.colour = !prefs.colour; savePrefs();
   $('colour').classList.toggle('on', prefs.colour);
-  eachDoc(restyle);
+  /* Re-rolled as well as restyled: `lot` returns every letter to itself when
+     colours are off, so the shapes have to be given back their characters. */
+  eachDoc(function (d) { remix(d); restyle(d); });
+};
+
+$('mix').classList.toggle('on', prefs.mix);
+$('mix').onclick = function () {
+  prefs.mix = !prefs.mix; savePrefs();
+  $('mix').classList.toggle('on', prefs.mix);
+  eachDoc(remix);
 };
 $('colour').classList.toggle('on', prefs.colour);
+
+$('halo').classList.toggle('on', prefs.halo);
+$('halo').onclick = function () {
+  prefs.halo = !prefs.halo; savePrefs();
+  $('halo').classList.toggle('on', prefs.halo);
+  eachDoc(restyle); swatches();
+};
+
 if (myColors()) {
   $('mine').hidden = false;
   $('mine').classList.toggle('on', !!prefs.mine);
@@ -312,14 +434,15 @@ function swatches() {
   'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').forEach(function (k) {
     var s = document.createElement('span');
     s.textContent = k; s.style.color = 'rgb(' + p[k] + ')';
-    if (lum(p[k]) < 0.2) s.style.textShadow = '0 0 3px rgba(255,255,255,.85)';
+    if (prefs.halo && needsHalo(p[k])) s.style.textShadow = HALO;
     box.appendChild(s);
   });
 }
 swatches();
 lastBook(function (b) { if (b && b.buf) open(b.buf, b.name); });
 
-window.__reader = { colourise: colourise, symbolOf: symbolOf, get rendition() { return rendition; } };
+window.__reader = { colourise: colourise, remix: remix, symbolOf: symbolOf,
+                   open: open, get rendition() { return rendition; } };
 })();
 </script>
 </body>
