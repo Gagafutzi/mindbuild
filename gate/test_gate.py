@@ -773,6 +773,160 @@ def the_listener_is_loopback_only():
         srv.server_close()
 
 
+# ---- offline ------------------------------------------------------------- #
+
+@test
+def the_hub_is_local_when_there_is_a_build():
+    """Offline is the whole point: the quota cannot need the thing it gates."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    built = os.path.isfile(os.path.join(os.path.dirname(here), "dist", "index.html"))
+    if not built:
+        return                      # nothing built in this checkout; nothing to assert
+    c = cfg(port=8795)
+    # Under the base the build was made with, not at `/`: three files in a
+    # build hold that prefix absolutely, so serving at the root loads the hub
+    # and 404s Precision and Syllogimous.
+    assert G.hub_url(c) == "http://127.0.0.1:8795" + G.hub_mount(c), \
+        "the Train button does not open the locally served hub"
+    assert G.hub_mount(c).startswith("/") and G.hub_mount(c).endswith("/")
+    assert G.state(c, G.Counter(c), None)["offlineCapable"] is True
+
+
+@test
+def with_no_build_it_says_so_rather_than_pretending():
+    c = cfg(hub_dir="no-such-directory")
+    assert G.hub_dir(c) is None
+    assert G.hub_url(c) == G.PAGES_URL, "no build, and the hub was not the published one"
+    assert G.state(c, G.Counter(c), None)["offlineCapable"] is False
+
+
+@test
+def a_session_that_cannot_grab_does_not_retry_forever():
+    """Four lines a second for as long as the panel stood, all the same line.
+
+    `show` re-arms the grab on every tick the panel is up and something else
+    has focus — which on Wayland is every tick. The retry is right on X11,
+    where whatever holds the pointer lets go in a moment; on a session where
+    grabbing is simply not allowed there is nothing to wait for.
+    """
+    said = []
+    g = gate_with(0, required_minutes=20, mode="grab",
+                  active_from="00:00", active_to="23:59")
+    g.note = lambda m: said.append(m)
+    real_kind, G.session_kind = G.session_kind, lambda: "wayland"
+    try:
+        for _ in range(50):
+            assert g._grab_soon() is False, "a wayland session scheduled a grab retry"
+    finally:
+        G.session_kind = real_kind
+    assert len(said) == 50, "the reason was not reported"
+    assert len(set(said)) == 1, "more than one reason given: %s" % set(said)
+
+
+@test
+def a_browser_the_counter_cannot_read_is_reported():
+    """The failure this project was rewritten to remove, in its other form.
+
+    Training into a store nothing reads does not look like a misconfiguration.
+    It looks like a counter stuck at zero while you train at it, which is what
+    the WebKitGTK panel did and what got it deleted. A browser the counter
+    cannot read has to say so rather than be discovered.
+    """
+    assert G.browser_is_countable(cfg(browser="firefox")) is True
+    assert G.browser_is_countable(cfg(browser="/usr/bin/firefox-esr")) is True
+    for other in ["qutebrowser", "chromium", "google-chrome", "/usr/bin/qutebrowser", ""]:
+        assert G.browser_is_countable(cfg(browser=other)) is False, \
+            "%r was reported as something the counter can read" % other
+    st = G.state(cfg(browser="qutebrowser"), G.Counter(cfg()), None)
+    assert st["browserCountable"] is False and st["browser"] == "qutebrowser"
+
+
+@test
+def an_explicit_hub_url_still_wins():
+    c = cfg(hub_url="http://example.invalid/hub/")
+    assert G.hub_url(c) == "http://example.invalid/hub/", \
+        "a hub_url set by hand was ignored"
+
+
+@test
+def a_remote_hub_url_is_not_offline_even_with_a_build():
+    """The trap every install made before the gate could serve the hub is in.
+
+    `dist/` is built, so "is there a build" says yes — and the Train button
+    still opens the published copy, which with the block on is on the far side
+    of it. The question has to be asked of the URL, not of the directory.
+    """
+    c = cfg(hub_url=G.PAGES_URL)
+    assert G.hub_dir(c), "this checkout has no build; the case cannot be tested"
+    assert G.hub_reachable_offline(c) is False, \
+        "a hub on the internet was reported as meetable offline"
+    assert G.state(c, G.Counter(c), None)["offlineCapable"] is False
+    assert G.hub_reachable_offline(cfg()) is True, \
+        "the default hub was not the local one"
+
+
+@test
+def the_server_does_not_publish_the_checkout():
+    """It serves `dist/`, and the process's working directory is the repo root.
+
+    SimpleHTTPRequestHandler serves the working directory unless told not to,
+    so getting this wrong publishes every file in the project on loopback.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if not os.path.isfile(os.path.join(root, "dist", "index.html")):
+        return
+    c = cfg(port=8796)
+    srv = G.make_server(c, G.Counter(c), None)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    time.sleep(0.2)
+
+    def get(path):
+        try:
+            r = urllib.request.urlopen("http://127.0.0.1:8796" + path, timeout=3)
+            return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, b""
+
+    mount = G.hub_mount(c)
+    try:
+        code, body = get(mount)
+        assert code == 200 and b"<" in body, "the hub was not served at %s" % mount
+        assert b'data-base' in body, "what came back at %s was not the hub" % mount
+        for traversal in ["/../gate/gate.py", "/..%2fgate%2fgate.py",
+                          mount + "../gate/gate.py", mount + "..%2f..%2fgate%2fgate.py"]:
+            code, _ = get(traversal)
+            assert code != 200, "a traversal escaped dist/: %s" % traversal
+        code, body = get("/state")
+        assert code == 200 and json.loads(body)["required"] == c["required_minutes"], \
+            "/state stopped answering once the hub was served"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+@test
+def the_heartbeat_survives_the_hub_being_served():
+    """Same origin now, so this is the path that actually gets used."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if not os.path.isfile(os.path.join(root, "dist", "index.html")):
+        return
+    c = cfg(port=8797)
+    counter = G.Counter(c)
+    srv = G.make_server(c, counter, None)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    time.sleep(0.2)
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:8797/heartbeat",
+            data=json.dumps({"day": G.utc_day(), "minutes": 11}).encode(),
+            headers={"Content-Type": "text/plain"})
+        assert json.loads(urllib.request.urlopen(req).read())["minutes"] == 11, \
+            "the heartbeat stopped working once the hub was served"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
 # -------------------------------------------------------------------------- #
 
 if __name__ == "__main__":

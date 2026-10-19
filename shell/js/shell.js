@@ -531,11 +531,33 @@
    * The gate                                                         *
    * ---------------------------------------------------------------- */
 
-  /* The daemon runs on this machine and the page may be served from anywhere,
-     so this is a cross-origin request to localhost that will simply fail when
-     no gate is installed — which is the common case and not an error worth
-     showing as one. */
-  var GATE = "http://127.0.0.1:8787";
+  /* Where to look for the daemon.
+
+     The gate can now serve this page itself, from loopback, so that the quota
+     can be met with no network at all — and when it does, it *is* this origin.
+     Asking here first is worth doing for more than tidiness: a same-origin
+     POST is not mixed content, so Firefox stops refusing it, and it is not a
+     page reaching into the private network, so Port Authority and uBlock's
+     LAN list stop blocking it. The two reasons the heartbeat never arrives,
+     both gone, without an exception having to be added anywhere.
+
+     Served from anywhere else, it is the cross-origin request to localhost it
+     always was, which simply fails when no gate is installed — the common
+     case, and not an error worth showing as one.
+
+     Both are tried rather than one being chosen, because a hub opened from
+     some other local server (`python -m http.server`, a dev build) is on
+     loopback without being the gate, and guessing from the origin alone would
+     leave that case posting into nothing. */
+  var GATES = [];
+  if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|$)/.test(location.origin)) {
+    GATES.push(location.origin);
+  }
+  if (GATES.indexOf("http://127.0.0.1:8787") < 0) GATES.push("http://127.0.0.1:8787");
+  /* Rotated on a miss and then left alone: once one of them has answered, that
+     is the gate, and the other is not tried again. */
+  var gateAt = 0;
+  var gateFound = false;
 
   /* No gate on most machines, so the common case is a request that fails. Two
      things follow: it must not recount to build a body nobody reads, and it
@@ -584,12 +606,13 @@
   function heartbeat() {
     var applied = currentCount();
 
-    fetch(GATE + "/heartbeat", {
+    fetch(GATES[gateAt] + "/heartbeat", {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ day: Today.utcDay(), minutes: applied.total, bySource: applied.counted }),
     }).then(function (r) { return r.json(); }).then(function (state) {
       beatMisses = 0;
+      gateFound = true;
       if (!gateOwnsGoal) { gateOwnsGoal = true; renderGoal(); }
       adoptGateSettings(state);
       $("gate-state").textContent = state.armed
@@ -597,6 +620,7 @@
         : "Installed, not armed.";
     }).catch(function () {
       beatMisses++;
+      if (!gateFound) gateAt = (gateAt + 1) % GATES.length;
       $("gate-state").textContent =
         "Not running on this machine. The quota above is advice only until the gate is installed.";
     });

@@ -40,6 +40,16 @@ if ! command -v firefox >/dev/null; then
   echo "         firefox-storage.py can also read." >&2
 fi
 
+# The gate serves the hub off dist/, so that the quota can be met with no
+# network at all. Without a build there is nothing to serve and it falls back
+# to the published copy — which works, until the first time you try to train
+# somewhere with no signal. Checked here rather than discovered there.
+if [ ! -f "$here/../dist/index.html" ]; then
+  echo "warning: no build in dist/ — the gate will fall back to the published" >&2
+  echo "         hub, which needs the network. Build it first:" >&2
+  echo "           node tools/build-site.mjs" >&2
+fi
+
 mkdir -p "$config_dir" "$units_dir"
 
 # Never overwritten. The quota is the one setting here anybody tunes, and a
@@ -49,7 +59,8 @@ if [ ! -f "$config_dir/gate.json" ]; then
   cat > "$config_dir/gate.json" <<'JSON'
 {
   "required_minutes": 20,
-  "hub_url": "https://gagafutzi.github.io/mindbuild/",
+  "hub_url": null,
+  "hub_dir": "dist",
   "armed": true,
   "mode": "nag",
   "active_from": "09:00",
@@ -85,4 +96,8 @@ When the number looks right, arm it:
 And to stop it, from a terminal or from Ctrl-Alt-F3 if the window is up:
 
     systemctl --user stop mindbuild-gate
+
+The hub it hands off to is the one it serves, off dist/, so none of this
+needs a network. $here/gate.py --check reports offlineCapable, which is
+the field that says so.
 MSG

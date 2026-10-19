@@ -4,6 +4,9 @@ A training quota your desktop enforces. Under the quota a panel sits in front of
 you with one button on it; the button opens the hub in Firefox and the panel
 steps aside while you train. Meet the quota and it is gone until tomorrow.
 
+It needs no network. The gate serves the hub itself, off `dist/`, on the
+loopback port it was already listening on — see **Offline**.
+
 ## It hands off, it does not host
 
 The panel used to be a WebKitGTK window with the hub loaded into it. That was
@@ -64,6 +67,71 @@ Ctrl-Alt-F3          →  log in  →  systemctl --user stop mindbuild-gate
 Virtual terminal switching is handled below X and no grab can take it. That
 route always works. In the default `nag` mode you do not even need it — Alt-Tab
 past the window and carry on.
+
+## Offline
+
+The Train button used to open `https://gagafutzi.github.io/mindbuild/`. With no
+network that is an error page — and an error page is not titled `mindbuild`, so
+the focus check saw no trainer and the panel came straight back. The gate was
+unusable on a train.
+
+Now the gate serves the hub itself, off `dist/`, on the loopback port it was
+already listening on, and the Train button opens that. Nothing in the loop
+touches the network.
+
+```bash
+node tools/build-site.mjs      # dist/ is gitignored; build it before arming
+```
+
+**This is not the hosting the gate refuses to do.** That refusal is about
+rendering the trainers in a WebKitGTK window, whose storage the counter cannot
+read — the bug the whole rewrite exists to remove. Here the browser is Firefox,
+exactly as before, and the storage read is Firefox's, exactly as before. The
+only thing that changed is which machine the files come off.
+
+Three things follow, and the first is the one that will surprise you:
+
+**It is a different origin, so it has its own history.** `http://127.0.0.1:8787`
+and `https://gagafutzi.github.io` keep separate localStorage, and nothing
+carries across. Your record on the published hub is not on the local one.
+`count.js` takes the largest origin rather than the sum, so a day split between
+the two counts as the larger half, not both.
+
+**It is served under the base it was built with**, `/mindbuild/` unless `BASE`
+said otherwise, because three files in a build hold that prefix absolutely —
+the shell's `data-base`, Precision's module `src`, Syllogimous's `<base href>`.
+Served at `/` the hub loads and those two trainers 404. The gate reads the base
+back out of `dist/index.html` rather than assuming it, and `/` redirects there.
+
+**The trainers no longer need a CDN either.** Serving the hub locally would
+have been half a fix: three of the trainers loaded three.js, Tailwind, Tone and
+Chart.js from other people's servers, so Train opened a local page that then
+reached for the network anyway. Those are vendored now, and
+`tools/check-offline.mjs` fails the build if a new one appears. See the repo
+README's **Build** section.
+
+**The heartbeat is now same-origin**, which quietly removes both reasons it
+used to never arrive: it is no longer an `https://` page posting to `http://`,
+so Firefox stops refusing it as mixed content, and it is no longer a website
+reaching into the private network, so Port Authority and uBlock's LAN list stop
+blocking it. The section below about extensions still applies to the published
+hub. It no longer applies to this one.
+
+Set `hub_url` to a URL of your own and that wins over all of this.
+
+**An install made before this will not go offline on its own.** `install.sh`
+used to write the published URL into `gate.json` as a literal, and a URL set
+there still wins — so the gate builds `dist/`, serves it, and goes on opening
+the copy on the internet. Clear it:
+
+```bash
+python3 -c 'import json,os; p=os.path.expanduser("~/.config/mindbuild/gate.json"); c=json.load(open(p)); c["hub_url"]=None; c.setdefault("hub_dir","dist"); json.dump(c,open(p,"w"),indent=2)'
+```
+
+`python3 gate/gate.py --check` reports `offlineCapable`, which is the one field
+to look at: it asks whether the URL the button will actually open is on this
+machine, not whether a build exists somewhere. The gate says the same at
+startup, on the one line worth reading there.
 
 ## Install
 
@@ -132,6 +200,9 @@ be met, every day.
 
 ## If the heartbeat never arrives, check your extensions
 
+Only on the published hub — the one the gate serves is same-origin, and none of
+this applies to it.
+
 A privacy extension can block it before Firefox's own rules are even consulted.
 **Port Authority** does exactly this, and says so in a notification: *"blocked
 gagafutzi.github.io from port scanning your private network"*. It is right to be
@@ -151,7 +222,8 @@ does the same thing and wants the same exception.
 | `mode` | `"nag"` | `nag` is a panel kept on top; Alt-Tab still works. `grab` is fullscreen and takes keyboard and pointer. |
 | `active_from` / `active_to` | `09:00`–`23:00` | **Local** time. Outside these hours the gate never appears, whatever the count. |
 | `max_hold_minutes` | `180` | The gate lets go after this long regardless of the count. No override. |
-| `hub_url` | Pages URL | What the button opens. |
+| `hub_url` | `null` | What the button opens. `null` means the copy the gate serves itself, which needs no network. A URL here wins. |
+| `hub_dir` | `dist` | The built hub, served on loopback under the base it was built with. Relative to the repo root. |
 | `browser` | `firefox` | Must be one `firefox-storage.py` can read, or nothing you do will count. |
 | `grace_seconds` | `15` | After a button, how long the gate keeps pulling that application forward before judging focus. `anki.grace_seconds` (60) covers Anki's slower start. |
 | `stall_seconds` | `180` | No sign of training for this long and the panel returns. |
@@ -210,10 +282,11 @@ buys is the couple of minutes until that scan lands.
 Without it the panel would reappear over a page you were actively answering,
 which is the kind of thing that gets a gate uninstalled the same afternoon.
 
-**The heartbeat may not reach it at all.** Firefox can refuse an `https://`
-page's POST to `http://127.0.0.1` as mixed content. If that is happening here,
-`heartbeatEverSeen` in `curl 127.0.0.1:8787/` stays `false` and there is no fast
-signal to be had. The gate notices and falls back: it watches the disk figure
+**The heartbeat may not reach it at all** — on the published hub. Firefox can
+refuse an `https://` page's POST to `http://127.0.0.1` as mixed content. If that
+is happening here, `heartbeatEverSeen` in `curl 127.0.0.1:8787/state` stays
+`false` and there is no fast signal to be had. Training through the hub the gate
+serves avoids this entirely: that POST is same-origin. The gate notices and falls back: it watches the disk figure
 rising instead, scans every 60s while the panel is down, and judges a stall on
 `stall_seconds_no_beat` (15 minutes) rather than `stall_seconds` (3), because
 three minutes is far too short a fuse for a signal that lags by minutes.
@@ -222,7 +295,7 @@ Scan-only works. It is just coarser — a finished session takes a minute or two
 to register, so the panel can appear briefly after you stop.
 
 One consequence worth knowing: the heartbeat comes from the **hub**. Train
-through `mindbuild/#/rnb` and the panel knows. Open `mindbuild/rnb/` directly in
+through the hub's own framing and the panel knows. Open a trainer directly in
 its own tab and it does not — only the lagging scan sees that, and the panel may
 come back mid-session.
 

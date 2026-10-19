@@ -80,7 +80,7 @@ import tempfile
 import threading
 import time
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 # GTK is imported only when a window is actually going to be drawn. `--check`
@@ -125,7 +125,15 @@ DEFAULTS = {
     # Minutes of training the day needs. Keep it to something you would have
     # done anyway; a quota you resent is a quota you disable.
     "required_minutes": 20,
-    "hub_url": "https://gagafutzi.github.io/mindbuild/",
+    # Where the hub is. `null` means "the one the gate serves itself", which is
+    # the default because a quota you cannot meet without the internet cannot
+    # also be the thing that earns the internet back. See `hub_url()`.
+    "hub_url": None,
+    # The built hub, served on loopback. Relative paths are from the repo root.
+    # Serving files to Firefox is not the hosting the module docstring rules
+    # out: the browser is still Firefox and the storage read is still Firefox's,
+    # so the loop the WebKitGTK panel broke still closes here.
+    "hub_dir": "dist",
     "armed": True,
     # "nag"  — fullscreen and always on top, but Alt-Tab still works.
     # "grab" — takes keyboard and pointer. Only Ctrl-Alt-F3 gets past it.
@@ -465,8 +473,102 @@ def window_info():
     return name, cls
 
 
+def hub_dir(cfg):
+    """The built hub on disk, or None if there is nothing there to serve.
+
+    Checked for `index.html` rather than for the directory, because `dist/` is
+    gitignored and exists as an empty husk on any checkout that has not been
+    built. An empty directory served at the hub's address is a 404 behind the
+    Train button, which is the failure this is here to avoid.
+    """
+    raw = str(cfg.get("hub_dir") or "").strip()
+    if not raw:
+        return None
+    path = raw if os.path.isabs(raw) else os.path.join(ROOT, raw)
+    return path if os.path.isfile(os.path.join(path, "index.html")) else None
+
+
+# Where the hub is published, used only when there is no local build to serve.
+PAGES_URL = "https://gagafutzi.github.io/mindbuild/"
+
+
+def hub_mount(cfg):
+    """The path the local build expects to be served under.
+
+    `tools/build-site.mjs` bakes a base into the output — `/mindbuild/` unless
+    `BASE` says otherwise — and three files hold it absolutely: the shell's
+    `data-base`, Precision's module `src`, and Syllogimous's `<base href>`.
+    Served at `/` instead, those three ask for `/mindbuild/...` and get 404s,
+    so the hub loads and two trainers do not.
+
+    So the mount is read back out of the build rather than assumed, and a
+    `BASE=/ ` build is served at `/` without anything here needing to know.
+    """
+    root = hub_dir(cfg)
+    if not root:
+        return "/"
+    try:
+        with open(os.path.join(root, "index.html"), encoding="utf-8", errors="replace") as fh:
+            head = fh.read(4096)
+    except OSError:
+        return "/"
+    found = re.search(r'data-base="([^"]*)"', head)
+    base = (found.group(1) if found else "/").strip() or "/"
+    if not base.startswith("/"):
+        base = "/" + base
+    return base if base.endswith("/") else base + "/"
+
+
+def hub_url(cfg):
+    """What the Train button opens.
+
+    A URL set in the config wins. Otherwise it is the copy the gate serves on
+    loopback, which needs no network — and if there is no build to serve, the
+    published one, which needs the network and is therefore the fallback rather
+    than the default.
+    """
+    explicit = str(cfg.get("hub_url") or "").strip()
+    if explicit:
+        return explicit
+    if hub_dir(cfg):
+        return "http://127.0.0.1:%s%s" % (cfg["port"], hub_mount(cfg))
+    return PAGES_URL
+
+
 def hub_host(cfg):
-    return (urlparse(str(cfg.get("hub_url") or "")).hostname or "").lower()
+    return (urlparse(hub_url(cfg)).hostname or "").lower()
+
+
+# The browsers `apps/archive/tools/firefox-storage.py` knows how to read. It
+# globs Firefox profile roots and reads Firefox's SQLite, and that is the whole
+# list — a Chromium-family browser keeps localStorage in LevelDB somewhere else
+# entirely, and qutebrowser, being QtWebEngine, is one of those.
+COUNTABLE_BROWSERS = ("firefox",)
+
+
+def browser_is_countable(cfg):
+    """Can the counter read what this browser writes?
+
+    When it cannot, the gate still opens the browser and the panel still steps
+    aside for it — and the quota never moves, because the minutes are going
+    into a store nothing here reads. That is the exact failure the WebKitGTK
+    panel caused and the rewrite removed, so it is worth saying out loud rather
+    than leaving to be worked out from a counter stuck at zero.
+    """
+    name = os.path.basename(str(cfg.get("browser") or "")).lower()
+    return any(known in name for known in COUNTABLE_BROWSERS)
+
+
+def hub_reachable_offline(cfg):
+    """Can the Train button be followed with the cable out?
+
+    Asked of the URL that will actually be opened, not of whether a build
+    exists. A checkout with `dist/` built and `hub_url` still set to the
+    published hub — which is every install made before the gate could serve it
+    — has a build it never opens, and switching the network block on there
+    leaves a quota that cannot be met from the machine it has locked.
+    """
+    return hub_host(cfg) in ("127.0.0.1", "localhost", "::1")
 
 
 def classify_focus(cfg, info):
@@ -957,7 +1059,7 @@ class Gate:
             args, key = [command], '"anki": {"command": ...}'
         else:
             command = str(self.cfg.get("browser") or "firefox")
-            url = str(self.cfg.get("hub_url") or "")
+            url = hub_url(self.cfg)
             args = [command, "--new-window", url] if "firefox" in os.path.basename(command) \
                 else [command, url]
             key = '"browser"'
@@ -982,7 +1084,17 @@ class Gate:
         holds the pointer — an open menu, the Shell's own grab during an
         animation — does so for a moment, and the panel that gave up stayed
         ungrabbed for as long as it was on screen.
+
+        On a session that cannot grab at all, there is nothing to keep trying
+        for. `show` re-arms this on every tick the panel is up and something
+        else has focus, which on Wayland is every tick there is: each one
+        started a retry, each retry printed that it could not grab, and the
+        journal filled at four lines a second for as long as the panel stood —
+        roughly a third of a million lines a day, saying one thing.
         """
+        if session_kind() != "x11":
+            self.note("not X11 — grab unavailable, holding as a nag")
+            return False
         state = {"said": False}
 
         def attempt():
@@ -1007,8 +1119,10 @@ class Gate:
             display = Gdk.Display.get_default()
             if "x11" not in type(display).__name__.lower() and \
                os.environ.get("XDG_SESSION_TYPE") != "x11":
-                print("gate: not X11 — grab unavailable, holding as a nag",
-                      file=sys.stderr, flush=True)
+                # Through `note`, which says a thing once: this is reached from
+                # a retry loop, and a reason that cannot change is not news the
+                # second time.
+                self.note("not X11 — grab unavailable, holding as a nag")
                 return "unsupported"
             gdk_window = self.window.get_window() if self.window else None
             if gdk_window is None:
@@ -1217,7 +1331,57 @@ class Gate:
 # --------------------------------------------------------------------------- #
 
 def make_server(cfg, counter, gate):
-    class Handler(BaseHTTPRequestHandler):
+    # The built hub, resolved once: the server answers from whatever was there
+    # when it started, so a build landing underneath it cannot change which
+    # directory requests escape from.
+    root = hub_dir(cfg)
+    mount = hub_mount(cfg)
+
+    class Handler(SimpleHTTPRequestHandler):
+        """The heartbeat endpoint, and the hub itself when there is one to serve.
+
+        Serving the hub here is what makes the gate work with no network. The
+        Train button used to open a page on GitHub Pages, so with the cable out
+        it opened an error page — whose title is not "mindbuild", so the focus
+        check saw no trainer and the panel came straight back. The gate was
+        unusable on a train, which is exactly where the twenty minutes were.
+
+        It is still not the hosting the module docstring rules out. That was
+        about rendering the trainers in a WebKitGTK window, whose storage the
+        counter cannot read. Here the browser is Firefox exactly as before and
+        the storage read is Firefox's, so the loop still closes. What changed
+        is only which machine the files come off.
+
+        One consequence worth knowing: `http://127.0.0.1:8787` is a different
+        origin from the Pages URL, so it has its own localStorage. The record
+        does not follow you across, and `count.js` takes the largest origin
+        rather than the sum, so a day split between the two counts as the
+        larger half.
+        """
+
+        # SimpleHTTPRequestHandler serves the process's working directory
+        # unless told otherwise, and the gate's is the repo root — which would
+        # publish the whole checkout on loopback, source and all.
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=root or os.devnull, **kw)
+
+        def translate_path(self, path):
+            """Map the mount back onto `dist/`.
+
+            Path traversal is not handled here and must not be: the base class
+            normalises away `..` and leading slashes after this, so stripping a
+            known prefix is all this does and all it is allowed to do.
+            """
+            if mount != "/" and path.startswith(mount):
+                path = "/" + path[len(mount):]
+            return super().translate_path(path)
+
+        def list_directory(self, path):
+            # Every directory in a build has an index.html. One that does not
+            # is a gap in the build, not an invitation to browse the tree.
+            self.send_error(404)
+            return None
+
         def log_message(self, *a):
             pass                                    # not a web server; stay quiet
 
@@ -1244,8 +1408,47 @@ def make_server(cfg, counter, gate):
             self._cors()
             self.end_headers()
 
+        def _route(self):
+            """"state", "redirect", "file" or "404" for this request."""
+            path = urlparse(self.path).path
+            # `/state` always answers, served hub or not: it is what `curl` and
+            # the README use to ask the gate what it thinks.
+            if path == "/state":
+                return "state"
+            if not root:
+                return "state" if path == "/" else "404"
+            if mount == "/" or path.startswith(mount):
+                return "file"
+            # The build lives under a prefix, and nobody types the prefix.
+            if path in ("/", ""):
+                return "redirect"
+            return "404"
+
         def do_GET(self):                           # noqa: N802
-            self._json(state(cfg, counter, gate))
+            where = self._route()
+            if where == "state":
+                self._json(state(cfg, counter, gate))
+            elif where == "redirect":
+                self.send_response(302)
+                self.send_header("Location", mount)
+                self.end_headers()
+            elif where == "file":
+                super().do_GET()
+            else:
+                self.send_error(404)
+
+        def do_HEAD(self):                          # noqa: N802
+            if self._route() == "file":
+                super().do_HEAD()
+            else:
+                self.send_error(404)
+
+        def end_headers(self):
+            # The hub reads localStorage and talks to this same origin; nothing
+            # it does should be served from a cache that outlives a rebuild.
+            if urlparse(self.path).path != "/state":
+                self.send_header("Cache-Control", "no-store")
+            super().end_headers()
 
         def do_POST(self):                          # noqa: N802
             try:
@@ -1258,13 +1461,26 @@ def make_server(cfg, counter, gate):
             self._json(state(cfg, counter, gate))
 
     # 127.0.0.1, never 0.0.0.0: this listens on a laptop that joins other
-    # people's networks.
+    # people's networks — and now that it serves files as well as answering a
+    # heartbeat, the difference between the two is a checkout published to
+    # every café it connects to.
     return ThreadingHTTPServer(("127.0.0.1", int(cfg["port"])), Handler)
 
 
 def state(cfg, counter, gate):
+    served = hub_dir(cfg)
     return {
         "armed": bool(cfg.get("armed")),
+        "hubUrl": hub_url(cfg),
+        # Whether the quota can be met with the cable out. False means the
+        # Train button opens something on the internet, which matters a great
+        # deal more once the gate is also taking the internet away.
+        "offlineCapable": hub_reachable_offline(cfg),
+        # False means minutes trained through the Train button do not reach
+        # the counter at all. See `browser_is_countable`.
+        "browserCountable": browser_is_countable(cfg),
+        "browser": cfg.get("browser"),
+        "hubDir": served,
         "mode": cfg.get("mode"),
         "day": counter.day,
         "required": cfg["required_minutes"],
@@ -1344,6 +1560,28 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     print("gate: listening on 127.0.0.1:%s, mode=%s, quota=%s min"
           % (cfg["port"], cfg["mode"], cfg["required_minutes"]), flush=True)
+    if hub_dir(cfg):
+        print("gate: hub built at %s, served at http://127.0.0.1:%s%s"
+              % (hub_dir(cfg), cfg["port"], hub_mount(cfg)), flush=True)
+    if not browser_is_countable(cfg):
+        print("gate: browser is %r, whose storage the counter cannot read.\n"
+              "      Minutes trained through the Train button will not count"
+              "%s" % (cfg.get("browser"),
+                      "; the gate is disarmed, so nothing is locked."
+                      if not cfg.get("armed") else
+                      " — and the quota can never be met. Set \"armed\": false"
+                      " in %s or go back to Firefox." % CONFIG),
+              file=sys.stderr, flush=True)
+    if hub_reachable_offline(cfg):
+        print("gate: Train opens %s — no network needed to meet the quota"
+              % hub_url(cfg), flush=True)
+    else:
+        # Said at startup, where it can still be acted on, rather than
+        # discovered as a panel that will not go away on a train.
+        why = ("no build at %s" % (cfg.get("hub_dir") or "(unset)")) if not hub_dir(cfg) \
+            else "hub_url is set to it in %s — set it to null to use the local copy" % CONFIG
+        print("gate: Train opens %s, which needs the network (%s)"
+              % (hub_url(cfg), why), file=sys.stderr, flush=True)
     # At login the window manager may not have published _NET_ACTIVE_WINDOW
     # yet, and a probe that early reports "cannot see focus" on a session where
     # it plainly can — which is what this printed on the first Xorg login. So
