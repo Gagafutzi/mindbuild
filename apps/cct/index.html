@@ -2612,7 +2612,7 @@ function runTrial(){
           $('feedbackBand').className='feedback-band inhibit';
           $('inputHint').textContent='✓ Inhibited (silence)';
           adaptISI(true);
-          pushTrial({num:numberSequence.at(-1),correct:correctAnswer,given:null,ok:true,fumble:false,minimal:false,coyote:false,inhibit:true,falseAlarm:false,isi:currentISI});
+          pushTrial({num:numberSequence[numberSequence.length - 1],correct:correctAnswer,given:null,ok:true,fumble:false,minimal:false,coyote:false,inhibit:true,falseAlarm:false,isi:currentISI});
         } else {
           // Arrow Up mode — timeout without pressing ↑ = missed inhibition (wrong)
           totalAttempts++; currentStreak=0;
@@ -2620,7 +2620,7 @@ function runTrial(){
           $('stimulusBox').classList.add('flash-wrong');
           triggerError();
           adaptISI(false);
-          pushTrial({num:numberSequence.at(-1),correct:correctAnswer,given:null,ok:false,fumble:false,minimal:false,coyote:false,inhibit:false,falseAlarm:false,isi:currentISI});
+          pushTrial({num:numberSequence[numberSequence.length - 1],correct:correctAnswer,given:null,ok:false,fumble:false,minimal:false,coyote:false,inhibit:false,falseAlarm:false,isi:currentISI});
         }
       } else {
         // Normal trial — timeout = missed
@@ -2629,7 +2629,7 @@ function runTrial(){
         $('stimulusBox').classList.add('flash-wrong');
         triggerError();
         adaptISI(false);
-        pushTrial({num:numberSequence.at(-1),correct:correctAnswer,given:null,ok:false,fumble:false,minimal:false,coyote:false,inhibit:false,falseAlarm:false,isi:currentISI});
+        pushTrial({num:numberSequence[numberSequence.length - 1],correct:correctAnswer,given:null,ok:false,fumble:false,minimal:false,coyote:false,inhibit:false,falseAlarm:false,isi:currentISI});
       }
       answerProcessed=true;
       updateTrainStats();
@@ -2670,7 +2670,7 @@ function processInhibit(){
   $('feedbackBand').className='feedback-band inhibit';
   $('inputHint').textContent='✓ Inhibited ↑';
   adaptISI(true);
-  pushTrial({num:numberSequence.at(-1),correct:correctAnswer,given:'↑',ok:true,fumble:false,minimal:false,coyote:false,inhibit:true,falseAlarm:false,isi:currentISI});
+  pushTrial({num:numberSequence[numberSequence.length - 1],correct:correctAnswer,given:'↑',ok:true,fumble:false,minimal:false,coyote:false,inhibit:true,falseAlarm:false,isi:currentISI});
   updateTrainStats();
   return true;
 }
@@ -2705,7 +2705,7 @@ function processAnswer(userVal){
     $('stimulusBox').classList.add('flash-wrong');
     $('inputHint').textContent='✗ Any input is wrong here — silence only';
     triggerError(); adaptISI(false);
-    pushTrial({num:numberSequence.at(-1),correct:correctAnswer,given:userVal,ok:false,fumble:false,minimal:false,coyote:false,inhibit:false,falseAlarm:true,isi:currentISI});
+    pushTrial({num:numberSequence[numberSequence.length - 1],correct:correctAnswer,given:userVal,ok:false,fumble:false,minimal:false,coyote:false,inhibit:false,falseAlarm:true,isi:currentISI});
     updateTrainStats();
     return true;
   }
@@ -2720,7 +2720,7 @@ function processAnswer(userVal){
     $('stimulusBox').classList.add('flash-wrong');
     $('inputHint').textContent='✗ False alarm — press ↑ to inhibit, don\'t type';
     triggerError(); adaptISI(false);
-    pushTrial({num:numberSequence.at(-1),correct:correctAnswer,given:userVal,ok:false,fumble:false,minimal:false,coyote:false,inhibit:false,falseAlarm:true,isi:currentISI});
+    pushTrial({num:numberSequence[numberSequence.length - 1],correct:correctAnswer,given:userVal,ok:false,fumble:false,minimal:false,coyote:false,inhibit:false,falseAlarm:true,isi:currentISI});
     updateTrainStats();
     return true;
   }
@@ -2741,7 +2741,7 @@ function processAnswer(userVal){
   ── */
   let ndmFail=false, sdmFail=false;
   if(isCorrect && settings.ndm && prevSpokenNum!==null){
-    const needed = requiredNdmArrow(numberSequence.at(-1), prevSpokenNum);
+    const needed = requiredNdmArrow(numberSequence[numberSequence.length - 1], prevSpokenNum);
     if(needed!==null && ndmArrowGiven!==needed){ isCorrect=false; ndmFail=true; }
   }
 
@@ -2776,7 +2776,7 @@ function processAnswer(userVal){
   }
 
   pushTrial({
-    num:numberSequence.at(-1), correct:correctAnswer, given:userVal,
+    num:numberSequence[numberSequence.length - 1], correct:correctAnswer, given:userVal,
     ok:isCorrect, fumble:wasFumble, fatFinger:wasFatFinger, minimal:wasMinimal,
     ndmFail, sdmFail,
     ndmArrow:ndmArrowGiven, sdmArrow:rrtArrowGiven,

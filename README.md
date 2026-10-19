@@ -106,6 +106,29 @@ gate taken out. See below.
 own when it was grafted in; GitHub reads workflows from the root only, so those
 are inert history rather than eight competing deploys.
 
+**Old engines.** The build also rewrites what an older browser cannot parse:
+
+```bash
+node tools/css-fallbacks.mjs dist --check   # the build runs this for real
+node tools/test-css-fallbacks.mjs
+```
+
+The one that matters is `@layer`. It is Chrome 99, an at-rule a browser does
+not know is discarded *with its whole block*, and 94% of a Tailwind 4
+stylesheet is inside one — so DorsalFlow arrived as unstyled text on
+QtWebEngine 5.15 (Chromium 87, which is what qutebrowser carries on 22.04).
+The layers are flattened, which gives up a later layer beating an earlier one
+on specificity and keeps everything else; the sheet already emits them in
+order, so it survives.
+
+Under that: `oklch()` and `color-mix()` are both Chrome 111. Tailwind already
+writes a hex beside every `color-mix` of its own, so most needed nothing; the
+rest get the first colour of the mix at full strength, and oklch custom
+properties are rewritten to hex with the originals restated inside
+`@supports (color:oklch(0 0 0))`, which a current browser takes and an old one
+skips. The conversion is checked against Tailwind's own published hexes for the
+same palette entries — worst channel off by 3 of 255.
+
 **Nothing is fetched at play time.** The build ends by scanning its own output
 for anything another server would have to answer for — scripts, stylesheets,
 fonts, images, importmap entries — and fails if it finds one:

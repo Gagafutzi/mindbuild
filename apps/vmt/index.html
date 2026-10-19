@@ -689,6 +689,43 @@ const Audio = {
    so flicker and pulse trains are safe at any rate.
 ================================================================ */
 const SAFE='rgb(78,78,84)', SAFE_HI='rgb(84,84,92)', BG='#050810';
+/* The hue wheel as a colour string this browser can parse.
+ *
+ * `oklch()` is Chrome 111 and Firefox 113. Older engines do not approximate an
+ * unknown colour function, they reject it — and a rejected `fillStyle` is
+ * silently ignored, so the disk is drawn in whatever colour was set last and
+ * the trial still runs. A hue task that quietly stops varying hue is worse
+ * than one that fails, so on those engines the same colour is handed over in
+ * sRGB instead.
+ *
+ * L and C are fixed at the wheel's values; only the hue moves. Chroma is
+ * reduced to the gamut boundary rather than the channels being clamped, which
+ * would bend the hue — the one property this wheel exists to control.
+ */
+const OKLCH_OK = (() => { try { return CSS.supports("color", "oklch(0 0 0)"); } catch (e) { return false; } })();
+
+function oklchCss(h, L = 0.72, C = 0.12) {
+  if (OKLCH_OK) return `oklch(${(L*100).toFixed(0)}% ${C} ${h})`;
+  const lin = (c) => {
+    const rad = h * Math.PI / 180, a = c * Math.cos(rad), b = c * Math.sin(rad);
+    const l_ = L + 0.3963377774*a + 0.2158037573*b;
+    const m_ = L - 0.1055613458*a - 0.0638541728*b;
+    const s_ = L - 0.0894841775*a - 1.2914855480*b;
+    const l = l_**3, m = m_**3, s = s_**3;
+    return [ 4.0767416621*l - 3.3077115913*m + 0.2309699292*s,
+            -1.2684380046*l + 2.6097574011*m - 0.3413193965*s,
+            -0.0041960863*l - 0.7034186147*m + 1.7076147010*s ];
+  };
+  const ok = (v) => v.every(x => x >= -1e-5 && x <= 1 + 1e-5);
+  let c = C;
+  if (!ok(lin(c))) { let lo = 0, hi = C; for (let i = 0; i < 24; i++) { const mid = (lo+hi)/2; if (ok(lin(mid))) lo = mid; else hi = mid; } c = lo; }
+  const [r, g, b] = lin(c).map(v => {
+    v = Math.max(0, Math.min(1, v));
+    return Math.round((v <= 0.0031308 ? 12.92*v : 1.055*Math.pow(v, 1/2.4) - 0.055) * 255);
+  });
+  return `rgb(${r},${g},${b})`;
+}
+
 const Visual = {
   cv:null, cx:null, R:null,
   init(){ this.cv=$('visual-canvas'); this.cx=this.cv.getContext('2d'); this.R=this.noRove(); this.clear(); },
@@ -704,7 +741,7 @@ const Visual = {
   colorDisk(h,s,l,r=70){ this.disk(210,210,r,`hsl(${((h%360)+360)%360} ${clamp(s,0,1)*100}% ${clamp(l,0,1)*100}%)`); },
   /* OKLCH hue wheel: perceptually even lightness/chroma, so equal z steps look like equal colour steps and brightness stops leaking as a cue; +25 offset puts z=0 at true red */
   oklchHue(h){ return (((h+25)%360)+360)%360; },
-  hueDisk(h,r=70){ this.disk(210,210,r,`oklch(72% 0.12 ${this.oklchHue(h)})`); },
+  hueDisk(h,r=70){ this.disk(210,210,r,oklchCss(this.oklchHue(h))); },
   bar(len,w,l=1){ const c=this.cx; c.fillStyle=this.grey(l); c.fillRect(210-len/2,210-w/2,len,w); },
   grating({sf=0.035,contrast=0.9,orient=0,phase=0,aperture=170,ref=false}={}){
     this.clear(); const c=this.cx, img=c.createImageData(420,420), d=img.data, co=Math.cos(orient), si=Math.sin(orient), R=this.R;
@@ -1018,7 +1055,7 @@ Object.assign(Visual,{
   ensembleBars(meanDeg,spread){ const c=this.cx; c.strokeStyle='white'; c.lineWidth=3; c.lineCap='round';
     for(let j=0;j<4;j++) for(let i=0;i<4;i++){ const x=105+i*70+rng.r(-12,12), y=105+j*70+rng.r(-12,12), a=(meanDeg+gauss()*spread)*Math.PI/180;
       c.beginPath(); c.moveTo(x-Math.cos(a)*16,y-Math.sin(a)*16); c.lineTo(x+Math.cos(a)*16,y+Math.sin(a)*16); c.stroke(); } },
-  ensembleHue(meanHue,spread){ for(let j=0;j<4;j++) for(let i=0;i<4;i++) this.disk(105+i*70+rng.r(-12,12),105+j*70+rng.r(-12,12),15,`oklch(72% 0.12 ${this.oklchHue(meanHue+gauss()*spread)})`); },
+  ensembleHue(meanHue,spread){ for(let j=0;j<4;j++) for(let i=0;i<4;i++) this.disk(105+i*70+rng.r(-12,12),105+j*70+rng.r(-12,12),15,oklchCss(this.oklchHue(meanHue+gauss()*spread))); },
   histMode(mode,spread){ const bins=new Array(24).fill(0), wl=0.07*spread*(rng.next()<.5?1:2.4), wr=0.07*spread*(rng.next()<.5?1:2.4);
     for(let i=0;i<300;i++){ const left=rng.next()<wl/(wl+wr), v=mode+(left?-1:1)*Math.abs(gauss())*(left?wl:wr); if(v>=0&&v<1) bins[Math.floor(v*24)]++; }
     const mx=Math.max(1,...bins), c=this.cx; c.fillStyle='rgba(199,210,254,.9)'; bins.forEach((b,i)=>{ const h=b/mx*230; c.fillRect(66+i*12+1,350-h,10,h); });
@@ -1372,7 +1409,7 @@ const DimCard = {
     if(auto){ if(Store.seenDim(id)) return; Store.markSeenDim(id); } else Store.markSeenDim(id);
     const anchors=d.anchors?`<div class="dim-anchors">${esc(d.anchors[0])}${d.anchors[1].startsWith('→')?'':' →'} ${esc(d.anchors[1])}</div>`:'';
     const isHue=(id==='vision.hue'||id==='vision.ensemble_hue');
-    const strip=isHue?`<div class="hue-strip" style="background:linear-gradient(to right,${Array.from({length:13},(_,i)=>`oklch(72% 0.12 ${Visual.oklchHue(i/12*360)}) ${(i/12*100).toFixed(1)}%`).join(',')})"></div>`:'';
+    const strip=isHue?`<div class="hue-strip" style="background:linear-gradient(to right,${Array.from({length:13},(_,i)=>`${oklchCss(Visual.oklchHue(i/12*360))} ${(i/12*100).toFixed(1)}%`).join(',')})"></div>`:'';
     let prev;
     if(d.plane) prev=`<button class="btn btn-sm btn-ghost" onclick="DimCard.preview('${id}',[0.5,0.5])">Play sample</button>`;
     else if(d.circ) prev=[0,.25,.5,.75].map(z=>`<button class="btn btn-sm btn-ghost" onclick="DimCard.preview('${id}',${z})">Play ${z}</button>`).join('');

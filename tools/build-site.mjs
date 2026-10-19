@@ -228,6 +228,13 @@ if (process.env.APK) {
 
 fs.writeFileSync(path.join(DIST, ".nojekyll"), "");
 
+/* Colours an older engine cannot parse get an sRGB fallback, and cascade
+ * layers it cannot parse at all get flattened. This runs over the output
+ * rather than the sources because the file that needs it most is a built
+ * artifact carried in the repo — DorsalFlow's Tailwind 4 stylesheet, 94% of
+ * which sits inside `@layer`. See tools/css-fallbacks.mjs. */
+run("node", [path.join(ROOT, "tools", "css-fallbacks.mjs"), DIST], ROOT);
+
 /* The build has to be able to say it fetches nothing from anyone, because two
  * things now depend on that and neither one notices quietly when it stops
  * being true: the APK, which is a WebView with no network guarantee, and the
