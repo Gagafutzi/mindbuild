@@ -12,3 +12,11 @@ tools/apk/android/
 
 # Merged uploads from "Share your data" — personal data, never committed.
 /mindbuild-dataset/
+
+# Antiphon is local-only: voice takes and session recordings never enter the repo.
+# (The app itself caches them in IndexedDB; this only guards against stray copies.)
+apps/antiphon/voices/
+apps/antiphon/recordings/
+apps/antiphon/*.webm
+apps/antiphon/*.wav
+apps/antiphon/*.mp3

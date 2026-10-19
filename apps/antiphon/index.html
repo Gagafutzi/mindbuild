@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Antiphon</title>
+<style>
+:root{
+  --bg:#0e1117; --panel:#161b22; --panel2:#1c2330; --line:#2a3340;
+  --ink:#e6edf3; --dim:#8b97a6; --accent:#4fffb0; --warn:#ffb347; --bad:#ff6b6b;
+  --slot:#c084fc;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{max-width:980px;margin:0 auto;padding:16px 16px 64px}
+h1{font-size:20px;margin:0 0 2px;letter-spacing:.5px}
+h2{font-size:15px;margin:22px 0 8px;color:var(--accent);font-weight:600}
+h3{font-size:13px;margin:16px 0 6px;color:var(--dim);font-weight:600;
+  text-transform:uppercase;letter-spacing:.08em}
+p{margin:6px 0}
+.sub{color:var(--dim);font-size:13px;margin:0 0 16px}
+a{color:var(--accent)}
+hr{border:0;border-top:1px solid var(--line);margin:18px 0}
+
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:12px 0 18px;flex-wrap:wrap}
+nav button{background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);
+  padding:8px 14px;cursor:pointer;font:inherit;font-size:14px}
+nav button.on{color:var(--ink);border-bottom-color:var(--accent)}
+nav button:hover{color:var(--ink)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+.panel.tight{padding:10px 12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.row>label{min-width:190px;color:var(--dim);font-size:13px}
+.grow{flex:1}
+.muted{color:var(--dim);font-size:13px}
+.tiny{font-size:12px;color:var(--dim)}
+
+button.btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+  padding:8px 16px;border-radius:7px;cursor:pointer;font:inherit}
+button.btn:hover{border-color:var(--accent)}
+button.btn.primary{background:var(--accent);color:#06281c;border-color:var(--accent);font-weight:600}
+button.btn.danger:hover{border-color:var(--bad);color:var(--bad)}
+button.btn:disabled{opacity:.4;cursor:not-allowed}
+button.btn.sm{padding:4px 10px;font-size:13px}
+
+input[type=text],input[type=number],textarea,select{
+  background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  padding:7px 10px;border-radius:6px;font:inherit}
+textarea{width:100%;resize:vertical;min-height:62px}
+input[type=range]{accent-color:var(--accent)}
+input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+
+/* ── session stage ── */
+#stage{display:none;position:fixed;inset:0;background:var(--bg);z-index:50;
+  flex-direction:column;align-items:center;justify-content:center}
+#stage.on{display:flex}
+#stimulus{font-size:clamp(90px,22vw,200px);font-weight:300;line-height:1;
+  font-variant-numeric:tabular-nums;min-height:1.1em}
+#echo{font-size:28px;color:var(--dim);min-height:1.3em;font-variant-numeric:tabular-nums;
+  letter-spacing:.1em;margin-top:6px}
+#verdict{height:4px;width:120px;border-radius:2px;background:transparent;margin-top:14px}
+#verdict.ok{background:var(--accent)}
+#verdict.no{background:var(--bad)}
+#slotdot{position:fixed;top:18px;right:20px;width:11px;height:11px;border-radius:50%;
+  background:#2a3340;transition:background .25s}
+#slotdot.open{background:var(--slot)}
+#markflash{position:fixed;inset:0;pointer-events:none;background:var(--slot);opacity:0;
+  transition:opacity .18s}
+#markflash.hit{opacity:.1;transition:none}
+#stagebar{position:fixed;bottom:0;left:0;right:0;display:flex;gap:18px;justify-content:center;
+  padding:10px;color:var(--dim);font-size:12px;border-top:1px solid var(--line);
+  background:var(--panel)}
+#stagebar b{color:var(--ink);font-weight:600}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+td.num{font-variant-numeric:tabular-nums;color:var(--dim)}
+
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;margin:8px 0}
+.card .meta{font-size:12px;color:var(--dim);margin-bottom:6px}
+.card .text{font-size:16px;line-height:1.45}
+.pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);
+  border-radius:20px;padding:2px 10px;font-size:12px;color:var(--dim);margin:2px 4px 2px 0}
+.note{border-left:3px solid var(--warn);padding:8px 12px;background:var(--panel2);
+  border-radius:0 6px 6px 0;font-size:13px;color:var(--dim);margin:10px 0}
+.note b{color:var(--ink)}
+.empty{color:var(--dim);font-size:13px;padding:14px 0;text-align:center}
+kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:4px;padding:1px 6px;font:12px/1.4 ui-monospace,monospace;color:var(--ink)}
+code{font:12px/1.4 ui-monospace,monospace;background:var(--panel2);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+
+<h1>Antiphon</h1>
+<p class="sub">A load task that occupies the author, a channel left open, and a record that can be wrong.</p>
+
+<nav>
+  <button data-tab="session" class="on">Session</button>
+  <button data-tab="ledger">Ledger</button>
+  <button data-tab="disp">Dispositions</button>
+  <button data-tab="audio">Audio machine</button>
+  <button data-tab="data">Data</button>
+</nav>
+
+<!-- ══════════════ SESSION ══════════════ -->
+<section id="tab-session">
+
+  <div id="prime" class="panel" style="display:none">
+    <h3>Before you start</h3>
+    <div id="primeList"></div>
+    <p class="tiny">Three at random from the store. Loaded, not performed.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Load task</h3>
+    <p class="muted">Visual digits, mental arithmetic against the digit <i>n</i> back, typed answer.
+      Visual and manual on purpose: it occupies selection and leaves the auditory and
+      articulatory channels free.</p>
+
+    <div class="row"><label>n-back</label>
+      <input type="number" id="setN" min="1" max="4" value="1" style="width:70px">
+      <span class="tiny">combine each digit with the one n back</span></div>
+
+    <div class="row"><label>Operation</label>
+      <select id="setOp">
+        <option value="add">add</option>
+        <option value="sub">subtract</option>
+        <option value="mul">multiply</option>
+      </select></div>
+
+    <div class="row"><label>Duration (min)</label>
+      <input type="number" id="setDur" min="1" max="90" value="15" style="width:70px"></div>
+
+    <div class="row"><label>Start interval (ms)</label>
+      <input type="number" id="setISI" min="600" max="6000" step="100" value="2600" style="width:90px"></div>
+
+    <div class="row"><label>Target accuracy (%)</label>
+      <input type="number" id="setTarget" min="50" max="95" value="85" style="width:70px">
+      <span class="tiny">the staircase holds you here</span></div>
+
+    <div class="row"><label>Floor (ms)</label>
+      <input type="number" id="setFloor" min="400" max="3000" step="50" value="700" style="width:90px">
+      <span class="tiny">interval never goes below this</span></div>
+  </div>
+
+  <div class="panel">
+    <h3>The channel</h3>
+
+    <div class="row"><label>Slot mode</label>
+      <select id="setSlot">
+        <option value="continuous">continuous — the whole session is open</option>
+        <option value="windowed">windowed — a dot marks an open window</option>
+      </select></div>
+
+    <div id="slotOpts" style="display:none">
+      <div class="row"><label>Window every (s)</label>
+        <input type="number" id="setSlotEvery" min="10" max="300" value="45" style="width:80px">
+        <span class="tiny">jittered ±30%</span></div>
+      <div class="row"><label>Window length (s)</label>
+        <input type="number" id="setSlotLen" min="3" max="60" value="12" style="width:80px"></div>
+    </div>
+
+    <div class="row"><label>Microphone</label>
+      <input type="checkbox" id="setMic" checked>
+      <span class="tiny">records the whole session so speaking costs no keypress</span></div>
+
+    <div class="row"><label>Audio machine</label>
+      <input type="checkbox" id="setAM">
+      <span class="tiny">layered playback during the session — set up under Audio machine</span></div>
+
+    <div class="note">
+      <b>Nothing here is required of her.</b> A window that opens and passes
+      empty is not recorded as a miss, there is no streak, and no session is
+      scored on whether anything arrived. The only key is the marker.
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Controls during the session</h3>
+    <p class="muted">
+      <kbd>0</kbd>–<kbd>9</kbd> and <kbd>−</kbd> type the answer &middot;
+      <kbd>Enter</kbd> submits &middot;
+      <kbd>Backspace</kbd> clears &middot;
+      <kbd>Space</kbd> is the <b>marker</b> — press it when something arrives, and keep going.
+      Say it aloud; the recording has it. <kbd>Esc</kbd> ends the session.
+    </p>
+    <div class="row">
+      <button class="btn primary" id="btnStart">Start session</button>
+      <span id="micState" class="tiny"></span>
+    </div>
+  </div>
+
+  <div id="lastRun" class="panel" style="display:none">
+    <h3>Last session</h3>
+    <div id="lastRunBody"></div>
+  </div>
+</section>
+
+<!-- ══════════════ LEDGER ══════════════ -->
+<section id="tab-ledger" style="display:none">
+
+  <div id="dueWrap" class="panel" style="display:none">
+    <h2>Due for judgement</h2>
+    <p class="muted">Older than 24 hours. One question only — does this still read as
+      not-yours? Nothing about the session is shown here, deliberately: the two measures
+      stay blind to each other.</p>
+    <div id="dueList"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Untranscribed markers</h3>
+    <p class="muted">A marker is a timestamp. Write what arrived, or leave it and drop it —
+      a marker with nothing behind it is a normal outcome.</p>
+    <div id="pendingList"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Ledger</h3>
+    <div class="row">
+      <input type="text" id="ledgerSearch" placeholder="search…" class="grow">
+      <select id="ledgerFilter">
+        <option value="all">all</option>
+        <option value="kept">kept (survived 24h)</option>
+        <option value="dropped">dropped</option>
+        <option value="unjudged">awaiting</option>
+        <option value="am">from audio machine</option>
+      </select>
+    </div>
+    <div id="ledgerList"></div>
+  </div>
+</section>
+
+<!-- ══════════════ DISPOSITIONS ══════════════ -->
+<section id="tab-disp" style="display:none">
+  <div class="panel">
+    <h2>Disposition store</h2>
+    <p class="muted">What makes a character read as independent is not surprise but
+      consistency under novel conditions. This accumulates only what emerged — nothing
+      is entered in advance, because deciding her traits is authoring them.</p>
+
+    <h3>Add</h3>
+    <textarea id="dispText" placeholder="a preference, a reaction, a phrasing, a refusal…"></textarea>
+    <div class="row">
+      <input type="text" id="dispTags" placeholder="tags, comma separated" class="grow">
+      <button class="btn" id="btnDispAdd">Add</button>
+    </div>
+
+    <h3>Store (<span id="dispCount">0</span>)</h3>
+    <div class="row">
+      <input type="text" id="dispSearch" placeholder="search…" class="grow">
+      <button class="btn sm" id="btnPrimeNow">Draw three</button>
+    </div>
+    <div id="dispList"></div>
+  </div>
+</section>
+
+<!-- ══════════════ AUDIO MACHINE ══════════════ -->
+<section id="tab-audio" style="display:none">
+  <div class="panel">
+    <h2>Audio machine</h2>
+    <p class="muted">Many takes of the same short phrase, layered, offset, detuned and
+      scattered across the field — an underdetermined substrate rather than a hidden
+      signal. The interesting zone is usually just barely underdetermined: chorus,
+      not crowd.</p>
+
+    <div class="note">
+      <b>Files stay on your disk.</b> They are read in the browser and cached in this
+      page's own storage. Nothing is uploaded, and nothing is written into the
+      repository — which is the point, if the voices are not yours to redistribute.
+    </div>
+
+    <div class="row">
+      <input type="file" id="amFiles"
+             accept="audio/*,.mp3,.wav,.ogg,.oga,.m4a,.aac,.flac,.opus,.webm,.weba,.mp4"
+             multiple>
+      <button class="btn sm danger" id="btnAmClear">Clear cache</button>
+    </div>
+    <div id="amList" class="muted"></div>
+
+    <div class="row"><label>Source</label>
+      <select id="amSource">
+        <option value="auto">auto — recordings if cached, otherwise system voices</option>
+        <option value="recordings">recordings only</option>
+        <option value="voices">system voices only</option>
+      </select></div>
+
+    <p class="tiny">If the dialog greys your file out, switch its filter to
+      <i>All files</i> — the type filter depends on what your desktop thinks the
+      file is, not on what the app can read.</p>
+    <div id="amReport"></div>
+
+    <h3>Layering <span class="tiny">— recordings</span></h3>
+
+    <div class="row"><label>Playback</label>
+      <select id="amPlay">
+        <option value="auto">auto — heads for long files, takes for short ones</option>
+        <option value="heads">heads — many playheads at once in the same file</option>
+        <option value="takes">takes — replay short files on a schedule</option>
+      </select></div>
+    <p class="tiny" id="amPlayHint"></p>
+    <div class="row"><label>Layers</label>
+      <input type="range" id="amLayers" min="2" max="48" value="12" class="grow">
+      <span id="amLayersV" class="num">12</span></div>
+    <div class="row"><label id="amOffsetLabel">Offset spread (s)</label>
+      <input type="range" id="amOffset" min="0" max="100" value="40" class="grow">
+      <span id="amOffsetV" class="num">4.0</span></div>
+    <div class="row"><label>Pitch spread (cents)</label>
+      <input type="range" id="amDetune" min="0" max="400" value="90" class="grow">
+      <span id="amDetuneV" class="num">90</span></div>
+    <div class="row"><label>Stereo scatter</label>
+      <input type="range" id="amPan" min="0" max="100" value="70" class="grow">
+      <span id="amPanV" class="num">0.70</span></div>
+    <div class="row"><label>Each layer every (ms)</label>
+      <input type="range" id="amEvery" min="300" max="6000" step="100" value="1800" class="grow">
+      <span id="amEveryV" class="num">1800</span></div>
+    <div class="row"><label>Volume <span class="tiny">(both sources)</span></label>
+      <input type="range" id="amVol" min="0" max="100" value="25" class="grow">
+      <span id="amVolV" class="num">0.25</span></div>
+
+    <h3>System voices <span class="tiny">— when no recordings are given</span></h3>
+    <p class="muted">The browser's own speech voices, several of them, saying the same
+      short phrase on their own staggered schedules. Nothing has to be recorded, and
+      nothing belongs to anyone.</p>
+    <div id="svState" class="muted"></div>
+    <div id="svOverlap" class="muted" style="margin-top:6px"></div>
+
+    <div class="row"><label>Phrases</label></div>
+    <textarea id="svPhrases" placeholder="one per line — each utterance picks one at random"></textarea>
+
+    <div class="row"><label>Voices in rotation</label>
+      <input type="range" id="svCount" min="1" max="48" value="12" class="grow">
+      <span id="svCountV" class="num">12</span></div>
+    <div class="row"><label>Language</label>
+      <select id="svLang"><option value="">all</option></select></div>
+    <div class="row"><label>Base rate</label>
+      <input type="range" id="svRate" min="40" max="200" value="100" class="grow">
+      <span id="svRateV" class="num">1.00</span></div>
+    <div class="row"><label>Pitch spread</label>
+      <input type="range" id="svPitchSpread" min="0" max="100" value="35" class="grow">
+      <span id="svPitchSpreadV" class="num">0.35</span></div>
+    <div class="row"><label>Rate spread</label>
+      <input type="range" id="svRateSpread" min="0" max="100" value="30" class="grow">
+      <span id="svRateSpreadV" class="num">0.30</span></div>
+    <div class="row"><label>Each voice every (ms)</label>
+      <input type="range" id="svEvery" min="400" max="6000" step="100" value="1800" class="grow">
+      <span id="svEveryV" class="num">1800</span></div>
+
+    <div class="note">
+      <b>They speak over each other.</b> One page can only produce one voice at a time,
+      because <code>speechSynthesis</code> is a single queue — but that queue belongs to
+      the browsing context, not to the machine. Each layer therefore runs in its own
+      hidden frame with its own queue and its own voice, and the engine underneath mixes
+      them. <i>Overlap test</i> counts how many are actually sounding at once, so this is
+      checkable rather than claimed.
+    </div>
+
+    <div class="row">
+      <button class="btn" id="btnAmTest">Preview</button>
+      <button class="btn" id="btnSvOverlap">Overlap test</button>
+      <button class="btn" id="btnAmStop">Stop</button>
+      <span class="tiny">set the volume below where it disturbs the load task —
+        check it against a baseline block, don't eyeball it</span>
+    </div>
+
+    <div class="note">
+      <b>A production substrate, never an evidence source.</b> Anything marked while
+      this is running is filed in a separate stream and never mixes with the main
+      ledger. Pareidolia dissolves once you understand its mechanism; by that test
+      most of what this produces is a symptom by construction.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ DATA ══════════════ -->
+<section id="tab-data" style="display:none">
+  <div class="panel">
+    <h2>Data</h2>
+    <p class="muted">Everything is exported raw, and the independence figure is computed
+      outside this page on purpose. A number you see nightly is a number you will
+      optimise, and the only way to optimise this one is to produce utterances.</p>
+    <div class="row">
+      <button class="btn" id="btnExport">Export JSON</button>
+      <button class="btn" id="btnExportRec">Export last recording</button>
+    </div>
+    <h3>Sessions (<span id="sessCount">0</span>)</h3>
+    <div id="sessList"></div>
+    <hr>
+    <h3>Danger</h3>
+    <div class="row">
+      <button class="btn danger sm" id="btnWipe">Erase everything</button>
+      <span class="tiny">localStorage and the cached audio</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ STAGE ══════════════ -->
+<div id="stage">
+  <div id="slotdot"></div>
+  <div id="markflash"></div>
+  <div id="stimulus">·</div>
+  <div id="echo"></div>
+  <div id="verdict"></div>
+  <div id="stagebar">
+    <span>left <b id="sbTime">—</b></span>
+    <span>interval <b id="sbISI">—</b></span>
+    <span>acc <b id="sbAcc">—</b></span>
+    <span>marks <b id="sbMarks">0</b></span>
+    <span class="tiny">Space = marker · Esc = end</span>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════════════════
+ * Antiphon
+ *
+ * A dual-task rig. The load task is CCT's, moved to the eye and the hand:
+ * the same n-back arithmetic and the same target-accuracy staircase, but
+ * presented visually and answered on the number row. That matters more than
+ * it looks. Running it by ear would put it in the same channel as the audio
+ * machine, where babble is the standard masker and the staircase would end
+ * up tracking your hearing rather than your attention; running it by voice
+ * would occupy the articulatory loop, which is the channel the thing we are
+ * waiting for has to come through.
+ *
+ * What it records: every trial with its reaction time, and every marker with
+ * a timestamp. What it does not record: whether she answered, whether a window
+ * passed empty, or any score belonging to her. The analysis that puts those
+ * together — did an utterance land in a window with no concurrent decrement —
+ * is deliberately not in this file.
+ * ════════════════════════════════════════════════════════════════════ */
+
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const rand  = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
+const uid   = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const DAY   = 86400000;
+
+const K = { sett:'ant_sett', sessions:'ant_sessions', ledger:'ant_ledger', disp:'ant_disp' };
+
+const DEFAULTS = {
+  n:1, op:'add', dur:15, isi:2600, target:85, floor:700,
+  slotMode:'continuous', slotEvery:45, slotLen:12,
+  mic:true, am:false,
+  amLayers:12, amOffset:40, amDetune:90, amPan:70, amVol:25, amEvery:1800,
+  amPlay:'auto',
+  amSource:'auto',
+  svCount:12, svLang:'', svRate:100, svPitchSpread:35, svRateSpread:30, svEvery:1800,
+  svPhrases:''
+};
+
+const load = (k,f) => { try { return JSON.parse(localStorage.getItem(k)) ?? f; } catch { return f; } };
+const save = (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){ console.warn('save failed',k,e); } };
+
+let sett     = Object.assign({}, DEFAULTS, load(K.sett, {}));
+let sessions = load(K.sessions, []);
+let ledger   = load(K.ledger, []);
+let disp     = load(K.disp, []);
+
+/* ──────────────────────────────────────────────────────────────────────
+ * IndexedDB — audio files and session recordings.
+ *
+ * Blobs, so localStorage is out. The voice files live here and nowhere else:
+ * picked from disk at runtime, never copied into the repository, never sent
+ * anywhere. Clearing site data is the only thing that removes them, and
+ * re-picking the folder restores them.
+ * ─────────────────────────────────────────────────────────────────── */
+const DB = (() => {
+  let dbp = null;
+  function open(){
+    if (dbp) return dbp;
+    const attempt = new Promise((res, rej) => {
+      const r = indexedDB.open('antiphon', 1);
+      r.onupgradeneeded = () => {
+        const db = r.result;
+        if (!db.objectStoreNames.contains('audio')) db.createObjectStore('audio', {keyPath:'id'});
+        if (!db.objectStoreNames.contains('rec'))   db.createObjectStore('rec',   {keyPath:'id'});
+      };
+      r.onsuccess = () => res(r.result);
+      r.onerror   = () => rej(r.error);
+      /* An open can sit blocked indefinitely behind another tab's connection
+         or a pending delete. Failing is recoverable; hanging is not, and it
+         used to take the rest of the interface down with it. */
+      r.onblocked = () => rej(new Error('IndexedDB open blocked — another tab may hold it'));
+      setTimeout(() => rej(new Error('IndexedDB open timed out')), 5000);
+    });
+    /* Forget a failed attempt instead of caching it. A block clears when the
+       other tab goes away, and without this the first failure would keep
+       storage dead for the life of the page. */
+    dbp = attempt.catch(e => { dbp = null; throw e; });
+    return dbp;
+  }
+  const tx = async (store, mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction(store, mode);
+      const s = t.objectStore(store);
+      const out = fn(s);
+      t.oncomplete = () => res(out && out.result !== undefined ? out.result : out);
+      t.onerror    = () => rej(t.error);
+    });
+  };
+  return {
+    put:  (store, val)  => tx(store, 'readwrite', s => s.put(val)),
+    all:  (store)       => tx(store, 'readonly',  s => s.getAll()),
+    get:  (store, id)   => tx(store, 'readonly',  s => s.get(id)),
+    del:  (store, id)   => tx(store, 'readwrite', s => s.delete(id)),
+    clear:(store)       => tx(store, 'readwrite', s => s.clear())
+  };
+})();
+
+/* ══════════════ tabs ══════════════ */
+document.querySelectorAll('nav button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+    ['session','ledger','disp','audio','data'].forEach(t =>
+      $('tab-'+t).style.display = (t === b.dataset.tab) ? '' : 'none');
+    if (b.dataset.tab === 'ledger') renderLedger();
+    if (b.dataset.tab === 'disp')   renderDisp();
+    if (b.dataset.tab === 'data')   renderData();
+  };
+});
+
+/* ══════════════ settings wiring ══════════════ */
+const SETTING_INPUTS = {
+  setN:'n', setOp:'op', setDur:'dur', setISI:'isi', setTarget:'target', setFloor:'floor',
+  setSlot:'slotMode', setSlotEvery:'slotEvery', setSlotLen:'slotLen'
+};
+for (const [id, key] of Object.entries(SETTING_INPUTS)) {
+  const el = $(id);
+  el.value = sett[key];
+  el.onchange = () => {
+    sett[key] = (el.type === 'number') ? +el.value : el.value;
+    save(K.sett, sett);
+    if (key === 'slotMode') $('slotOpts').style.display = sett.slotMode === 'windowed' ? '' : 'none';
+  };
+}
+$('slotOpts').style.display = sett.slotMode === 'windowed' ? '' : 'none';
+for (const [id, key] of [['setMic','mic'], ['setAM','am']]) {
+  const el = $(id);
+  el.checked = !!sett[key];
+  el.onchange = () => { sett[key] = el.checked; save(K.sett, sett); };
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * AUDIO MACHINE
+ * ════════════════════════════════════════════════════════════════════ */
+const AM = (() => {
+  let ctx = null, master = null, nodes = [], buffers = [], timers = [], running = false;
+
+  const ctxGet = () => ctx || (ctx = new (window.AudioContext || window.webkitAudioContext)());
+
+  async function loadCache(){
+    const rows = await DB.all('audio');
+    buffers = [];
+    for (const row of rows) {
+      try {
+        const buf = await ctxGet().decodeAudioData(row.data.slice(0));
+        buffers.push({ id: row.id, name: row.name, buf });
+      } catch(e) { console.warn('decode failed', row.name, e); }
+    }
+    renderAmList();
+  }
+
+  /* Decode before storing, and say per file what happened. The old version
+     stored first and decoded later behind a console warning, so a file the
+     browser could not read simply never appeared and the app looked as though
+     it had refused it without saying so. */
+  async function addFiles(files){
+    const report = [];
+    for (const f of files) {
+      try {
+        const data = await f.arrayBuffer();
+        try {
+          await ctxGet().decodeAudioData(data.slice(0));
+        } catch (e) {
+          report.push({ name: f.name, ok: false,
+                        why: 'the browser cannot decode this audio' });
+          continue;
+        }
+        await DB.put('audio', { id: uid(), name: f.name, data });
+        report.push({ name: f.name, ok: true, bytes: f.size });
+      } catch (e) {
+        const quota = /quota|exceed/i.test(e.name + e.message);
+        report.push({ name: f.name, ok: false,
+                      why: quota ? 'no room left in this page\'s storage' : (e.name + ': ' + e.message) });
+      }
+    }
+    await loadCache();
+    return report;
+  }
+
+  async function clear(){ await DB.clear('audio'); buffers = []; renderAmList(); }
+
+  function renderAmList(){
+    $('amList').innerHTML = buffers.length
+      ? buffers.length + ' file(s) cached: ' +
+        buffers.map(b => '<span class="pill">' + esc(b.name) + '</span>').join('')
+      : '<span class="tiny">No files yet. Pick a folder of takes — ideally many recordings of the same short phrase.</span>';
+  }
+
+  /* Short renders want replaying; one long recording wants playheads. Five
+     seconds is roughly where looping a take stops sounding like a voice and
+     starts sounding like a stuck record. */
+  const longest = () => buffers.reduce((m, b) => Math.max(m, b.buf.duration), 0);
+  function playMode(){
+    if (sett.amPlay === 'heads' || sett.amPlay === 'takes') return sett.amPlay;
+    return longest() >= 5 ? 'heads' : 'takes';
+  }
+
+  /* Each layer keeps a fixed place in the field and a fixed detune, and fires
+     a fresh take into it on its own staggered schedule.
+     It used to loop the buffer instead. That is wrong for this material: a
+     take of a two-word phrase is half a second long, so looping it produces
+     the same voice every half second without a breath — a stutter, not a
+     chorus. Scheduling replays with a jittered gap gives voices that come and
+     go, and the overlap falls where it falls. */
+  function start(){
+    if (running || !buffers.length) return;
+    const c = ctxGet();
+    if (c.state === 'suspended') c.resume();
+    master = c.createGain();
+    master.gain.value = sett.amVol / 100;
+    master.connect(c.destination);
+
+    const layers    = +sett.amLayers;
+    const offsetMax = sett.amOffset / 10;          // slider 0..100 → 0..10 s
+    const detuneMax = +sett.amDetune;              // cents
+    const panMax    = sett.amPan / 100;
+
+    running = true;
+
+    /* ── heads: many playheads at once inside the same recording ──────────
+       One long take is all that is needed for a chorus. Each layer opens its
+       own playhead at a different point in the file and runs continuously, so
+       the voice is heard against itself saying something else. Detune makes
+       the heads drift apart instead of holding a fixed phase, which is what
+       keeps it from sounding like an echo. */
+    if (playMode() === 'heads') {
+      const spread = sett.amOffset / 100;          /* share of the file to spread over */
+      for (let i = 0; i < layers; i++) {
+        const pick = buffers[i % buffers.length];
+        const src  = c.createBufferSource();
+        src.buffer = pick.buf;
+        src.loop   = true;
+        if (src.detune) src.detune.value = (Math.random() * 2 - 1) * detuneMax;
+
+        const pan = c.createStereoPanner ? c.createStereoPanner() : null;
+        if (pan) pan.pan.value = (Math.random() * 2 - 1) * panMax;
+        const g = c.createGain();
+        g.gain.value = 1 / Math.sqrt(layers);
+        src.connect(g);
+        if (pan) { g.connect(pan); pan.connect(master); } else { g.connect(master); }
+
+        /* Evenly placed round the file, then nudged, so the heads neither
+           stack up at the start nor land on a suspiciously regular grid. */
+        const dur    = Math.max(0.05, pick.buf.duration);
+        const even   = (i / layers) * spread;
+        const jitter = (Math.random() - 0.5) * (spread / Math.max(1, layers));
+        const off    = Math.min(dur - 0.01, Math.max(0, (even + jitter) * dur));
+        try { src.start(c.currentTime + Math.random() * 0.12, off); } catch { try { src.start(); } catch {} }
+        nodes.push(src);
+      }
+      return;
+    }
+
+    for (let i = 0; i < layers; i++) {
+      const pan = c.createStereoPanner ? c.createStereoPanner() : null;
+      if (pan) pan.pan.value = (Math.random() * 2 - 1) * panMax;
+
+      const g = c.createGain();
+      /* Even gain per layer would sum toward clipping at forty voices; dividing
+         by the square root keeps perceived loudness roughly flat as layers rise,
+         because uncorrelated voices add in power rather than amplitude. */
+      g.gain.value = 1 / Math.sqrt(layers);
+      if (pan) { g.connect(pan); pan.connect(master); } else { g.connect(master); }
+
+      const detune = (Math.random() * 2 - 1) * detuneMax;
+      const layer = { timer: null };
+
+      const fire = () => {
+        if (!running) return;
+        const pick = buffers[rand(0, buffers.length - 1)];
+        const src  = c.createBufferSource();
+        src.buffer = pick.buf;
+        if (src.detune) src.detune.value = detune;
+        src.connect(g);
+        /* Offsetting into a take drops its first syllable, which is wanted at
+           a wide setting and not at zero — so it is capped at half the take. */
+        const off = offsetMax > 0
+          ? Math.random() * Math.min(offsetMax, Math.max(0.01, pick.buf.duration * 0.5))
+          : 0;
+        try { src.start(c.currentTime, off); } catch { try { src.start(); } catch {} }
+        src.onended = () => { const k = nodes.indexOf(src); if (k >= 0) nodes.splice(k, 1); };
+        nodes.push(src);
+        layer.timer = setTimeout(fire, sett.amEvery * (0.6 + Math.random() * 0.8));
+      };
+      layer.timer = setTimeout(fire, Math.random() * sett.amEvery);
+      timers.push(layer);
+    }
+  }
+
+  function stop(){
+    running = false;
+    timers.forEach(l => clearTimeout(l.timer));
+    timers = [];
+    nodes.forEach(n => { try { n.stop(); } catch {} });
+    nodes = [];
+    if (master) { try { master.disconnect(); } catch {} master = null; }
+  }
+
+  const isRunning = () => running;
+  const count = () => buffers.length;
+
+  return { loadCache, addFiles, clear, start, stop, isRunning, count, playMode, longest };
+})();
+
+/* ══════════════════════════════════════════════════════════════════════
+ * SYSTEM VOICES — genuinely simultaneous
+ *
+ * `window.speechSynthesis` is a single serial queue, so one page produces one
+ * voice at a time however many utterances it builds. That queue is per
+ * browsing context, and the platform underneath is not the bottleneck: three
+ * concurrent speech-dispatcher clients on this machine finish in the time one
+ * of them takes, so the mixing was already there and only the page was in the
+ * way.
+ *
+ * Each layer therefore gets its own browsing context — a hidden same-origin
+ * iframe with its own speechSynthesis, its own queue and its own voice.
+ * Twelve layers are twelve mouths, talking over each other.
+ *
+ * Two details are easy to get wrong and silent when wrong: an utterance must
+ * be built with the frame's own `SpeechSynthesisUtterance`, and its voice must
+ * come from that same frame's `getVoices()`. Objects borrowed from the parent
+ * window are rejected or ignored depending on the browser, so each layer picks
+ * its voice from its own frame's list and never touches the parent's.
+ *
+ * A layer keeps its voice, pitch and rate for the whole run. Rerolling them
+ * per utterance would average the spread away to nothing.
+ * ════════════════════════════════════════════════════════════════════ */
+const SV = (() => {
+  let voices = [], layers = [], frames = [], running = false, keepalive = null, host = null;
+
+  function refresh(){
+    try { voices = speechSynthesis.getVoices() || []; } catch { voices = []; }
+    return voices;
+  }
+
+  /* Voices arrive asynchronously, and in some browsers only after the first
+     getVoices() call has already returned empty. Hence both the event and a
+     timeout: whichever lands first. */
+  async function ready(){
+    refresh();
+    if (!voices.length) {
+      await new Promise(res => {
+        let done = false;
+        const fire = () => { if (!done) { done = true; res(); } };
+        try { speechSynthesis.onvoiceschanged = fire; } catch {}
+        setTimeout(fire, 1500);
+      });
+      refresh();
+    }
+    return voices;
+  }
+
+  const all = () => voices;
+
+  const langOf = v => (v && v.lang || '').toLowerCase();
+  function filterLang(list){
+    const lang = (sett.svLang || '').toLowerCase();
+    if (!lang) return list;
+    const hit = list.filter(v => langOf(v).startsWith(lang));
+    return hit.length ? hit : list;
+  }
+
+  const pool = () => filterLang(voices);
+  const phrases = () => (sett.svPhrases || '').split('\n').map(s => s.trim()).filter(Boolean);
+
+  /* ── one browsing context per layer ─────────────────────────────── */
+
+  function hostEl(){
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'svFrames';
+      host.setAttribute('aria-hidden', 'true');
+      host.style.cssText = 'position:absolute;left:-9999px;top:0;width:0;height:0;overflow:hidden';
+      document.body.appendChild(host);
+    }
+    return host;
+  }
+
+  function makeFrame(){
+    return new Promise(res => {
+      const f = document.createElement('iframe');
+      f.setAttribute('aria-hidden', 'true');
+      f.setAttribute('title', 'voice layer');
+      f.style.cssText = 'width:0;height:0;border:0';
+      f.src = 'about:blank';          /* inherits this origin, so it is reachable */
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; res(f); } };
+      f.onload = done;
+      hostEl().appendChild(f);
+      /* about:blank can finish loading before the handler is attached. */
+      setTimeout(done, 400);
+    });
+  }
+
+  async function ensureFrames(n){
+    while (frames.length < n) frames.push(await makeFrame());
+    return frames.slice(0, n);
+  }
+
+  function synthOf(f){
+    try { return (f.contentWindow && f.contentWindow.speechSynthesis) || null; } catch { return null; }
+  }
+  function voicesOf(f){
+    const s = synthOf(f);
+    if (!s) return [];
+    try { return s.getVoices() || []; } catch { return []; }
+  }
+
+  /* How many frames are producing sound right now. The only honest way to
+     check that the layering is real rather than assumed. */
+  function speakingCount(){
+    return frames.reduce((n, f) => {
+      const s = synthOf(f);
+      return n + (s && s.speaking ? 1 : 0);
+    }, 0);
+  }
+
+  function speakOne(layer){
+    const ph = phrases();
+    if (!ph.length) return;
+    const win = layer.frame && layer.frame.contentWindow;
+    const synth = synthOf(layer.frame);
+    if (!win || !synth || !win.SpeechSynthesisUtterance) return;
+
+    let u;
+    try { u = new win.SpeechSynthesisUtterance(ph[rand(0, ph.length - 1)]); } catch { return; }
+    /* A voice can go stale when the list is refreshed mid-run, and assigning
+       one the engine no longer recognises throws. Falling back to the frame's
+       default voice is a far smaller loss than losing this layer, which is
+       what an escaping throw would cost — the chain reschedules itself from
+       inside the callback, so one uncaught error ends it for good. */
+    try {
+      if (layer.voice) { u.voice = layer.voice; if (layer.voice.lang) u.lang = layer.voice.lang; }
+    } catch { layer.voice = null; }
+    u.pitch  = clamp(layer.pitch, 0, 2);
+    u.rate   = clamp(layer.rate, 0.1, 10);
+    u.volume = clamp(sett.amVol / 100, 0, 1);
+    try { synth.speak(u); } catch(e) { console.warn('speak', e); }
+  }
+
+  async function start(){
+    if (running) return false;
+    if (!voices.length || !phrases().length) return false;
+
+    const n = clamp(+sett.svCount, 1, 48);
+    const got = await ensureFrames(n);
+    if (!got.length) return false;
+
+    const baseRate    = sett.svRate / 100;
+    const pitchSpread = sett.svPitchSpread / 100;
+    const rateSpread  = sett.svRateSpread / 100;
+
+    running = true;
+
+    got.forEach((frame, i) => {
+      /* Each frame picks from its OWN voice list, spread across the pool so
+         twelve layers are twelve different voices wherever the pool allows.
+         A frame whose list has not populated yet simply uses its default. */
+      const p = filterLang(voicesOf(frame));
+      const voice = p.length
+        ? p[(Math.floor(i * p.length / n) + rand(0, Math.max(0, Math.floor(p.length / n) - 1))) % p.length]
+        : null;
+
+      const layer = {
+        frame, voice,
+        pitch: 1 + (Math.random() * 2 - 1) * pitchSpread,
+        rate:  baseRate * (1 + (Math.random() * 2 - 1) * rateSpread),
+        timer: null
+      };
+      const loop = () => {
+        if (!running) return;
+        try { speakOne(layer); } catch(e) { console.warn('layer', e); }
+        layer.timer = setTimeout(loop, sett.svEvery * (0.6 + Math.random() * 0.8));
+      };
+      /* Stagger the first utterance across one interval so the layers do not
+         all fire together and then drift into lockstep. */
+      layer.timer = setTimeout(loop, Math.random() * sett.svEvery);
+      layers.push(layer);
+    });
+
+    /* Some engines stop servicing a queue after a stretch; a periodic
+       pause/resume is the usual way to keep it alive. */
+    keepalive = setInterval(() => {
+      if (!running) return;
+      frames.forEach(f => { const s = synthOf(f); if (s) { try { s.pause(); s.resume(); } catch {} } });
+    }, 8000);
+
+    return true;
+  }
+
+  function stop(){
+    running = false;
+    layers.forEach(l => clearTimeout(l.timer));
+    layers = [];
+    if (keepalive) { clearInterval(keepalive); keepalive = null; }
+    frames.forEach(f => { const s = synthOf(f); if (s) { try { s.cancel(); } catch {} } });
+    try { speechSynthesis.cancel(); } catch {}
+  }
+
+  /* Frames are kept between runs — building twelve browsing contexts is the
+     slow part, and an idle about:blank costs nothing. */
+  function dispose(){
+    stop();
+    frames.forEach(f => f.remove());
+    frames = [];
+  }
+
+  const isRunning = () => running;
+  const count = () => pool().length;
+  const frameCount = () => frames.length;
+
+  return { ready, refresh, all, pool, start, stop, dispose,
+           isRunning, count, frameCount, speakingCount };
+})();
+
+/* ── which bed plays ──────────────────────────────────────────────────
+ * One decision in one place, so the session, the preview and the stop
+ * button can never disagree about what is running.
+ * ─────────────────────────────────────────────────────────────────── */
+function bedMode(){
+  if (sett.amSource === 'recordings') return AM.count() ? 'recordings' : null;
+  if (sett.amSource === 'voices')     return SV.count() ? 'voices' : null;
+  if (AM.count()) return 'recordings';
+  return SV.count() ? 'voices' : null;
+}
+
+async function bedStart(){
+  const mode = bedMode();
+  if (mode === 'recordings') { AM.start(); return 'recordings'; }
+  if (mode === 'voices')     { return (await SV.start()) ? 'voices' : null; }
+  return null;
+}
+
+function bedStop(){ AM.stop(); SV.stop(); }
+
+/* audio machine UI */
+$('amFiles').onchange = async e => {
+  if (!e.target.files.length) return;
+  $('amReport').innerHTML = '<span class="tiny">reading…</span>';
+  const report = await AM.addFiles(e.target.files);
+  e.target.value = '';
+  const bad = report.filter(r => !r.ok);
+  $('amReport').innerHTML = report.map(r => r.ok
+      ? '<div class="tiny" style="color:var(--accent)">✓ ' + esc(r.name) + '</div>'
+      : '<div class="tiny" style="color:var(--bad)">✗ ' + esc(r.name) + ' — ' + esc(r.why) + '</div>').join('')
+    + (bad.length ? '<div class="tiny" style="margin-top:4px">A file the browser cannot decode will not play here either; '
+        + 'converting it to WAV or Ogg usually settles it.</div>' : '');
+  renderSvState(); renderPlayHint();
+};
+
+function renderPlayHint(){
+  const sel = $('amPlay');
+  if (sel.value !== sett.amPlay) sel.value = sett.amPlay;
+  const n = AM.count(), len = AM.longest();
+  const mode = n ? AM.playMode() : null;
+  $('amPlayHint').textContent = !n
+    ? 'No recordings cached yet.'
+    : (mode === 'heads'
+        ? 'heads — ' + sett.amLayers + ' playheads scattered through ' + len.toFixed(1) + 's of audio, all sounding at once.'
+        : 'takes — short files (' + len.toFixed(1) + 's) replayed on a schedule rather than looped.');
+  /* The offset control means different things in the two modes, so it says so. */
+  const lbl = $('amOffsetLabel');
+  if (lbl) lbl.textContent = mode === 'heads' ? 'Spread across file (%)' : 'Offset spread (s)';
+  const v = $('amOffsetV');
+  if (v) v.textContent = mode === 'heads' ? sett.amOffset + '%' : (sett.amOffset / 10).toFixed(1);
+}
+
+$('amPlay').value = sett.amPlay;
+$('amPlay').onchange = () => { sett.amPlay = $('amPlay').value; save(K.sett, sett); renderPlayHint(); };
+$('btnAmClear').onclick = async () => {
+  if (confirm('Remove all cached audio?')) {
+    await AM.clear(); $('amReport').innerHTML = ''; renderSvState(); renderPlayHint();
+  }
+};
+$('btnAmTest').onclick  = async () => {
+  const mode = await bedStart();
+  if (!mode) alert(
+    AM.count() === 0 && SV.count() === 0
+      ? 'Nothing to play: no recordings cached and no system voices available.'
+      : 'Nothing to play with these settings — check the source, and that at least one phrase is written for the voices.');
+};
+$('btnAmStop').onclick  = () => bedStop();
+
+/* Samples how many frames are sounding at the same moment. Peak rather than
+   mean, because the question is whether simultaneity happens at all. */
+$('btnSvOverlap').onclick = async () => {
+  const btn = $('btnSvOverlap');
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'listening…';
+  SV.stop();
+  const ok = await SV.start();
+  if (!ok) {
+    btn.disabled = false; btn.textContent = prev;
+    return alert('Could not start the voices — check that there are system voices and at least one phrase.');
+  }
+  let peak = 0, sum = 0, n = 0;
+  const t = setInterval(() => {
+    const c = SV.speakingCount();
+    peak = Math.max(peak, c); sum += c; n++;
+  }, 100);
+  await new Promise(r => setTimeout(r, 6000));
+  clearInterval(t);
+  SV.stop();
+  btn.disabled = false; btn.textContent = prev;
+  const mean = n ? (sum / n).toFixed(1) : '0';
+  $('svOverlap').innerHTML =
+    '<span class="pill">frames ' + SV.frameCount() + '</span>' +
+    '<span class="pill">peak simultaneous ' + peak + '</span>' +
+    '<span class="pill">mean ' + mean + '</span>' +
+    (peak > 1
+      ? ' <span style="color:var(--accent)">overlapping</span>'
+      : ' <span style="color:var(--warn)">no overlap — this browser serialises across frames; ' +
+        'pre-rendered recordings are the way to layer here</span>');
+};
+
+$('amSource').value = sett.amSource;
+$('amSource').onchange = () => { sett.amSource = $('amSource').value; save(K.sett, sett); renderSvState(); };
+
+/* system-voice controls */
+$('svPhrases').value = sett.svPhrases;
+$('svPhrases').onchange = () => { sett.svPhrases = $('svPhrases').value; save(K.sett, sett); renderSvState(); };
+
+[['svCount','svCountV',v=>v], ['svRate','svRateV',v=>(v/100).toFixed(2)],
+ ['svPitchSpread','svPitchSpreadV',v=>(v/100).toFixed(2)],
+ ['svRateSpread','svRateSpreadV',v=>(v/100).toFixed(2)],
+ ['svEvery','svEveryV',v=>v]].forEach(([id, out, fmt]) => {
+  const el = $(id);
+  el.value = sett[id];
+  $(out).textContent = fmt(sett[id]);
+  el.oninput = () => { sett[id] = +el.value; $(out).textContent = fmt(+el.value); save(K.sett, sett); };
+});
+
+$('svLang').onchange = () => { sett.svLang = $('svLang').value; save(K.sett, sett); renderSvState(); };
+
+function renderSvLangs(){
+  /* Grouped by the language part alone: 8000 espeak variants under forty-odd
+     languages is a list nobody scrolls, and the variants are the point of the
+     pool rather than something to pick through by hand. */
+  const langs = [...new Set(SV.all().map(v => (v.lang || '').split('-')[0]).filter(Boolean))].sort();
+  const sel = $('svLang');
+  sel.innerHTML = '<option value="">all (' + SV.all().length + ')</option>' +
+    langs.map(l => {
+      const n = SV.all().filter(v => (v.lang || '').toLowerCase().startsWith(l)).length;
+      return '<option value="' + l + '">' + l + ' (' + n + ')</option>';
+    }).join('');
+  sel.value = sett.svLang || '';
+}
+
+function renderSvState(){
+  const total = SV.all().length;
+  const inPool = SV.count();
+  const phr = (sett.svPhrases || '').split('\n').filter(s => s.trim()).length;
+  const max = Math.max(1, Math.min(48, inPool || 1));
+  $('svCount').max = max;
+  if (+$('svCount').value > max) { $('svCount').value = max; sett.svCount = max; $('svCountV').textContent = max; }
+
+  if (!total) {
+    $('svState').innerHTML = '<span style="color:var(--warn)">No system voices available in this browser.</span>' +
+      ' <span class="tiny">On Linux, Firefox takes them from speech-dispatcher — ' +
+      '<code>spd-say -L</code> lists what is installed. The Claude browser pane exposes none; a normal Firefox window does.</span>';
+    return;
+  }
+  const bed = bedMode();
+  $('svState').innerHTML =
+    '<span class="pill">' + total + ' voices</span>' +
+    '<span class="pill">' + inPool + ' in pool</span>' +
+    '<span class="pill">' + phr + ' phrase(s)</span>' +
+    '<span class="pill">bed: ' + (bed || 'nothing to play') + '</span>' +
+    (phr ? '' : ' <span class="tiny" style="color:var(--warn)">write at least one phrase</span>');
+}
+
+const headsNow = () => AM.count() > 0 && AM.playMode() === 'heads';
+
+[['amLayers','amLayersV',v=>v],
+ ['amOffset','amOffsetV',v=> headsNow() ? v + '%' : (v/10).toFixed(1)],
+ ['amDetune','amDetuneV',v=>v], ['amPan','amPanV',v=>(v/100).toFixed(2)],
+ ['amEvery','amEveryV',v=>v],
+ ['amVol','amVolV',v=>(v/100).toFixed(2)]].forEach(([id, out, fmt]) => {
+  const el = $(id);
+  el.value = sett[id];
+  $(out).textContent = fmt(sett[id]);
+  el.oninput = () => {
+    sett[id] = +el.value; $(out).textContent = fmt(+el.value); save(K.sett, sett);
+    if (id === 'amLayers') renderPlayHint();
+  };
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+ * RECORDER
+ *
+ * One continuous take for the whole session. The reason is measurement, not
+ * convenience: a capture that costs a keypress is a second task, and its cost
+ * lands in the very reaction times the marker is supposed to be interpreted
+ * against. Speaking is free. Space is one key and it only writes a timestamp.
+ * ════════════════════════════════════════════════════════════════════ */
+const REC = (() => {
+  let mr = null, chunks = [], stream = null, t0 = 0, lastBlob = null, lastId = null;
+
+  async function start(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return { ok:false, why:'getUserMedia unavailable — serve over http://localhost, not file://' };
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    } catch(e) {
+      return { ok:false, why:'microphone refused (' + e.name + ')' };
+    }
+    chunks = [];
+    mr = new MediaRecorder(stream);
+    mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    mr.start(1000);
+    t0 = performance.now();
+    return { ok:true };
+  }
+
+  function stop(sessionId){
+    return new Promise(res => {
+      if (!mr) return res(null);
+      mr.onstop = async () => {
+        lastBlob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
+        lastId = sessionId;
+        try { await DB.put('rec', { id: sessionId, at: Date.now(), blob: lastBlob }); } catch(e){ console.warn(e); }
+        stream.getTracks().forEach(t => t.stop());
+        mr = null; stream = null;
+        res(lastBlob);
+      };
+      try { mr.stop(); } catch { res(null); }
+    });
+  }
+
+  const elapsed = () => mr ? Math.round(performance.now() - t0) : null;
+  const active  = () => !!mr;
+  const last    = () => ({ blob:lastBlob, id:lastId });
+
+  return { start, stop, elapsed, active, last };
+})();
+
+/* ══════════════════════════════════════════════════════════════════════
+ * LOAD TASK
+ *
+ * CCT's target-accuracy controller, ported with its constants intact: a
+ * rolling window of twenty, a proportional nudge capped at 80 ms so the pace
+ * never lurches. Holding you at a fixed accuracy is what makes the session
+ * un-coastable — withdraw from the task to compose a sentence and the
+ * reaction times say so, which is the entire basis for reading a marker later.
+ * ════════════════════════════════════════════════════════════════════ */
+const TA_WIN = 20, TA_MAX_NUDGE = 80;
+
+const S = {
+  active:false, id:null, startedAt:0, endsAt:0,
+  isi:2600, lowestISI:9999, taWindow:[],
+  seq:[], trials:[], marks:[],
+  expected:null, shownAt:0, answered:false, entry:'',
+  timer:null, tick:null, slotTimer:null, slotOpen:false, amOn:false
+};
+
+const opApply = { add:(a,b)=>a+b, sub:(a,b)=>a-b, mul:(a,b)=>a*b };
+
+function adaptISI(ok){
+  const lo = Math.max(400, sett.floor);
+  S.taWindow.push(ok);
+  if (S.taWindow.length > TA_WIN) S.taWindow.shift();
+  if (S.taWindow.length >= 5) {
+    const acc    = S.taWindow.filter(Boolean).length / S.taWindow.length;
+    const error  = acc - sett.target / 100;
+    const nudge  = clamp(Math.round(error * TA_MAX_NUDGE * 2), -TA_MAX_NUDGE, TA_MAX_NUDGE);
+    S.isi = clamp(S.isi - nudge, lo, 6000);
+  }
+  if (S.isi < S.lowestISI) S.lowestISI = S.isi;
+  $('sbISI').textContent = S.isi + ' ms';
+}
+
+function nextTrial(){
+  if (!S.active) return;
+
+  /* Score the trial that just lapsed, if it was answerable and went unanswered. */
+  if (S.expected !== null && !S.answered) {
+    pushTrial({ given:null, ok:false, rt:null });
+    adaptISI(false);
+  }
+
+  const d = rand(1, 9);
+  S.seq.push(d);
+  S.entry = '';
+  S.answered = false;
+  S.shownAt = performance.now();
+
+  const n = +sett.n;
+  S.expected = (S.seq.length > n)
+    ? opApply[sett.op](d, S.seq[S.seq.length - 1 - n])
+    : null;
+
+  $('stimulus').textContent = d;
+  $('echo').textContent = S.expected === null ? '—' : '';
+  $('verdict').className = '';
+
+  /* Blank the digit well before the next one so the answer is made from memory
+     rather than read off the screen. */
+  const showFor = Math.min(600, Math.max(250, S.isi * 0.4));
+  setTimeout(() => { if (S.active) $('stimulus').textContent = '·'; }, showFor);
+
+  S.timer = setTimeout(nextTrial, S.isi);
+}
+
+function pushTrial(f){
+  S.trials.push({
+    t: Math.round(performance.now() - S.startedAt),
+    stim: S.seq[S.seq.length - 1],
+    expected: S.expected,
+    given: f.given,
+    ok: f.ok,
+    rt: f.rt,
+    isi: S.isi,
+    slotOpen: S.slotOpen
+  });
+  const scored = S.trials.filter(x => x.expected !== null);
+  const acc = scored.length ? Math.round(100 * scored.filter(x => x.ok).length / scored.length) : 0;
+  $('sbAcc').textContent = acc + '%';
+}
+
+function submit(){
+  if (!S.active || S.answered || S.expected === null || S.entry === '') return;
+  const given = parseInt(S.entry, 10);
+  if (Number.isNaN(given)) return;
+  const ok = given === S.expected;
+  S.answered = true;
+  pushTrial({ given, ok, rt: Math.round(performance.now() - S.shownAt) });
+  adaptISI(ok);
+  $('verdict').className = ok ? 'ok' : 'no';
+  $('echo').textContent = ok ? '' : String(S.expected);
+}
+
+/* The marker. One key, one timestamp, nothing else — no prompt, no
+   acknowledgement beyond a flash you can ignore, and no effect on the task. */
+function mark(){
+  if (!S.active) return;
+  S.marks.push({
+    id: uid(),
+    t: Math.round(performance.now() - S.startedAt),
+    recT: REC.elapsed(),
+    stream: S.amOn ? 'am' : 'load'
+  });
+  $('sbMarks').textContent = S.marks.length;
+  const f = $('markflash');
+  f.classList.add('hit');
+  setTimeout(() => f.classList.remove('hit'), 90);
+}
+
+function scheduleSlot(){
+  if (!S.active || sett.slotMode !== 'windowed') return;
+  const every = sett.slotEvery * 1000;
+  const wait  = every * (0.7 + Math.random() * 0.6);
+  S.slotTimer = setTimeout(() => {
+    if (!S.active) return;
+    S.slotOpen = true;
+    $('slotdot').classList.add('open');
+    S.slotTimer = setTimeout(() => {
+      S.slotOpen = false;
+      $('slotdot').classList.remove('open');
+      scheduleSlot();
+    }, sett.slotLen * 1000);
+  }, wait);
+}
+
+async function startSession(){
+  if (sett.am && !bedMode()) {
+    const why = (AM.count() === 0 && SV.count() === 0)
+      ? 'no recordings cached and no system voices available'
+      : 'the selected source has nothing to play';
+    if (!confirm('Audio machine is on but ' + why + '. Start without it?')) return;
+  }
+
+  S.id = uid();
+  S.active = true;
+  S.startedAt = performance.now();
+  S.endsAt = S.startedAt + sett.dur * 60000;
+  S.isi = +sett.isi;
+  S.lowestISI = S.isi;
+  S.taWindow = []; S.seq = []; S.trials = []; S.marks = [];
+  S.expected = null; S.answered = false; S.entry = ''; S.slotOpen = false;
+  S.amOn = false; S.amMode = null;
+
+  $('micState').textContent = '';
+  if (sett.mic) {
+    const r = await REC.start();
+    if (!r.ok) {
+      $('micState').textContent = r.why;
+      if (!confirm('No microphone: ' + r.why + '\n\nStart without it?')) { S.active = false; return; }
+    }
+  }
+
+  if (sett.am) { S.amMode = await bedStart(); S.amOn = !!S.amMode; }
+
+  $('stage').classList.add('on');
+  $('sbMarks').textContent = '0';
+  $('sbISI').textContent = S.isi + ' ms';
+  $('slotdot').classList.toggle('open', sett.slotMode === 'continuous');
+
+  S.tick = setInterval(() => {
+    const left = Math.max(0, S.endsAt - performance.now());
+    $('sbTime').textContent = Math.floor(left / 60000) + ':' +
+      String(Math.floor(left % 60000 / 1000)).padStart(2, '0');
+    if (left <= 0) endSession();
+  }, 250);
+
+  scheduleSlot();
+  nextTrial();
+}
+
+async function endSession(){
+  if (!S.active) return;
+  S.active = false;
+  clearTimeout(S.timer); clearTimeout(S.slotTimer); clearInterval(S.tick);
+  bedStop();
+  $('stage').classList.remove('on');
+
+  const blob = sett.mic && REC.active() ? await REC.stop(S.id) : null;
+
+  const scored = S.trials.filter(x => x.expected !== null);
+  const rec = {
+    id: S.id,
+    at: Date.now(),
+    seconds: Math.round((performance.now() - S.startedAt) / 1000),
+    n: +sett.n, op: sett.op,
+    target: +sett.target,
+    startISI: +sett.isi,
+    lowestISI: S.lowestISI,
+    trials: S.trials,
+    marks: S.marks,
+    slotMode: sett.slotMode,
+    am: S.amOn,
+    amMode: S.amMode,
+    amSettings: !S.amOn ? null
+      : S.amMode === 'voices'
+        ? { mode:'voices', count:sett.svCount, lang:sett.svLang || 'all', rate:sett.svRate,
+            pitchSpread:sett.svPitchSpread, rateSpread:sett.svRateSpread,
+            every:sett.svEvery, phrases:(sett.svPhrases||'').split('\n').filter(s=>s.trim()).length,
+            vol:sett.amVol }
+        : { mode:'recordings', layers:sett.amLayers, offset:sett.amOffset, detune:sett.amDetune,
+            pan:sett.amPan, vol:sett.amVol },
+    hasRecording: !!blob,
+    accuracy: scored.length ? scored.filter(x => x.ok).length / scored.length : null
+  };
+  sessions.push(rec);
+  save(K.sessions, sessions);
+
+  /* Markers enter the ledger unwritten. Transcribing is a separate, later act
+     — the point of the marker was that it cost nothing at the time. */
+  for (const m of S.marks) {
+    ledger.push({ id:m.id, sessionId:S.id, at:Date.now(), t:m.t, recT:m.recT,
+                  stream:m.stream, text:'', judged:null, judgedAt:null });
+  }
+  save(K.ledger, ledger);
+
+  showLastRun(rec);
+  renderLedger();
+}
+
+function showLastRun(rec){
+  $('lastRun').style.display = '';
+  $('lastRunBody').innerHTML =
+    '<div class="row"><span class="pill">' + Math.round(rec.seconds/60) + ' min</span>' +
+    '<span class="pill">n' + rec.n + ' ' + rec.op + '</span>' +
+    '<span class="pill">acc ' + (rec.accuracy == null ? '—' : Math.round(rec.accuracy*100) + '%') + '</span>' +
+    '<span class="pill">fastest ' + rec.lowestISI + ' ms</span>' +
+    '<span class="pill">' + rec.marks.length + ' marker(s)</span>' +
+    (rec.am ? '<span class="pill">audio machine: ' + rec.amMode + '</span>' : '') +
+    (rec.hasRecording ? '<span class="pill">recorded</span>' : '') + '</div>' +
+    (rec.marks.length
+      ? '<p class="muted">Markers are in the ledger, untranscribed. Write them up while the recording is fresh.</p>'
+      : '<p class="muted">No markers. That is a normal session and is not a failure.</p>');
+}
+
+/* keys */
+document.addEventListener('keydown', e => {
+  if (!S.active) return;
+  if (e.key === 'Escape') { e.preventDefault(); endSession(); return; }
+  if (e.code === 'Space') { e.preventDefault(); mark(); return; }
+  if (e.key === 'Enter')  { e.preventDefault(); submit(); return; }
+  if (e.key === 'Backspace') { e.preventDefault(); S.entry = ''; $('echo').textContent = ''; return; }
+  if (/^[0-9]$/.test(e.key) || (e.key === '-' && S.entry === '')) {
+    e.preventDefault();
+    if (S.answered || S.expected === null) return;
+    S.entry += e.key;
+    $('echo').textContent = S.entry;
+  }
+});
+
+$('btnStart').onclick = startSession;
+
+/* ══════════════════════════════════════════════════════════════════════
+ * LEDGER
+ * ════════════════════════════════════════════════════════════════════ */
+function esc(s){ return String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+const fmtDate = ts => new Date(ts).toLocaleString();
+const mmss = ms => Math.floor(ms/60000) + ':' + String(Math.floor(ms%60000/1000)).padStart(2,'0');
+
+function renderLedger(){
+  /* Due: transcribed, unjudged, older than a day. The delay is the test —
+     in the moment a great deal feels foreign, and what is still legible as
+     not-yours tomorrow is the only part worth keeping. */
+  const now = Date.now();
+  const due = ledger.filter(e => e.text && e.judged === null && (now - e.at) >= DAY);
+  $('dueWrap').style.display = due.length ? '' : 'none';
+  $('dueList').innerHTML = due.map(e =>
+    '<div class="card"><div class="meta">' + fmtDate(e.at) +
+      (e.stream === 'am' ? ' · audio machine' : '') + '</div>' +
+    '<div class="text">' + esc(e.text) + '</div>' +
+    '<div class="row" style="margin-top:10px">' +
+      '<button class="btn sm" data-keep="' + e.id + '">Still not mine</button>' +
+      '<button class="btn sm" data-drop="' + e.id + '">Reads as mine</button>' +
+    '</div></div>').join('');
+
+  due.forEach(e => {
+    const k = $('dueList').querySelector('[data-keep="' + e.id + '"]');
+    const d = $('dueList').querySelector('[data-drop="' + e.id + '"]');
+    if (k) k.onclick = () => judge(e.id, true);
+    if (d) d.onclick = () => judge(e.id, false);
+  });
+
+  /* Pending: a marker with nothing written against it yet. */
+  const pending = ledger.filter(e => !e.text);
+  $('pendingList').innerHTML = pending.length ? pending.map(e =>
+    '<div class="card"><div class="meta">' + fmtDate(e.at) + ' · at ' + mmss(e.t) +
+      ' into the session' + (e.recT != null ? ' · recording ' + mmss(e.recT) : '') +
+      (e.stream === 'am' ? ' · audio machine' : '') + '</div>' +
+    '<textarea data-txt="' + e.id + '" placeholder="what arrived — or leave empty and drop it"></textarea>' +
+    '<div class="row"><button class="btn sm" data-save="' + e.id + '">Save</button>' +
+    '<button class="btn sm danger" data-del="' + e.id + '">Drop</button></div></div>').join('')
+    : '<div class="empty">Nothing waiting.</div>';
+
+  pending.forEach(e => {
+    const s = $('pendingList').querySelector('[data-save="' + e.id + '"]');
+    const d = $('pendingList').querySelector('[data-del="' + e.id + '"]');
+    if (s) s.onclick = () => {
+      const ta = $('pendingList').querySelector('[data-txt="' + e.id + '"]');
+      const v = ta.value.trim();
+      if (!v) return;
+      e.text = v; e.at = Date.now();   /* the clock starts when it is written down */
+      save(K.ledger, ledger); renderLedger();
+    };
+    if (d) d.onclick = () => {
+      ledger = ledger.filter(x => x.id !== e.id);
+      save(K.ledger, ledger); renderLedger();
+    };
+  });
+
+  /* The ledger proper. */
+  const q = ($('ledgerSearch').value || '').toLowerCase();
+  const f = $('ledgerFilter').value;
+  const rows = ledger.filter(e => e.text).filter(e => {
+    if (q && !e.text.toLowerCase().includes(q)) return false;
+    if (f === 'kept')     return e.judged === true;
+    if (f === 'dropped')  return e.judged === false;
+    if (f === 'unjudged') return e.judged === null;
+    if (f === 'am')       return e.stream === 'am';
+    return true;
+  }).sort((a,b) => b.at - a.at);
+
+  $('ledgerList').innerHTML = rows.length ? rows.map(e =>
+    '<div class="card"><div class="meta">' + fmtDate(e.at) +
+      (e.stream === 'am' ? ' · audio machine' : '') +
+      (e.judged === true ? ' · <span style="color:var(--accent)">kept</span>'
+       : e.judged === false ? ' · dropped' : ' · awaiting') + '</div>' +
+    '<div class="text">' + esc(e.text) + '</div>' +
+    (e.judged === true ? '<div class="row"><button class="btn sm" data-promote="' + e.id + '">→ dispositions</button></div>' : '') +
+    '</div>').join('') : '<div class="empty">Empty.</div>';
+
+  rows.forEach(e => {
+    const p = $('ledgerList').querySelector('[data-promote="' + e.id + '"]');
+    if (p) p.onclick = () => {
+      disp.push({ id:uid(), at:Date.now(), text:e.text, tags:['from-ledger'], source:e.id });
+      save(K.disp, disp);
+      p.textContent = 'added';
+      p.disabled = true;
+    };
+  });
+}
+
+function judge(id, keep){
+  const e = ledger.find(x => x.id === id);
+  if (!e) return;
+  e.judged = keep;
+  e.judgedAt = Date.now();
+  save(K.ledger, ledger);
+  renderLedger();
+}
+
+$('ledgerSearch').oninput  = renderLedger;
+$('ledgerFilter').onchange = renderLedger;
+
+/* ══════════════════════════════════════════════════════════════════════
+ * DISPOSITIONS
+ * ════════════════════════════════════════════════════════════════════ */
+function renderDisp(){
+  $('dispCount').textContent = disp.length;
+  const q = ($('dispSearch').value || '').toLowerCase();
+  const rows = disp.filter(d => !q || d.text.toLowerCase().includes(q) ||
+                                (d.tags || []).join(' ').toLowerCase().includes(q))
+                   .sort((a,b) => b.at - a.at);
+  $('dispList').innerHTML = rows.length ? rows.map(d =>
+    '<div class="card"><div class="meta">' + fmtDate(d.at) + '</div>' +
+    '<div class="text">' + esc(d.text) + '</div>' +
+    '<div style="margin-top:6px">' + (d.tags || []).map(t => '<span class="pill">' + esc(t) + '</span>').join('') +
+    '<button class="btn sm danger" data-ddel="' + d.id + '" style="float:right">remove</button></div></div>').join('')
+    : '<div class="empty">Nothing yet. It fills from the ledger, not from decisions.</div>';
+
+  rows.forEach(d => {
+    const b = $('dispList').querySelector('[data-ddel="' + d.id + '"]');
+    if (b) b.onclick = () => { disp = disp.filter(x => x.id !== d.id); save(K.disp, disp); renderDisp(); };
+  });
+}
+
+$('btnDispAdd').onclick = () => {
+  const t = $('dispText').value.trim();
+  if (!t) return;
+  const tags = $('dispTags').value.split(',').map(s => s.trim()).filter(Boolean);
+  disp.push({ id:uid(), at:Date.now(), text:t, tags, source:null });
+  save(K.disp, disp);
+  $('dispText').value = ''; $('dispTags').value = '';
+  renderDisp();
+};
+$('dispSearch').oninput = renderDisp;
+
+/* Priming: three at random, surfaced before a session. Not to be performed —
+   just loaded, so that what follows is constrained by what came before it. */
+function primeThree(){
+  if (!disp.length) { $('prime').style.display = 'none'; return; }
+  const pool = [...disp];
+  const pick = [];
+  while (pick.length < Math.min(3, pool.length)) pick.push(pool.splice(rand(0, pool.length - 1), 1)[0]);
+  $('prime').style.display = '';
+  $('primeList').innerHTML = pick.map(d => '<div class="card"><div class="text">' + esc(d.text) + '</div></div>').join('');
+}
+$('btnPrimeNow').onclick = () => {
+  primeThree();
+  document.querySelector('nav button[data-tab="session"]').click();
+  window.scrollTo(0, 0);
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+ * DATA
+ * ════════════════════════════════════════════════════════════════════ */
+function renderData(){
+  $('sessCount').textContent = sessions.length;
+  const rows = [...sessions].sort((a,b) => b.at - a.at).slice(0, 40);
+  $('sessList').innerHTML = rows.length
+    ? '<table><tr><th>when</th><th>task</th><th>min</th><th>acc</th><th>fastest</th><th>marks</th><th></th></tr>' +
+      rows.map(s =>
+        '<tr><td class="num">' + fmtDate(s.at) + '</td>' +
+        '<td>n' + s.n + ' ' + s.op + (s.am ? ' + am' : '') + '</td>' +
+        '<td class="num">' + Math.round(s.seconds / 60) + '</td>' +
+        '<td class="num">' + (s.accuracy == null ? '—' : Math.round(s.accuracy * 100) + '%') + '</td>' +
+        '<td class="num">' + s.lowestISI + '</td>' +
+        '<td class="num">' + s.marks.length + '</td>' +
+        '<td>' + (s.hasRecording ? '<button class="btn sm" data-rec="' + s.id + '">audio</button>' : '') + '</td></tr>'
+      ).join('') + '</table>'
+    : '<div class="empty">No sessions yet.</div>';
+
+  rows.forEach(s => {
+    const b = $('sessList').querySelector('[data-rec="' + s.id + '"]');
+    if (b) b.onclick = async () => {
+      const row = await DB.get('rec', s.id);
+      if (!row) return alert('Recording not found — site data may have been cleared.');
+      download(row.blob, 'antiphon-' + s.id + '.webm');
+    };
+  });
+}
+
+function download(blob, name){
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = u; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(u), 4000);
+}
+
+$('btnExport').onclick = () => {
+  /* Raw and nothing else. No independence figure is computed here: see the
+     README on why that number lives outside the page that could be gamed by it. */
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    schema: 'antiphon/1',
+    settings: sett,
+    sessions, ledger, dispositions: disp
+  };
+  download(new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'}),
+           'antiphon-' + new Date().toISOString().slice(0,10) + '.json');
+};
+
+$('btnExportRec').onclick = async () => {
+  const { blob, id } = REC.last();
+  if (blob) return download(blob, 'antiphon-' + id + '.webm');
+  const rows = await DB.all('rec');
+  if (!rows.length) return alert('No recordings stored.');
+  rows.sort((a,b) => b.at - a.at);
+  download(rows[0].blob, 'antiphon-' + rows[0].id + '.webm');
+};
+
+$('btnWipe').onclick = async () => {
+  if (!confirm('Erase all sessions, ledger, dispositions and cached audio?')) return;
+  if (!confirm('This cannot be undone. Export first if you want it. Continue?')) return;
+  [K.sett, K.sessions, K.ledger, K.disp].forEach(k => localStorage.removeItem(k));
+  await DB.clear('audio'); await DB.clear('rec');
+  location.reload();
+};
+
+/* ══════════════ boot ══════════════ */
+(async function boot(){
+  if (!window.isSecureContext) {
+    $('micState').textContent = 'Not a secure context — the microphone needs http://localhost or https.';
+  }
+  /* Interface first. Cached audio lives in IndexedDB, which can be slow,
+     blocked, or absent in a private window — none of which is a reason for
+     the page to come up empty. It folds itself in when it arrives. */
+  try { await SV.ready(); } catch(e) { console.warn('voices', e); }
+  renderSvLangs();
+  renderSvState();
+  renderPlayHint();
+  AM.loadCache().then(() => { renderSvState(); renderPlayHint(); }).catch(e => {
+    console.warn('audio cache', e);
+    $('amList').innerHTML = '<span style="color:var(--warn)">Cached audio could not be read ('
+      + esc(e.message) + ').</span> <span class="tiny">System voices still work; re-pick files to rebuild the cache.</span>';
+  });
+  /* Firefox fills the voice list after first paint often enough that one
+     refresh on the event is worth more than a longer wait at boot. */
+  try { speechSynthesis.onvoiceschanged = () => { SV.refresh(); renderSvLangs(); renderSvState(); }; } catch {}
+  primeThree();
+  renderLedger();
+})();
+
+/* A page that is speaking when it is closed keeps speaking in some browsers,
+   and there are now a dozen queues to silence rather than one. */
+window.addEventListener('beforeunload', () => { try { SV.stop(); } catch {} });
+</script>
+</body>
+</html>
