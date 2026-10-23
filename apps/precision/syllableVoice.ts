@@ -166,15 +166,23 @@ export function wordSyllables(code: number, pool: number, length: number): numbe
  * gap. Every word cannot be rendered ahead — six syllables from 49 is 49^6 of
  * them — so the joins are made to behave the way speech joins:
  *
- * - No gap: each syllable begins as the one before ends, cross-faded over
- *   WORD_OVERLAP_S so the seam cannot click.
+ * - No gap: each syllable begins under the end of the one before, the two
+ *   cross-faded over WORD_OVERLAP_S.
  * - No breath: a clip said alone trails off for up to 200 ms after its last
- *   sound, at -30 to -36 dB. At a junction that is cut, keeping the coda's
- *   release (a stop's burst sits at -16 to -27 dB), so p, t and k stay heard.
- *   The faint lead-in before a syllable's onset goes the same way, though not
- *   the onset itself: f and sh begin quietly and are the cue.
- * - Stop closures held to the length they have inside a word: a closure
- *   before a burst said alone runs past 100 ms, which in a word is a pause.
+ *   sound, at -30 to -36 dB. At a junction that is cut, and so is the faint
+ *   lead-in before the next onset, though not the onset itself: f and sh
+ *   begin quietly and are the cue.
+ * - A stop coda unreleased. Said alone, p, t and k close, wait, and burst;
+ *   before another consonant inside a word they only close — "bahp-teek" is
+ *   said bah(p)teek. So a stop is cut where the vowel ends, its place heard
+ *   in the vowel's last transition, and the next onset follows at once. Other
+ *   codas (n, ng, l, ss) are sounds of their own and are kept whole.
+ * - Onsets at speaking speed. Said alone, an l or sh takes 120-200 ms to rise
+ *   into its vowel; inside a word the run-up is held to ONSET_MAX_S, its last
+ *   part, where the consonant is clearest. A coda that is kept is held to
+ *   CODA_MAX_S past the vowel the same way: an ss said alone hisses for
+ *   200 ms.
+ * - What closures remain — a stop onset's — held to QUIET_MAX_S.
  * - Every syllable but the last is said INNER_SPEEDUP quicker, the last at
  *   full length: words end long and run through their middle.
  *
@@ -182,18 +190,22 @@ export function wordSyllables(code: number, pool: number, length: number): numbe
  * so that none is harder to identify than another, and that has to hold
  * inside a word too.
  */
-const INNER_SPEEDUP = 1.15;
-const WORD_OVERLAP_S = 0.03;
+const INNER_SPEEDUP = 1.3;
+const WORD_OVERLAP_S = 0.05;
 /* All against the clip's loudest 10 ms. */
-const TAIL_DB = -28;          // the last sound a junction keeps: a burst clears this, breath does not
+const TAIL_DB = -28;          // the last sound a junction keeps: a coda clears this, breath does not
+const STOP_TAIL_DB = -18;     // a stop coda's: the vowel's end, not the closure after it
 const HEAD_DB = -45;          // the first: under any onset, over the render's padding
 const QUIET_DB = -30;         // a closure, or a pause
-const QUIET_MAX_S = 0.05;     // the longest one kept inside a word
+const QUIET_MAX_S = 0.025;    // the longest one kept inside a word
+const NUCLEUS_DB = -12;       // where a syllable's vowel has begun
+const ONSET_MAX_S = 0.08;     // the longest run-up to it kept inside a word
+const CODA_MAX_S = 0.08;      // and the longest run-on after it
 
 /** A clip ready to be joined: trimmed at the ends asked for, its quiet runs
     shortened. Measured on a 10 ms envelope, since single samples of breath
     noise peak far above its loudness. */
-function wordPiece(data: Float32Array, rate: number, trimHead: boolean, trimTail: boolean): Float32Array {
+function wordPiece(data: Float32Array, rate: number, trimHead: boolean, trimTail: boolean, stopCoda: boolean): Float32Array {
   const win = Math.round(rate * 0.01);
   const env: number[] = [];
   for (let i = 0; i + win <= data.length; i += win) {
@@ -206,10 +218,21 @@ function wordPiece(data: Float32Array, rate: number, trimHead: boolean, trimTail
   const n = env.length;
 
   let first = 0, last = n - 1;
-  if (trimHead) { while (first < last && env[first] < over(HEAD_DB)) first++; }
-  if (trimTail) { while (last > first && env[last] < over(TAIL_DB)) last--; }
+  if (trimHead) {
+    while (first < last && env[first] < over(HEAD_DB)) first++;
+    let nucleus = first;
+    while (nucleus < last && env[nucleus] < over(NUCLEUS_DB)) nucleus++;
+    first = Math.max(first, nucleus - Math.round(ONSET_MAX_S / 0.01));
+  }
+  const tailDb = stopCoda ? STOP_TAIL_DB : TAIL_DB;
+  if (trimTail) {
+    while (last > first && env[last] < over(tailDb)) last--;
+    let nucleusEnd = last;
+    while (nucleusEnd > first && env[nucleusEnd] < over(NUCLEUS_DB)) nucleusEnd--;
+    last = Math.min(last, nucleusEnd + Math.round(CODA_MAX_S / 0.01));
+  }
   const a = trimHead ? Math.max(0, first - 1) * win : 0;               // 10 ms before the onset
-  const z = trimTail ? Math.min(data.length, (last + 3) * win) : data.length;  // 20 ms after the release
+  const z = trimTail ? Math.min(data.length, (last + (stopCoda ? 2 : 3)) * win) : data.length;  // 10-20 ms after the coda
   if (z - a < data.length / 4) return data;                            // not a clip this understands
 
   /* Quiet runs inside the kept span, longer than a word would hold them, lose
@@ -253,13 +276,14 @@ function wordBuffer(code: number, pool: number, length: number): AudioBuffer | n
   if (!ctx) return null;
   const ids = wordSyllables(code, pool, length);
   const parts = ids
-    .map((id, k) => (k < ids.length - 1 ? innerBuffers[id] : playBuffers[id]))
-    .filter(Boolean) as AudioBuffer[];
+    .map((id, k) => ({ buf: k < ids.length - 1 ? innerBuffers[id] : playBuffers[id], stop: /[ptk]$/.test(SYLLABLES[id]) }))
+    .filter(p => p.buf) as { buf: AudioBuffer; stop: boolean }[];
   if (!parts.length) return null;
-  if (parts.length === 1) return parts[0];
-  const rate = parts[0].sampleRate;
+  if (parts.length === 1) return parts[0].buf;
+  const rate = parts[0].buf.sampleRate;
 
-  const pieces = parts.map((b, k) => wordPiece(b.getChannelData(0), rate, k > 0, k < parts.length - 1));
+  const pieces = parts.map((p, k) =>
+    wordPiece(p.buf.getChannelData(0), rate, k > 0, k < parts.length - 1, p.stop));
   /* The overlap scales with the speed, and never takes more than a third of
      either syllable, or a short one would vanish into its neighbours. */
   const want = Math.round((rate * WORD_OVERLAP_S) / playbackRate);
