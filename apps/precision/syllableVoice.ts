@@ -1,4 +1,5 @@
 import { SYLLABLES, SYLLABLE_AUDIO, SYLLABLE_MAX_MS } from './syllableAudio';
+import { WORD_SETS } from './syllableWords';
 
 /*
  * Playing the spoken syllables, at a chosen speed.
@@ -115,9 +116,13 @@ function restretch() {
 }
 
 /** Decode the set, and stretch it, before any trial asks for it. */
-export async function primeSyllables(rate?: number) {
+export async function primeSyllables(rate?: number, length = 1) {
   if (rate !== undefined) playbackRate = clampSyllableRate(rate);
-  if (!ctx) ctx = new AudioContext();
+  /* At the rate the voice was rendered: nothing is lost, and a length's worth
+     of decoded words takes half the memory it would at 48 kHz. */
+  if (!ctx) {
+    try { ctx = new AudioContext({ sampleRate: 22050 }); } catch (e) { ctx = new AudioContext(); }
+  }
   if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) { /* awaits a gesture */ } }
 
   await Promise.all(SYLLABLES.map(async (name, i) => {
@@ -132,12 +137,15 @@ export async function primeSyllables(rate?: number) {
   }));
 
   restretch();
+  if (length >= 2) await primeWords(length);
 }
 
-/** Cheap while the rate is unchanged, so callers may set it whenever. */
+/** Cheap while the rate is unchanged, so callers may set it whenever. Words
+    already loaded are re-stretched in the background, spliced until then. */
 export function setSyllableRate(rate: number) {
   playbackRate = clampSyllableRate(rate);
   restretch();
+  for (const length of Object.keys(loadedWords)) void primeWords(Number(length));
 }
 
 /*
@@ -159,7 +167,113 @@ export function wordSyllables(code: number, pool: number, length: number): numbe
 }
 
 /*
- * Said as one word, not as syllables in a row.
+ * Whole words, recorded as words.
+ *
+ * Spliced syllables are heard as a list however tight the joins — each keeps
+ * the pitch it had said alone — so words of two or more syllables come from
+ * a fixed vocabulary said whole by the same voice: tools/render-words.py, which
+ * explains the vocabulary. One file per length, fetched when that length is
+ * first primed and decoded all at once, for the same reason the syllables are:
+ * a decode is asynchronous, and a stimulus has to start on time.
+ *
+ * Where a length's file is missing or will not load, everything falls back to
+ * free combination and splicing (below), which is how the channel worked
+ * before the recordings existed.
+ */
+interface LoadedWords {
+  bytes: ArrayBuffer | null;
+  /** Decoded and stretched to `rate`; empty until the first load is done. */
+  buffers: (AudioBuffer | null)[];
+  rate: number | null;
+  index: Map<string, number>;
+  loading: Promise<void> | null;
+}
+const loadedWords: Record<number, LoadedWords> = {};
+const wordKey = (ids: number[]) => ids.join('.');
+
+async function primeWords(length: number): Promise<void> {
+  const set = WORD_SETS[length];
+  if (!set || !ctx) return;
+  const w = (loadedWords[length] ||= {
+    bytes: null, buffers: [], rate: null, loading: null,
+    index: new Map(set.words.map((ids, i) => [wordKey(ids), i])),
+  });
+  while (w.loading) await w.loading;
+  if (w.rate === playbackRate) return;
+  w.loading = (async () => {
+    try {
+      if (!w.bytes) {
+        /* Relative to the page, which sits at the app's base in every build. */
+        const res = await fetch(`words/len${length}.bin`);
+        if (!res.ok) throw new Error(String(res.status));
+        w.bytes = await res.arrayBuffer();
+      }
+      const rate = playbackRate;
+      let at = 0;
+      const spans = set.bytes.map(n => { const a = at; at += n; return [a, at] as const; });
+      const bytes = w.bytes;
+      w.buffers = await Promise.all(spans.map(async ([a, z]) => {
+        try { return timeStretch(await ctx!.decodeAudioData(bytes.slice(a, z)), rate); } catch (e) { return null; }
+      }));
+      w.rate = rate;
+    } catch (e) {
+      /* No recordings for this length: it stays spliced. */
+    } finally {
+      w.loading = null;
+    }
+  })();
+  await w.loading;
+  if (w.rate !== null && w.rate !== playbackRate) await primeWords(length);  // the rate moved while loading
+}
+
+const wordsReady = (length: number) => {
+  const w = loadedWords[length];
+  return !!w && w.rate !== null && w.buffers.length > 0;
+};
+
+function recordedWord(code: number, pool: number, length: number): AudioBuffer | null {
+  const w = loadedWords[length];
+  if (!w || w.rate !== playbackRate) return null;
+  const i = w.index.get(wordKey(wordSyllables(code, pool, length)));
+  return i === undefined ? null : w.buffers[i] ?? null;
+}
+
+/*
+ * Picking from the vocabulary as if picking freely.
+ *
+ * Usable with `pool` syllables in play: the words whose syllables are all
+ * below it. They were not drawn uniformly — the vocabulary was grown pool by
+ * pool, so a word made only of the first ten syllables is far commoner in it
+ * than in free combination. Each word is weighted by how likely a free word
+ * is to have its highest syllable, shared among the recorded words that do:
+ * then the highest syllable, and with it every syllable's rate, comes out as
+ * free combination would give it.
+ */
+const pickTables = new Map<string, { codes: number[]; cumulative: number[] }>();
+
+function pickTable(pool: number, length: number) {
+  const key = `${pool}/${length}`;
+  let t = pickTables.get(key);
+  if (t) return t;
+  const words = WORD_SETS[length].words.filter(ids => Math.max(...ids) < pool);
+  const perTop = new Map<number, number>();
+  words.forEach(ids => { const m = Math.max(...ids); perTop.set(m, (perTop.get(m) || 0) + 1); });
+  const codes: number[] = [], cumulative: number[] = [];
+  let total = 0;
+  for (const ids of words) {
+    const m = Math.max(...ids);
+    total += (Math.pow(m + 1, length) - Math.pow(m, length)) / perTop.get(m)!;
+    codes.push(ids.reduce((c, id, k) => c + id * Math.pow(pool, k), 0));
+    cumulative.push(total);
+  }
+  t = { codes, cumulative };
+  pickTables.set(key, t);
+  return t;
+}
+
+/*
+ * Said as one word, not as syllables in a row — the fallback, where there is
+ * no recording.
  *
  * Each clip is a syllable said on its own: a full release at the end, the
  * pitch falling to rest. Laid end to end they are a list, however short the
@@ -312,7 +426,8 @@ function wordBuffer(code: number, pool: number, length: number): AudioBuffer | n
 export function playSyllable(code: number, pool: number = SYLLABLES.length, length: number = 1) {
   if (!ctx) return;
   restretch();
-  const buf = wordBuffer(code, pool, Math.max(1, Math.round(length)));
+  const len = Math.max(1, Math.round(length));
+  const buf = (len >= 2 ? recordedWord(code, pool, len) : null) || wordBuffer(code, pool, len);
   if (!buf) return;
   if (ctx.state === 'suspended') ctx.resume();
 
@@ -334,18 +449,31 @@ export function playSyllable(code: number, pool: number = SYLLABLES.length, leng
 /** How long the longest word of `length` syllables runs at a given speed, in
     ms: an upper bound, taking no credit for the trims and overlaps. */
 export const syllableMaxMs = (rate: number, length = 1) =>
-  Math.round((SYLLABLE_MAX_MS * (1 + (length - 1) / INNER_SPEEDUP)) / clampSyllableRate(rate));
+  Math.round(Math.max(
+    length >= 2 && WORD_SETS[length] ? WORD_SETS[length].maxMs : 0,
+    SYLLABLE_MAX_MS * (1 + (length - 1) / INNER_SPEEDUP),
+  ) / clampSyllableRate(rate));
 
 /** For the settings screen: decode if needed, then say one from the pool that
     is in play, at the rate being previewed. */
 export async function previewSyllable(rate: number, pool = SYLLABLES.length, length = 1) {
-  await primeSyllables(rate);
+  await primeSyllables(rate, length);
   const size = Math.min(SYLLABLES.length, Math.max(1, Math.round(pool || SYLLABLES.length)));
   playSyllable(randomWord(size, length), size, length);
 }
 
-/** A random word of `length` syllables from the first `pool`, as its code. */
+/** A random word of `length` syllables from the first `pool`, as its code:
+    from the recorded vocabulary once it is loaded, freely otherwise. */
 export function randomWord(pool: number, length: number): number {
+  if (length >= 2 && wordsReady(length)) {
+    const { codes, cumulative } = pickTable(pool, length);
+    if (codes.length) {
+      const r = Math.random() * cumulative[cumulative.length - 1];
+      let lo = 0, hi = cumulative.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (cumulative[mid] > r) hi = mid; else lo = mid + 1; }
+      return codes[lo];
+    }
+  }
   let code = 0, place = 1;
   for (let i = 0; i < length; i++) { code += Math.floor(Math.random() * pool) * place; place *= pool; }
   return code;

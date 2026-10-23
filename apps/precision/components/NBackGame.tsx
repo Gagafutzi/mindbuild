@@ -626,7 +626,7 @@ const NBackGame: React.FC<NBackGameProps> = ({ settings, onGameEnd }) => {
          both are asynchronous, and a syllable that arrives after its own trial
          has ended is worse than one that never played — the response window has
          already closed on it. Both are cached, so a second session is free. */
-      if (settings.syllableEnabled) await primeSyllables(syllableRate);
+      if (settings.syllableEnabled) await primeSyllables(syllableRate, syllableLength);
       Tone.Transport.start();
       runTrial(); // Kicks off the self-scheduling loop
     };
