@@ -140,4 +140,67 @@ const rep = (c, n) => c.repeat(n);
   ok(screenSeen > 200, "most transfer trials offer the page-offset copy: " + screenSeen);
 }
 
+/* ── No answer without the reasoning ──
+   A task trains what it takes to answer it. If a reader who never walks a step can
+   beat chance — by picking the mirrored option, the most typical one, the odd one out,
+   or by reading every seam as straight — then that is what gets trained. Each of these
+   strategies is run over 1,200 trials and held to chance (a four-way choice: 25%, with
+   a margin of about four standard errors). */
+{
+  const feats = (p) => p.pose ? [p.pose.x, p.pose.y, p.pose.f, p.pose.m, p.pose.s] : [p.sq.x, p.sq.y, p.sq.s];
+  const shared = (a, b) => feats(a).reduce((n, v, i) => n + (v === feats(b)[i] ? 1 : 0), 0);
+  const typical = (t, sign) => {
+    let best = -Infinity, bi = 0;
+    t.options.forEach((o, i) => { const sc = sign * t.options.reduce((n, q, j) => n + (j === i ? 0 : shared(o, q)), 0); if (sc > best) { best = sc; bi = i; } });
+    return bi;
+  };
+  const firstWhere = (t, f) => Math.max(0, t.options.findIndex(f));
+  const STRATEGIES = {
+    "the most typical option": (t) => typical(t, 1),
+    "the odd one out": (t) => typical(t, -1),
+    "the first mirrored option": (t) => firstWhere(t, (o) => o.pose && o.pose.m),
+    "the first unmirrored option": (t) => firstWhere(t, (o) => o.pose && !o.pose.m),
+    "the first option on the second sheet": (t) => firstWhere(t, (o) => (o.pose || o.sq).s),
+  };
+  const lo = 0.2, hi = 0.31, N = 1200;
+  for (const kind of ["where", "transfer", "drift"]) {
+    const won = {}; let n = 0;
+    for (let i = 0; n < N && i < 5 * N; i++) {
+      const t = S.trial(kind, A.Rng(424242 + i * 13), S.difficulty(1 + (i % 30)));
+      if (!t.options || (kind === "drift" && t.ask !== "where")) continue;
+      n++;
+      for (const [name, f] of Object.entries(STRATEGIES)) won[name] = (won[name] || 0) + (f(t) === t.answer ? 1 : 0);
+    }
+    for (const [name, w] of Object.entries(won)) ok(w / n >= lo && w / n <= hi, `${kind}: picking ${name} scores ${(w / n).toFixed(2)}`);
+  }
+
+  const share = (f) => { let yes = 0; for (let i = 0; i < N; i++) if (f(i)) yes++; return yes / N; };
+  const lv = (i) => S.difficulty(1 + (i % 30));
+  /* Home: each answer a quarter of the time; the straight-seam reading right well under half. */
+  const homes = Array.from({ length: N }, (_, i) => S.homeTrial(A.Rng(515151 + i), lv(i)));
+  for (const a of ["home", "mirrored", "turned", "away"]) {
+    const f = homes.filter((t) => t.answer === a).length / N;
+    ok(f >= 0.19 && f <= 0.31, `home: "${a}" is the answer ${(f * 100).toFixed(0)}% of the time`);
+  }
+  ok(homes.filter((t) => t.plainAnswer === t.answer).length / N <= 0.5, "home: reading the seams as straight is right too often");
+  /* Possible: either answer about half the time, and the straight reading mostly wrong. */
+  const loops = Array.from({ length: N }, (_, i) => S.possibleTrial(A.Rng(616161 + i), lv(i)));
+  const pos = loops.filter((t) => t.answer === "possible").length / N;
+  ok(pos >= 0.4 && pos <= 0.6, `possible: "possible" is the answer ${(pos * 100).toFixed(0)}% of the time`);
+  ok(loops.filter((t) => t.plainAnswer === t.answer).length / N <= 0.5, "possible: reading the seams as straight is right too often");
+  /* Meet: yes and no about even; the straight reading mostly wrong. */
+  const meets = Array.from({ length: 3 * N }, (_, i) => S.driftTrial(A.Rng(717171 + i), lv(i))).filter((t) => t.ask === "meet" && !t.alt);
+  const yes = meets.filter((t) => t.answer === "yes").length / meets.length;
+  ok(yes >= 0.4 && yes <= 0.6, `drift: they meet in ${(yes * 100).toFixed(0)}% of meet trials`);
+  ok(meets.filter((t) => !t.lure).length / meets.length <= 0.5, "drift: reading the seams as straight settles meetings too often");
+  /* Which field: no shortcut through how twisted or how many sheets the options are. */
+  const fields = Array.from({ length: N }, (_, i) => S.spaceTrial(A.Rng(818181 + i), lv(i)));
+  const twists = (x) => +x.x.twist + +x.y.twist, sheets = (x) => +x.x.sheet + +x.y.sheet;
+  const by = (t, f) => t.options.reduce((bi, x, j) => (f(x) > f(t.options[bi]) ? j : bi), 0);
+  for (const [name, f] of [["most twisted", twists], ["least twisted", (x) => -twists(x)], ["fewest sheets", (x) => -sheets(x)], ["most sheets", sheets]]) {
+    const w = fields.filter((t) => by(t, f) === t.answer).length / N;
+    ok(w <= hi, `space: picking the ${name} field scores ${w.toFixed(2)}`);
+  }
+}
+
 console.log(`spaces: ${checks} checks passed`);

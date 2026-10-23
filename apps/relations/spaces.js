@@ -242,14 +242,20 @@
       return w.length >= lo && w.length <= hi && /[\^v<>]/.test(w) ? w : null;
     }, 60);
   }
-  /** A walk from p that goes over a seam that matters: a twist or a sheet. */
-  function seamWalk(rng, o, sp, p, lo, hi) {
+  /** A walk from p that goes over a seam that matters, a twist or a sheet, and, when
+      `hand` is given, ends with that hand (0 as it started, 1 mirrored). */
+  function seamWalk(rng, o, sp, p, lo, hi, hand) {
     return attempt(function () {
       var w = randomWalk(rng, o, lo, hi);
       if (!w) return null;
-      return walk(sp, p, w).crossings.some(function (c) { return c.twist || c.sheet; }) ? w : null;
-    }, 200);
+      var r = walk(sp, p, w);
+      if (hand !== undefined && r.end.m !== (p.m ^ hand)) return null;
+      return r.crossings.some(function (c) { return c.twist || c.sheet; }) ? w : null;
+    }, 300);
   }
+  /** Mirrored at the end or not, even odds: walks that must cross a twist would otherwise
+      end mirrored four times in five, and "pick a mirrored option" would pay. */
+  function handWanted(rng) { return rng.next() < 0.5 ? 1 : 0; }
   /** One move changed: a turn the other way, or a step added or dropped. */
   function perturb(rng, w, o) {
     var i = int(rng, 0, w.length - 1), c = w[i];
@@ -258,19 +264,74 @@
     return { w: Routes.normalize(w.slice(0, i + 1) + "^" + w.slice(i + 1), half(o)), kind: "step" };
   }
 
-  /** Four distinct poses: the truth first, then lures in the order given, then fillers. */
-  function fourPoses(rng, truth, lures) {
-    var out = [{ pose: truth, lure: null }], seen = {};
-    seen[key(truth)] = true;
-    lures.forEach(function (l) { if (out.length < 4 && l.pose && !seen[key(l.pose)]) { seen[key(l.pose)] = true; out.push(l); } });
-    var turns = [["rotate90", 1], ["rotate180", 2], ["rotate270", 3]];
-    for (var t = 0; out.length < 4 && t < 3; t++) {
-      var p = pose(truth.x, truth.y, (truth.f + turns[t][1]) % 4, truth.m, truth.s);
-      if (!seen[key(p)]) { seen[key(p)] = true; out.push({ pose: p, lure: turns[t][0] }); }
+  /*
+   * Four options, picked so that the right one can only be found by working it out.
+   *
+   * Wrong options made as mistakes on the true answer cluster round it, and the
+   * mistakes a seam invites mostly undo its mirroring. Shown as they come, the right
+   * pose is then the mirrored one more often than not, and the one most like the
+   * other three: a reader who never walks a step but picks the mirrored option, or
+   * the most typical one, beats chance by a wide margin (measured: 53% and 44% on a
+   * four-way choice). So a pool is made of mistakes and of mistakes upon mistakes
+   * (each turned and each mirrored), and three are chosen from it such that:
+   *
+   *   - every feature in `balance` (a pose's hand) splits two and two across the
+   *     four, and each in `soft` (its sheet) does where the pool allows;
+   *   - at least one option is a mistake from `need`, the ones the task is about;
+   *   - the truth's typicality is drawn by lot: a quarter of the time it is the
+   *     single most typical of the four (most features shared with the other
+   *     three), a quarter the single least, and otherwise neither — in the most
+   *     typical and in the least typical place stand wrong options. "Pick the most
+   *     typical" and "pick the odd one out" then score a quarter each, which is
+   *     chance; never letting the truth be either would be a tell of its own. The
+   *     lot (`typicality`) is drawn once per trial, outside its retries: drawn
+   *     afresh each time, the place hardest to fill would be redrawn most often
+   *     and come up least.
+   *
+   * The truth's own hand is a coin toss (see `handWanted`), or the split would only
+   * say that the answer is one of the two mirrored ones.
+   *
+   * test/spaces.test.js holds those strategies to chance.
+   */
+  function chooseFour(rng, truth, pool, feat, balance, soft, need, role) {
+    var keyOf = function (v) { return feat(v).join(","); }, seen = {}, cands = [];
+    seen[keyOf(truth)] = true;
+    shuffle(rng, pool).forEach(function (c) { if (c.value && !seen[keyOf(c.value)]) { seen[keyOf(c.value)] = true; cands.push(c); } });
+    var share = function (a, b) { var fa = feat(a), fb = feat(b), n = 0; for (var i = 0; i < fa.length; i++) if (fa[i] === fb[i]) n++; return n; };
+    var split = function (set, f) { return set.filter(function (x) { return f(x.value); }).length === 2; };
+    var best = null, bestScore = -1;
+    for (var i = 0; i < cands.length; i++) for (var j = i + 1; j < cands.length; j++) for (var k = j + 1; k < cands.length; k++) {
+      var set = [{ value: truth, lure: null }, cands[i], cands[j], cands[k]];
+      if (need && !set.some(function (x) { return need.indexOf(x.lure) >= 0; })) continue;
+      if (!balance.every(function (f) { return split(set, f); })) continue;
+      var sc = set.map(function (x, a) { return set.reduce(function (n, y, b) { return n + (a === b ? 0 : share(x.value, y.value)); }, 0); });
+      var mx = Math.max.apply(null, sc), mn = Math.min.apply(null, sc);
+      var only = function (v) { return sc.filter(function (x) { return x === v; }).length === 1; };
+      var top = sc[0] === mx && only(mx), bottom = sc[0] === mn && only(mn);
+      if (role === "top" ? !top : role === "bottom" ? !bottom : sc[0] === mx || sc[0] === mn) continue;
+      var score = soft.filter(function (f) { return split(set, f); }).length + rng.next() * 0.5;
+      if (score > bestScore) { bestScore = score; best = set; }
     }
-    var options = shuffle(rng, out);
-    return { options: options, answer: options.findIndex(function (o) { return o.lure === null; }) };
+    if (!best) return null;
+    var options = shuffle(rng, best);
+    return { options: options, answer: options.findIndex(function (x) { return x.lure === null; }) };
   }
+
+  function typicality(rng) { return pick(rng, ["top", "bottom", "middle", "middle"]); }
+  var poseFeat = function (p) { return [p.x, p.y, p.f, p.m, p.s]; };
+  var flipHand = function (p) { return pose(p.x, p.y, p.f, 1 - p.m, p.s); };
+  var turnBy = function (p, t) { return pose(p.x, p.y, (p.f + t) % 4, p.m, p.s); };
+  var TURN_LURE = ["", "rotate90", "rotate180", "rotate270"];
+  /** Mistakes, and each one mirrored and turned: the pool the options are chosen from. */
+  function posePool(truth, base) {
+    var pool = base.slice();
+    [{ value: truth, lure: null }].concat(base).forEach(function (b) {
+      pool.push({ value: flipHand(b.value), lure: b.lure || "hand" });
+      for (var t = 1; t < 4; t++) pool.push({ value: turnBy(b.value, t), lure: b.lure || TURN_LURE[t] });
+    });
+    return pool;
+  }
+  function asPoses(four) { return four && { options: four.options.map(function (x) { return { pose: x.value, lure: x.lure }; }), answer: four.answer }; }
 
   var OTHERS = ["Blue", "Green", "Gold", "Violet", "White"];
 
@@ -280,27 +341,28 @@
 
   /** Where: a walk from Red, four poses, one of them where it ends. */
   function whereTrial(rng, o) {
+    var hand = handWanted(rng), role = typicality(rng);
     return attempt(function () {
-      var sp = randomSpace(rng, o), s0 = randomStart(rng, sp), w = seamWalk(rng, o, sp, s0, o.minLen, o.maxLen);
+      var sp = randomSpace(rng, o), s0 = randomStart(rng, sp), w = seamWalk(rng, o, sp, s0, o.minLen, o.maxLen, hand);
       if (!w) return null;
-      var truth = walk(sp, s0, w).end, p = perturb(rng, w, o);
-      var lures = [
-        { pose: walk(sp, s0, w, { plain: true }).end, lure: "plain" },
-        { pose: walk(sp, s0, w, { noHand: true }).end, lure: "noHand" },
+      var truth = walk(sp, s0, w).end, p1 = perturb(rng, w, o), p2 = perturb(rng, w, o);
+      var base = [
+        { value: walk(sp, s0, w, { plain: true }).end, lure: "plain" },
+        { value: walk(sp, s0, w, { noHand: true }).end, lure: "noHand" },
+        { value: walk(sp, s0, p1.w).end, lure: p1.kind }, { value: walk(sp, s0, p2.w).end, lure: p2.kind },
       ];
-      if (hasSheet(sp)) lures.push({ pose: walk(sp, s0, w, { noPortal: true }).end, lure: "portal" });
-      lures = shuffle(rng, lures);
-      lures.push({ pose: walk(sp, s0, p.w).end, lure: p.kind });
-      /* At least one wrong option has to be what the seams' own mistake gives. */
-      if (!lures.some(function (l) { return l.lure !== p.kind && !samePose(l.pose, truth); })) return null;
-      var four = fourPoses(rng, truth, lures);
+      if (hasSheet(sp)) base.push({ value: walk(sp, s0, w, { noPortal: true }).end, lure: "portal" });
+      var four = asPoses(chooseFour(rng, truth, posePool(truth, base), poseFeat,
+        [function (q) { return q.m === 1; }], hasSheet(sp) ? [function (q) { return q.s === 1; }] : [], ["plain", "noHand", "portal"], role));
+      if (!four) return null;
       return { task: "spaces", kind: "where", space: sp, start: s0, X: "Red", walk: w, options: four.options, answer: four.answer, end: truth };
     });
   }
 
   /** Home: one walk, and whether it brings Red home, back mirrored, back turned, or away. */
   function homeTrial(rng, o) {
-    var roll = rng.next(), want = roll < 0.34 ? "mirrored" : roll < 0.6 ? "home" : roll < 0.78 ? "turned" : "away";
+    /* A quarter each, so no answer is a better guess than another. */
+    var want = ["home", "mirrored", "turned", "away"][Math.floor(rng.next() * 4)];
     var targets = {
       home: function (s0) { return function (q) { return samePose(q, s0); }; },
       mirrored: function (s0) { return function (q) { return sameSquare(q, s0) && q.m !== s0.m; }; },
@@ -308,8 +370,16 @@
     };
     return attempt(function () {
       var sp = randomSpace(rng, o), s0 = randomStart(rng, sp), w;
-      if (want === "away") w = seamWalk(rng, o, sp, s0, o.minLen, o.maxLen);
-      else {
+      if (want === "away" && rng.next() < 0.3) w = seamWalk(rng, o, sp, s0, o.minLen, o.maxLen);
+      else if (want === "away") {
+        /* Mostly the trap built in: a walk that would come home if the seams were straight,
+           as the cube's routes offer walks that close on a flat grid. */
+        var pre = seamWalk(rng, o, sp, s0, 2, Math.max(2, o.maxLen - 3));
+        if (!pre) return null;
+        var home = shortest(sp, walk(sp, s0, pre, { plain: true }).end, function (q) { return samePose(q, s0); }, o.moves, { plain: true });
+        if (home === null) return null;
+        w = Routes.normalize(pre + home, half(o));
+      } else {
         var prefix = seamWalk(rng, o, sp, s0, 2, Math.max(2, o.maxLen - 3));
         if (!prefix) return null;
         /* The way back keeps off the squares the way out used: stepping back over
@@ -326,6 +396,8 @@
       var answer = classify(sp, s0, w);
       if (answer !== want) return null;
       var plain = classify(sp, s0, w, { plain: true });
+      /* Mostly walks a straight-seam reading gets wrong; the rest are controls. */
+      if (plain === answer && rng.next() < 0.75) return null;
       return { task: "spaces", kind: "home", space: sp, start: s0, X: "Red", walk: w, answer: answer, end: walk(sp, s0, w).end,
         plainAnswer: plain, lure: plain !== answer ? "plain" : null };
     });
@@ -369,7 +441,7 @@
 
   /** Where is X after k ticks: four squares. Or do X and Y meet within k ticks? */
   function driftTrial(rng, o) {
-    var asMeet = rng.next() < 0.5, roll = rng.next();
+    var asMeet = rng.next() < 0.5, roll = rng.next(), role = typicality(rng);
     return attempt(function () {
       var sp = randomSpace(rng, o), ticks = int(rng, o.ticks[0], o.ticks[1]);
       var names = ["Red"].concat(shuffle(rng, OTHERS).slice(0, o.movers - 1));
@@ -380,18 +452,18 @@
       if (runs.some(function (r) { return !r; })) return null;
       if (!asMeet) {
         if (!runs[0].twists) return null;
-        var truth = runs[0].at[ticks];
-        var plain = drift(sp, movers[0], ticks, { plain: true }), novel = drift(sp, movers[0], ticks, { noVelocity: true });
-        var cands = [{ sq: truth, lure: null }];
-        [{ sq: plain && plain.at[ticks], lure: "plain" }, { sq: novel && novel.at[ticks], lure: "velocity" },
-         { sq: runs[0].at[ticks - 1], lure: "tick" }, { sq: (drift(sp, movers[0], ticks + 1) || {}).at ? drift(sp, movers[0], ticks + 1).at[ticks + 1] : null, lure: "tick" }]
-          .forEach(function (c) {
-            if (c.sq && cands.length < 4 && !cands.some(function (x) { return squareKey(x.sq) === squareKey(c.sq); })) cands.push(c);
-          });
-        if (cands.length < 4 || !cands.some(function (c) { return c.lure === "plain" || c.lure === "velocity"; })) return null;
-        var options = shuffle(rng, cands);
+        var truth = runs[0].at[ticks], pool = [];
+        /* Each mistake at the tick asked, and a tick either side of it. */
+        [[{ plain: true }, "plain"], [{ noVelocity: true }, "velocity"], [{}, "tick"]].forEach(function (m) {
+          var run = drift(sp, movers[0], ticks + 1, m[0]);
+          if (!run) return;
+          [ticks - 1, ticks, ticks + 1].forEach(function (k) { if (k >= 1 && (m[1] !== "tick" || k !== ticks)) pool.push({ value: run.at[k], lure: k === ticks ? m[1] : m[1] === "tick" ? "tick" : m[1] }); });
+        });
+        var four = chooseFour(rng, truth, pool, function (q) { return [q.x, q.y, q.s]; }, [],
+          hasSheet(sp) ? [function (q) { return q.s === 1; }] : [], ["plain", "velocity"], role);
+        if (!four) return null;
         return { task: "spaces", kind: "drift", ask: "where", space: sp, movers: movers, ticks: ticks, X: "Red", runs: runs,
-          options: options, answer: options.findIndex(function (c) { return c.lure === null; }) };
+          options: four.options.map(function (x) { return { sq: x.value, lure: x.lure }; }), answer: four.answer };
       }
       /* Meet: Red and one other. With either/or, the other's velocity is one of two. */
       var Y = movers[1], meets = function (a, b) {
@@ -412,6 +484,8 @@
       if (answer !== want) return null;
       if (!runs[0].twists && !runs[1].twists) return null;
       var plainMet = meets(drift(sp, movers[0], ticks, { plain: true }) || runs[0], drift(sp, Y, ticks, { plain: true }) || runs[1]);
+      /* As in possible: mostly meetings the straight-seam reading gets wrong. */
+      if (!alt && !!plainMet === !!met && rng.next() < 0.75) return null;
       return { task: "spaces", kind: "drift", ask: "meet", space: sp, movers: movers, ticks: ticks, X: "Red", Y: Y.name, runs: runs,
         alt: alt, met: met, metAlt: metAlt, answer: answer, lure: !alt && !!plainMet !== !!met ? "plain" : null };
     });
@@ -420,9 +494,14 @@
   /** Space: walks and where they ended. Which field is it? Exactly one option fits them all. */
   function spaceTrial(rng, o) {
     return attempt(function () {
-      var truth = randomSpace(rng, o), cands = allSpaces(o, truth.W, truth.H), seen = [];
+      /* The truth is any field the options could be, the plain torus included: drawn only
+         from twisted ones, "never the torus" would be a free elimination. */
+      var cands = allSpaces(o, pick(rng, o.sizes), pick(rng, o.sizes)), truth = pick(rng, cands), seen = [];
       for (var n = 0; n < 3; n++) {
-        var s0 = randomStart(rng, truth), w = seamWalk(rng, o, truth, s0, o.minLen, o.maxLen + 2);
+        var s0 = randomStart(rng, truth), w = attempt(function () {
+          var ww = randomWalk(rng, o, o.minLen, o.maxLen + 2);
+          return ww && walk(truth, s0, ww).crossings.length ? ww : null;
+        }, 200);
         if (!w) return null;
         seen.push({ start: s0, walk: w, end: walk(truth, s0, w).end });
         var fit = cands.filter(function (c) { return seen.every(function (ob) { return samePose(walk(c, ob.start, ob.walk).end, ob.end); }); });
@@ -470,6 +549,10 @@
       if (!walk(sp, s0, loop).crossings.some(function (c) { return c.twist || c.sheet; })) return null;
       if (retrace(sp, s0, Routes.normalize(loop, half(o)))) return null;
       var plainSays = samePose(walk(sp, s0, loop, { plain: true }).end, s0);
+      /* Mostly loops the straight-seam reading gets wrong: where it gets them right,
+         the twist could be ignored and the answer would still come out. Some are kept
+         as controls. */
+      if (plainSays === closes && rng.next() < 0.75) return null;
       if (possible && !plainSays) lure = "plain";
       var premises = walks.map(function (w, i) { return premise(rng, o, names[i + 1], names[i], w); });
       premises.push(premise(rng, o, "Red", names[names.length - 1], close));
@@ -486,6 +569,7 @@
    * offset on the page (the trap) and walking in Gold's frame part ways.
    */
   function transferTrial(rng, o) {
+    var hand = handWanted(rng), role = typicality(rng);
     return attempt(function () {
       var sp = randomSpace(rng, o), r0 = randomStart(rng, sp), w = randomWalk(rng, o, o.minLen, o.maxLen);
       if (!w) return null;
@@ -494,18 +578,61 @@
       var g0 = randomStart(rng, sp, hasSheet(sp) && rng.next() < 0.5 ? 1 : 0);
       if (sameSquare(g0, r0) || sameSquare(g0, rr.end)) return null;
       var gr = walk(sp, g0, w);
-      if (!gr.crossings.some(function (c) { return c.twist || c.sheet; })) return null;
+      /* Mirrored, it must have crossed a twist; unmirrored, a twist twice, a sheet, or (on
+         a small field where neither fits in a short walk) a straight seam: going round
+         still parts walking from copying the page. */
+      if (!gr.crossings.length || gr.end.m !== hand) return null;
       var b0 = rr.end, dx = b0.x - r0.x, dy = b0.y - r0.y;
       var screen = pose(mod(g0.x + dx, sp.W), mod(g0.y + dy, sp.H), mod(g0.f + b0.f - r0.f, 4), g0.m, g0.s);
       var p = perturb(rng, w, o);
-      var lures = shuffle(rng, [{ pose: screen, lure: "screen" }, { pose: walk(sp, g0, w, { plain: true }).end, lure: "plain" },
-        { pose: walk(sp, g0, w, { noHand: true }).end, lure: "noHand" }]);
-      lures.push({ pose: walk(sp, g0, p.w).end, lure: p.kind });
       if (samePose(screen, gr.end)) return null;
-      var four = fourPoses(rng, gr.end, lures);
+      var base = [{ value: screen, lure: "screen" }, { value: walk(sp, g0, w, { plain: true }).end, lure: "plain" },
+        { value: walk(sp, g0, w, { noHand: true }).end, lure: "noHand" }, { value: walk(sp, g0, p.w).end, lure: p.kind }];
+      var four = asPoses(chooseFour(rng, gr.end, posePool(gr.end, base), poseFeat,
+        [function (q) { return q.m === 1; }], hasSheet(sp) ? [function (q) { return q.s === 1; }] : [], ["screen"], role));
+      if (!four) return null;
       return { task: "spaces", kind: "transfer", space: sp, start: r0, blue: b0, gold: g0, X: "Gold", walk: w,
         options: four.options, answer: four.answer, end: gr.end };
     });
+  }
+
+  /*
+   * What makes an item hard, as numbers, for the record: enough to fit a difficulty
+   * model to one's own trials later (which features cost accuracy and time), where
+   * the level alone mixes them all together.
+   *
+   *   moves, turns     in the walk(s) the item asks about
+   *   seams, twists, sheetsCrossed   crossings of any seam, of twisted ones, onto the
+   *                    other sheet
+   *   mirroredMoves    moves made while mirrored: where left and right are swapped
+   *   field            squares in the field; sheets 1 or 2; twistedSeams 0..2
+   *   ticks, movers, fast, either      (drift)
+   *   observations     (space), premises (possible)
+   */
+  function features(t) {
+    var sp = t.space, f = { field: sp.W * sp.H, sheets: hasSheet(sp) ? 2 : 1, twistedSeams: +sp.x.twist + +sp.y.twist };
+    var walks = [];
+    if (t.kind === "where" || t.kind === "home") walks.push([t.start, t.walk]);
+    if (t.kind === "transfer") walks.push([t.gold, t.walk]);
+    if (t.kind === "possible") walks.push([t.start, t.loop]);
+    if (t.kind === "space") t.observations.forEach(function (ob) { walks.push([ob.start, ob.walk]); });
+    if (walks.length) {
+      f.moves = 0; f.turns = 0; f.seams = 0; f.twists = 0; f.sheetsCrossed = 0; f.mirroredMoves = 0;
+      walks.forEach(function (wk) {
+        var r = walk(sp, wk[0], wk[1]);
+        f.moves += wk[1].length;
+        f.turns += wk[1].replace(/[^qQh]/g, "").length;
+        r.crossings.forEach(function (c) { f.seams++; if (c.twist) f.twists++; if (c.sheet) f.sheetsCrossed++; });
+        for (var i = 0; i < wk[1].length; i++) if (r.trail[i].m) f.mirroredMoves++;
+      });
+    }
+    if (t.kind === "drift") {
+      f.ticks = t.ticks; f.movers = t.movers.length; f.fast = t.movers.filter(function (m) { return m.k === 2; }).length;
+      f.either = !!t.alt; f.twists = t.runs.reduce(function (n, r) { return n + r.twists; }, 0);
+    }
+    if (t.kind === "space") f.observations = t.observations.length;
+    if (t.kind === "possible") f.premises = t.premises.length;
+    return f;
   }
 
   var KINDS = ["where", "home", "drift", "space", "possible", "transfer"];
@@ -603,7 +730,7 @@
     difficulty: difficulty, randomSpace: randomSpace, allSpaces: allSpaces,
     whereTrial: whereTrial, homeTrial: homeTrial, driftTrial: driftTrial, spaceTrial: spaceTrial,
     possibleTrial: possibleTrial, transferTrial: transferTrial, trial: trial,
-    card: card, poseCode: poseCode, poseWords: poseWords, squareCode: squareCode, squareWords: squareWords,
+    features: features, card: card, poseCode: poseCode, poseWords: poseWords, squareCode: squareCode, squareWords: squareWords,
     spaceCode: spaceCode, optionSpaceCode: optionSpaceCode, optionSpaceWords: optionSpaceWords, squareName: squareName,
   };
 });

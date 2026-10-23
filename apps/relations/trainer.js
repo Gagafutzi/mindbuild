@@ -32,6 +32,7 @@
     seams: ["every seam read as straight", "○"], noHand: ["mirrored square, but the walker not mirrored", "∅m"],
     portal: ["the other sheet missed", "∅⁺"], velocity: ["the position mirrored, the velocity not", "∅v"],
     tick: ["one tick off", "±t"], screen: ["the page offset copied instead of walked", "⧉"],
+    hand: ["mirrored once too many or too few times", "∓m"],
   };
   var LEVEL_KEY = "chimera.relations.level.v1";
   var CHECKPOINT_KEY = "chimera.relations.checkpoint.v1";
@@ -335,7 +336,7 @@
     + "While building the first n of an n-back round: <code>⊢k/n</code>, go on with ».</p>"
     + "<p><b>Traps</b> in explanations: ∅n nesting ignored, −L / −R one side's offsets dropped, ± wrong sign, ⇄ wrong order, @8 perspective read facing north, ±1 one step off, ↻ ↺ turned, ⇋ ⇅ mirrored, ⤡ diagonal, ⁻¹ undone (in poses: seen from the other side), ∅q the turn left out, q→ turned before stepping, ⇆ two swapped; "
     + "on the cube, ▭ the cube read as a flat grid, ↻⌂ back but turned, q⇄Q a turn the wrong way; "
-    + "in glued spaces, ○ every seam read as straight, ∅m the square mirrored but not the walker, ∅⁺ the other sheet missed, ∅v the velocity not mirrored, ±t a tick off, ⧉ the page offset copied instead of walked.</p>";
+    + "in glued spaces, ○ every seam read as straight, ∅m the square mirrored but not the walker, ∅⁺ the other sheet missed, ∅v the velocity not mirrored, ±t a tick off, ⧉ the page offset copied instead of walked, ∓m mirrored once too many or too few times.</p>";
 
   var EAR_GUIDE =
     "<h3>Eyes closed</h3>"
@@ -377,6 +378,8 @@
       + "<p><b>Routes on a cube</b> are poses walked on a cube's surface, where going round a corner turns you. Which walks come home, can a loop of walks close, and does a walk reach where another object stands?</p>"
       + "<p><b>Glued spaces</b>: a field whose edges are joined straight, with a twist (crossing mirrors you, as on a Möbius band), or onto a second sheet — a new field every trial. Six kinds of trial in turn: where a walk ends, whether it comes home or back mirrored, things drifting by velocities, which field it is from walks seen in it, whether a loop of walks can close, and carrying a relation from one object to another. "
       + "Routes and spaces are one round in nine each when the task and material both rotate.</p>"
+      + "<p><b>Levels</b>: any level can be played without earning it (Settings → Level). Unless <b>Hold the level</b> is on, it moves from there and becomes yours; held, it stays put and your earned level is kept. "
+      + "<b>Benchmark rounds</b> are glued spaces at one fixed level that never move your level: since the training level rises as you improve, they are the measure of progress (⊙ in the round summary).</p>"
       + "<p><b>Traps</b>: the wrong answers on offer are the answers of particular mistakes, and the explanation after a mistake names which.</p>"
       + NOTATION_GUIDE
       + EAR_GUIDE
@@ -400,6 +403,21 @@
       { key: "reveal", label: "Listen only: pause before the answer", type: "select", default: 6000, options: [
         { value: 2000, label: "2 s" }, { value: 4000, label: "4 s" }, { value: 6000, label: "6 s" }, { value: 8000, label: "8 s" },
         { value: 12000, label: "12 s" }, { value: 20000, label: "20 s" }, { value: 30000, label: "30 s" }] },
+      /* Any level can be played without earning it. Unless it is held, the level then moves
+         from there as usual and becomes the one kept. Held, it stays put for the session and
+         the earned level is left alone, so a level can be tried, or practised, as it is. */
+      { key: "startLevel", label: "Level", type: "select", default: "current", options: [
+        { value: "current", label: "My level, as earned" }].concat(Array.from({ length: 30 }, function (_, i) { return { value: i + 1, label: "Level " + (i + 1) }; })),
+        about: "Start at any level, no unlocking. Unless held, the level moves from there as usual and becomes yours." },
+      { key: "holdLevel", label: "Hold the level", type: "boolean", default: false,
+        about: "The level stays where it starts for the whole session, and your earned level is left as it was." },
+      /* Benchmark rounds: glued spaces at one fixed level, every so many rounds, never moving
+         the level. The training level moves with performance, so accuracy on it says little
+         about progress; a fixed level, in fresh items each time, does. */
+      { key: "bench", label: "Glued spaces: benchmark rounds", type: "select", default: 0, options: [
+        { value: 0, label: "Off" }, { value: 5, label: "Every 5th round" }, { value: 10, label: "Every 10th round" }],
+        about: "A round of glued spaces at one fixed level that never moves your level: a progress measure the moving level cannot muddy." },
+      { key: "benchLevel", label: "Benchmark level", type: "select", default: 12, options: Array.from({ length: 30 }, function (_, i) { return { value: i + 1, label: "Level " + (i + 1) }; }) },
       { key: "minutes", label: "Session length", type: "select", default: 20, options: [
         { value: 10, label: "10 minutes" }, { value: 15, label: "15 minutes" }, { value: 20, label: "20 minutes" }, { value: 30, label: "30 minutes" },
         { value: 45, label: "45 minutes" }, { value: 60, label: "1 hour" }, { value: 90, label: "1½ hours" }, { value: 120, label: "2 hours" },
@@ -449,7 +467,10 @@
       useLetters = compact;
       Voice.rate = +set.rate || 1; Voice.which = set.voice; Voice.held = false;
       var stored = typeof load(LEVEL_KEY) === "number" ? load(LEVEL_KEY) : s.level;
-      var level = listen && set.listenLevel !== "current" ? +set.listenLevel : stored;
+      var hold = !!set.holdLevel && !listen;
+      var chosen = set.startLevel && set.startLevel !== "current" ? +set.startLevel : null;
+      var level = listen && set.listenLevel !== "current" ? +set.listenLevel : chosen || stored;
+      var kindStats = {}, benchStats = { trials: 0, correct: 0, level: +set.benchLevel || 12 };
       var startedAt = Date.now(), endMs = set.minutes * 60000, limit = set.timeLimit ? set.timeLimit * 1000 : null;
       var rows = [], lureStats = {}, roundsDone = [];
       var rot = 0;
@@ -509,7 +530,7 @@
         if (listen) return;
         var scored = rows.filter(function (r) { return typeof r.correct === "boolean"; });
         var correct = scored.filter(function (r) { return r.correct; }).length;
-        save(CHECKPOINT_KEY, { level: level, session: {
+        save(CHECKPOINT_KEY, { level: hold ? stored : level, session: {
           id: startedAt + "-cp", start: startedAt, end: Date.now(), activeSeconds: Math.round(s.now() / 1000), completed: false,
           mode: "rounds", level: s.level, levelEnd: level, trials: scored.length, correct: correct,
           accuracy: scored.length ? correct / scored.length : null, settings: set,
@@ -767,8 +788,9 @@
         if (t.kind === "space") return ["It is " + (t.answer + 1) + ": " + S.optionSpaceWords(t.space) + "."];
         return [t.answer === "possible" ? "Possible: the loop comes back to Red." : "Impossible: the loop ends on " + S.poseWords(t.end) + "."];
       }
-      async function spacesRound() {
-        var o = S.difficulty(level), done = 0, right = 0, n = set.perRound;
+      async function spacesRound(bench) {
+        var at = bench ? benchStats.level : level;
+        var o = S.difficulty(at), done = 0, right = 0, n = set.perRound;
         for (var t = 0; t < n && s.now() < endMs; t++) {
           var kind = S.KINDS[spaceTurn++ % S.KINDS.length], trial = S.trial(kind, A.Rng(), o);
           if (!trial) continue;
@@ -797,9 +819,13 @@
             response: signal ? (given === signal ? signal : null) : four ? (chosen === null ? null : chosen + 1) : given,
             correct: good, rtMs: r1 ? r1.rtMs : null,
             extra: { task: "spaces", material: "field", kind: kind, ask: trial.ask || null, field: S.spaceCode(trial.space),
+              bench: bench || undefined, features: S.features(trial),
               answer: four ? trial.answer + 1 : trial.answer, said: four ? (chosen === null ? null : chosen + 1) : given,
-              lure: four ? (chosen !== null && trial.options[chosen] ? trial.options[chosen].lure || null : null) : trial.lure || null, level: level },
+              lure: four ? (chosen !== null && trial.options[chosen] ? trial.options[chosen].lure || null : null) : trial.lure || null, level: at },
           });
+          var ks = kindStats[kind] = kindStats[kind] || { trials: 0, correct: 0, rtMs: 0 };
+          ks.trials++; if (good) ks.correct++; if (r1) ks.rtMs += r1.rtMs;
+          if (bench) { benchStats.trials++; if (good) benchStats.correct++; }
           if (!listen) s.feedback(good);
           await explain(good, spaceExplain(trial, chosen), spaceHeard(trial));
         }
@@ -807,9 +833,9 @@
       }
 
       /* ---- one round ---- */
-      async function round(task, G) {
+      async function round(task, G, bench) {
         if (task === "routes") return routesRound();
-        if (task === "spaces") return spacesRound();
+        if (task === "spaces") return spacesRound(bench);
         var o = A.difficulty(level, task);
         if (!set.perspective) o.perspectiveShare = 0;
         var done = 0, right = 0, n = set.perRound;
@@ -939,28 +965,32 @@
       var MATERIAL_WORDS = { space: "space", numbers: "numbers", notes: "notes", days: "days", compass: "headings", square: "tiles", pose: "poses", cube: "cube", field: "glued field" };
       function materialLabel(m) { return m === "cube" ? "Cube" : m === "field" ? "Glued field" : A.GROUPS[m].label; }
       try {
-        var r = 0, empty = 0;
+        /* r counts rounds played; q the rounds of the rotation, which a benchmark round
+           does not use up. */
+        var r = 0, q = 0, empty = 0;
+        var isBench = function (k) { return !!set.bench && !listen && (k + 1) % set.bench === 0; };
         while (s.now() < endMs) {
-          var p = plan(r), task = p.task, material = p.material, G = A.GROUPS[material];
+          var bench = isBench(r), p = bench ? { task: "spaces", material: "field" } : plan(q), task = p.task, material = p.material, G = A.GROUPS[material];
           if (ears) {
             s.show('<div class="ra-card"><p class="ra-listen">' + (r + 1) + " · " + TASK_WORDS[task] + " · " + MATERIAL_WORDS[material] + "</p></div>");
             await say("Round " + (r + 1) + ". " + TASK_WORDS[task] + ", " + MATERIAL_WORDS[material] + (task === "nback" ? ", " + A.difficulty(level, task).n + " back" : "") + ".");
             await s.wait(700);
           }
-          var from = level, res = await round(task, G);
-          r++;
+          var from = level, res = await round(task, G, bench);
+          r++; if (!bench) q++;
           if (!res.done) { if (++empty >= 3) break; continue; }
           empty = 0;
           var acc = res.right / res.done;
-          if (!listen) {
+          /* A held level, a benchmark round and listening all leave the level alone. */
+          if (!listen && !hold && !bench) {
             if (res.done >= Math.min(4, set.perRound)) level = acc >= 0.8 ? Math.min(30, level + 1) : acc < 0.6 ? Math.max(1, level - 1) : level;
             save(LEVEL_KEY, level);
           }
           hud();
-          roundsDone.push({ task: task, material: material, trials: res.done, correct: res.right, from: from, to: level });
+          roundsDone.push({ task: task, material: material, trials: res.done, correct: res.right, from: bench ? benchStats.level : from, to: bench ? benchStats.level : level, bench: bench || undefined });
           checkpoint();
           if (s.now() >= endMs) break;
-          var nx = plan(r), nextTask = nx.task, nextMaterial = nx.material;
+          var nx = isBench(r) ? { task: "spaces", material: "field" } : plan(q), nextTask = nx.task + (isBench(r) ? " (benchmark)" : ""), nextMaterial = nx.material;
           var left = Math.max(0, Math.round((endMs - s.now()) / 60000));
           if (ears) {
             buttons([]);
@@ -971,13 +1001,14 @@
           }
           buttons([{ id: "next", label: compact ? "»" : "Next round", key: " " }]);
           s.show('<div class="ra-card ra-round' + (compact ? " ra-code" : "") + '"><p class="ra-q">' + (compact
-            ? "#" + r + " · " + Math.round(acc * 100) + "% · L" + from + "→" + level + " · → " + nextTask + "/" + nextMaterial + " · " + left + "m"
-            : "Round " + r + ": " + Math.round(acc * 100) + "% · level " + from + " → " + level + ". Next: " + nextTask + ", " + materialLabel(nextMaterial) + ". " + left + " min left.") + "</p></div>");
+            ? "#" + r + (bench ? " ⊙" : "") + " · " + Math.round(acc * 100) + "% · " + (bench ? "L" + benchStats.level + " ⊙" : "L" + from + "→" + level + (hold ? " ⊓" : "")) + " · → " + nextTask + "/" + nextMaterial + " · " + left + "m"
+            : "Round " + r + (bench ? " (benchmark, level " + benchStats.level + ")" : "") + ": " + Math.round(acc * 100) + "%"
+              + (bench ? "" : " · level " + from + " → " + level + (hold ? " (held)" : "")) + ". Next: " + nextTask + ", " + materialLabel(nextMaterial) + ". " + left + " min left.") + "</p></div>");
           await s.respond({ accept: ["next"], timeoutMs: 8000 });
         }
         if (ears) await say(listen ? "Session over." : "Session over. Level " + level + ".");
       } finally {
-        try { localStorage.setItem(ROTATION_KEY, String(rot + Math.max(1, roundsDone.length))); } catch (e) {}
+        try { localStorage.setItem(ROTATION_KEY, String(rot + Math.max(1, q))); } catch (e) {}
         checkpoint(true);
         hush();
         if (watch) watch.disconnect();
@@ -988,8 +1019,10 @@
       }
       return { mode: listen ? "listen" : "rounds", modalities: ears ? ["audio"] : ["visual"].concat(aloud ? ["audio"] : []),
         // Listening leaves the level where it was.
-        levelEnd: listen ? stored : level,
-        extra: { rounds: roundsDone, lures: lureStats, notation: set.notation, play: aloud ? set.play : "screen" } };
+        levelEnd: listen || hold ? stored : level,
+        extra: { rounds: roundsDone, lures: lureStats, notation: set.notation, play: aloud ? set.play : "screen",
+          levelPlayed: chosen || undefined, held: hold || undefined,
+          spaces: Object.keys(kindStats).length ? kindStats : undefined, bench: benchStats.trials ? benchStats : undefined } };
     },
   });
 })();

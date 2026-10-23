@@ -58,6 +58,14 @@ trials (4 to 100, 12 by default) of one task in one material.
   both; so does choosing spaces or the glued field. A session picks up the rotation
   where the last one stopped.
 - **The level moves after every round**, not just at the end of the session.
+- **Any level can be played without earning it.** Settings → Level picks one;
+  unless **Hold the level** is on, it moves from there as usual and becomes
+  yours. Held, it stays put for the whole session and your earned level is
+  left as it was.
+- **Benchmark rounds** (off, every 5th or every 10th round): a round of glued
+  spaces at one fixed level (Benchmark level, 12 by default), in fresh items,
+  that never moves the level and does not use up a place in the rotation.
+  Marked `⊙` in the round summary, and `bench` in the record.
 - **Long sessions are saved as they go.** Every trial is checkpointed. If
   the tab is closed or crashes, the next time the page opens the unfinished
   session is filed in the record, marked as not completed, and its level is
@@ -246,10 +254,96 @@ belongs to is a symbol:
 | `∅v` | (spaces) a drifting position mirrored, its velocity not |
 | `±t` | (spaces) one tick too few or too many |
 | `⧉` | (spaces) the page offset copied instead of walked |
+| `∓m` | (spaces) mirrored once too many or too few times |
 
 The round summary reads `#3 · 75% · L4→5 · → nback/days · 41m`: round 3,
 75% right, level 4 to 5, next round structure n-back in days, 41 minutes
 left.
+
+## Glued spaces: what they are for, and what is known
+
+**What it aims at.** Holding a spatial model and carrying it through
+transformations that break flat intuition: telling a mirror image from a
+rotation, keeping a frame of reference (the walker's left) through a change
+that reverses it, composing moves along a path when the result depends on the
+path, and finding the rule of a space from what happens in it. Each twist a
+walk crosses adds one more thing to carry (the walker's hand) to everything
+after it, which is relational load in Halford's sense (Halford et al., 1998).
+
+**What supports it.** Spatial skills are trainable: a meta-analysis of 217
+training studies found reliable gains (g ≈ 0.47) that lasted and carried over
+to untrained spatial tasks (Uttal et al., 2013). People do learn spaces that
+are not Euclidean: in virtual worlds with wormholes, navigation shows
+knowledge organised as a graph of places and links rather than a metric map
+(Warren et al., 2017); glued fields ask for the links and the metric
+together. The space kind is system identification, as in complex problem
+solving (Greiff et al., 2012); transfer is structure mapping, a relation
+carried from one object to another (Gentner, 1983).
+
+**What is not known.** Whether practising this improves anything beyond
+spatial tasks close to it. Training studies of working memory and brain
+training find gains that mostly stay with the trained task (Melby-Lervåg et
+al., 2016; Simons et al., 2016). That this mode reaches further is a
+hypothesis; the record is built so it can be tested.
+
+**How it is built to be a fair test of the skill.**
+
+- *No answer without the reasoning.* A four-way choice whose wrong options
+  are made from mistakes clusters round the truth, and test-wise strategies
+  then beat chance without a step walked: in an early version, "pick the
+  mirrored option" scored 53% and "pick the most typical one" 44%. The
+  options are now chosen against that (a hand split two and two, the truth
+  mirrored half the time, its typicality drawn by lot), and
+  `test/spaces.test.js` holds five such strategies to chance (20–31% over
+  1,200 trials each), as item-writing guidance asks (Haladyna et al., 2002).
+- *The twist has to matter.* In most home, possible and meet items, reading
+  every seam as straight gives the wrong answer (the rest are controls); the
+  tests hold that share at least to half. Answers are balanced: each home
+  answer a quarter of the time, possible and meet about half and half.
+- *Every answer is checked* against its own givens, by the tests, at every
+  level.
+- *Wrong answers are diagnostic.* Each is a named mistake (`○ ∅m ∅⁺ ∅v ±t ⧉`),
+  and the record counts which ones catch you.
+- *Difficulty is recorded, not just the level.* Every spaces trial logs its
+  features (moves, turns, seams, twists and sheets crossed, moves made while
+  mirrored, field size, ticks, movers, observations), so which of them costs
+  accuracy and time can be fitted to one's own trials.
+- *Progress apart from the moving level.* The training level rises as you
+  improve, so accuracy on it stays near the same; benchmark rounds at a fixed
+  level are the curve that shows change.
+
+**Testing it on yourself.** Before starting and every few weeks: an untrained
+spatial test (mental rotation; paper folding from the ETS kit, Ekstrom et
+al., 1976) and an untrained non-spatial reasoning test; keep benchmark rounds
+on. Gains on the benchmark alone show learning the task. Gains on the
+untrained spatial tests show near transfer. Gains on the non-spatial one, if
+any, would be the interesting result. Better still, alternate training blocks
+with blocks without it, so a change can be told from a trend.
+
+**References**
+
+- Ekstrom, R. B., French, J. W., Harman, H. H., & Dermen, D. (1976). *Manual
+  for kit of factor-referenced cognitive tests*. ETS.
+- Gentner, D. (1983). Structure-mapping: a theoretical framework for analogy.
+  *Cognitive Science*, 7(2), 155–170.
+- Greiff, S., Wüstenberg, S., & Funke, J. (2012). Dynamic problem solving: a
+  new assessment perspective. *Applied Psychological Measurement*, 36(3).
+- Halford, G. S., Wilson, W. H., & Phillips, S. (1998). Processing capacity
+  defined by relational complexity. *Behavioral and Brain Sciences*, 21(6).
+- Haladyna, T. M., Downing, S. M., & Rodriguez, M. C. (2002). A review of
+  multiple-choice item-writing guidelines for classroom assessment. *Applied
+  Measurement in Education*, 15(3), 309–333.
+- Melby-Lervåg, M., Redick, T. S., & Hulme, C. (2016). Working memory training
+  does not improve performance on measures of intelligence or other measures
+  of "far transfer". *Perspectives on Psychological Science*, 11(4), 512–534.
+- Simons, D. J., et al. (2016). Do "brain-training" programs work?
+  *Psychological Science in the Public Interest*, 17(3), 103–186.
+- Uttal, D. H., et al. (2013). The malleability of spatial skills: a
+  meta-analysis of training studies. *Psychological Bulletin*, 139(2),
+  352–402.
+- Warren, W. H., Rothman, D. B., Schnapp, B. H., & Ericson, J. D. (2017).
+  Wormholes in virtual space: from cognitive maps to cognitive graphs.
+  *Cognition*, 166, 152–163.
 
 ## How difficulty is measured
 
@@ -500,14 +594,16 @@ Examples:
   velocities, shortest walks, the six trials and their lures, their code,
   words and spoken lines; no page code.
 - `test/spaces.test.js`: `node apps/relations/test/spaces.test.js`. About
-  17,700 checks: once round a straight seam is home, once round a twisted
+  17,750 checks: once round a straight seam is home, once round a twisted
   one is the mirrored row mirrored and twice is home, the middle row of an
   odd field comes back on its own square mirrored, a mirrored walker's left
   is its old right, a sheet seam changes sheet and twice changes back, every
   walk undone comes home on every kind of field, and every trial of every
   kind at every level has the answer its own givens give (the possible loop
   walked premise by premise, the space options each tried against every
-  observation, the drift runs replayed).
+  observation, the drift runs replayed); and that no answer comes without the
+  reasoning: five test-wise strategies held to chance over 1,200 trials each,
+  answers balanced, and the straight-seam reading wrong in most items.
 - `test/routes.test.js`: `node apps/relations/test/routes.test.js`. About
   218,000 checks:
   - the walker stays on the cube, on squares' centres, facing along the face;
