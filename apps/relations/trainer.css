@@ -53,6 +53,15 @@
 .h-key.ra-on { background: var(--h-panel-hi); border-color: var(--h-accent-2); color: var(--h-accent-2); box-shadow: inset 0 0 0 2px var(--h-accent); }
 .ra-face { fill: var(--h-panel); stroke: var(--h-line); stroke-width: 1; }
 .ra-face.ra-top { fill: var(--h-panel-hi); }
+.ra-with-field { display: flex; flex-wrap: wrap; gap: 1rem 2.5rem; align-items: center; justify-content: center; width: 100%; }
+.ra-fieldbox { flex: 1 1 300px; max-width: 440px; }
+.ra-fieldbox .ra-draw { width: 100%; margin: 0; }
+.ra-field .ra-mid { text-anchor: middle; }
+.ra-field .ra-end { text-anchor: end; }
+.ra-seam { stroke: var(--h-accent); stroke-width: 2.5; }
+.ra-seam-sheet { stroke-dasharray: 6 4; }
+.ra-arrow { fill: var(--h-accent-2); }
+.ra-vel { stroke-width: 2.2; stroke-dasharray: 3 2; }
 .ra-path { stroke-width: 2.5; stroke-linecap: round; fill: none; }
 .ra-jump { fill: var(--h-bg); stroke-width: 1.5; }
 .ra-jlbl { font: 700 6px var(--h-font); text-anchor: middle; }

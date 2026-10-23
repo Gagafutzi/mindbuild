@@ -94,7 +94,12 @@ pop-out).
 ### Relation Algebra
 **Task.** Nested relations — "the place north of the place east of Red" — in
 space, numbers, notes, days, headings, orientations and poses, judged, checked
-for consistency, measured, or held as n-back; routes walked on a cube.
+for consistency, measured, or held as n-back; routes walked on a cube; and
+glued spaces: fields whose edges join straight, with a twist (crossing mirrors
+you, as on a Möbius band) or onto a second sheet, a new one every trial, with
+six kinds of question (where a walk ends, home or back mirrored, things
+drifting by velocities, which field it is from walks seen in it, whether a
+loop can close, and carrying a relation from one object to another).
 **Research** (all †, `apps/relations/README.md`,
 `research/relation-algebra.md`): every material is a group, a relation is
 `X·Y⁻¹`; relational complexity (Halford et al. 1998); structure factored from

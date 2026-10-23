@@ -4,7 +4,10 @@ Nested relations, combined in your head. The same task works in seven
 materials: places on a grid, numbers, notes, days of the week, compass
 headings, a tile's orientation, and poses (place, facing and handedness
 together). From level 21, premises can be either/or. Routes on a cube walk
-the poses over a cube's surface, where going round a corner turns you.
+the poses over a cube's surface, where going round a corner turns you. Glued
+spaces walk them over fields whose edges are joined straight, with a twist
+(which mirrors whatever crosses, as a Möbius band does), or onto a second
+sheet: a new space every trial, and six kinds of question about it.
 Inspired by IMAGI-WORLD, a structure
 n-back of spoken spatial premises; rebuilt so the answer depends on what a
 sentence means, never on its wording.
@@ -34,6 +37,12 @@ into one model, and reading answers off it. Each trial describes objects
 - **Routes on a cube:** poses walked on the surface of a cube, where a walk
   is no longer a fixed relation (below). Which walks bring Red home? Can a
   loop of walks close? Does a walk take Red to where another object stands?
+- **Glued spaces:** a field whose edges are joined, drawn with its seams,
+  a new one every trial. Where does a walk end? Is Red home, back but
+  mirrored, back but turned, or away? Where are things that drift by a
+  velocity after k ticks, and do two ever meet? Which field is it, from walks
+  seen in it? Can a loop of walks close? As Blue is to Red, which pose is to
+  Gold? (Below.)
 
 ## Sessions and rounds
 
@@ -42,10 +51,11 @@ A session is a run of **rounds** and lasts as long as you set: 10, 15, 20,
 trials (4 to 100, 12 by default) of one task in one material.
 
 - **Task** and **Material** can each be fixed or set to change every round.
-  With both changing, one round in eight is routes on a cube, and every
-  other task comes up in every material within 32 rounds (How far? asks a
-  question instead in the four materials with no distance). Choosing routes as the task, or
-  the cube as the material, chooses both. A session picks up the rotation
+  With both changing, one round in nine is routes on a cube and one in nine
+  glued spaces, and every other task comes up in every material within 36
+  rounds (How far? asks a question instead in the four materials with no
+  distance). Choosing routes as the task, or the cube as the material, chooses
+  both; so does choosing spaces or the glued field. A session picks up the rotation
   where the last one stopped.
 - **The level moves after every round**, not just at the end of the session.
 - **Long sessions are saved as they go.** Every trial is checkpointed. If
@@ -155,6 +165,45 @@ the way Red then faces.
 | `∃?` | Can this loop of walks close? | `∃` possible, `∅` impossible |
 | `G=R^^q?` | Is Gold where this walk takes Red, facing Gold's way? | `=`, `≠`, `?` |
 
+**Glued spaces** are poses walked on a field of squares whose opposite edges
+are joined. The first line is the field: `▦5×4 x⋈ y○` is five columns (a to
+e, from the west) by four rows (1 to 4, from the south), its east and west
+edges joined with a twist, its north and south edges straight.
+
+- `○` **straight**: off the east edge, on at the west in the same row.
+  Both seams straight make a torus.
+- `⋈` **twisted**: off the east edge in row 1 of 4, on at the west in row 4,
+  and **mirrored**: the walker's left and right swap, so its later `<` and
+  `>` steps, and its `q` and `Q` turns, go the other way. One twisted seam
+  makes a Klein bottle, two a projective plane.
+- `⁺` on a seam: crossing it also goes onto the other of two **sheets**, the
+  same field again (from level 10; twisted as well from 18).
+
+Poses are written as squares: `R=c2@6` is Red on c2 facing east (6 on the
+keypad); `c2⁺@6m` is on the second sheet, mirrored. On screen the field is
+drawn as topology draws a glued square: arrows on joined edges, the same way
+round for a straight seam and opposite ways for a twist, one arrowhead east
+and west, two north and south; a seam onto the other sheet is dashed, and the
+second sheet is drawn beside the first. The question shows where things
+stand, never a path.
+
+The six kinds take turns, trial by trial, and every trial draws its own field:
+
+| Code | Asks | Answers |
+| --- | --- | --- |
+| `R^^q^⌖?`, after four poses `1 …` to `4 …` | Where does Red end? | 1–4 |
+| `R^^q^⌂?` | Where does the walk leave Red? | `⌂` home, `⇋` back but mirrored, `↻` back but turned, `→` away |
+| `R=b2→9` … `R+3t⌖?` | Red moves one step north-east each tick (`→99` two steps); a twisted seam mirrors the velocity too. Where is Red after 3 ticks? | 1–4 |
+| `R⋂B≤4t?` | Do Red and Blue land on the same square within 4 ticks? `→(6\|9)` is one of two velocities (from level 21) | `=`, `≠`, `?` when it depends on the velocity |
+| `a2@6 ^^^^ ⇒ a3@6m` … `▦?` | Walks seen in an unknown field, and where they ended: which field is it? | 1–4 |
+| `∃?` | Can this loop of walks close? | `∃` possible, `∅` impossible |
+| `B=a1@4 =R^^q^` … `R:B=O:?` | Blue is Red walked so. Which pose is Gold walked the same way? | 1–4 |
+
+The last is an analogy, and its trap is the obvious one: the offset Blue has
+from Red on the page, copied onto Gold. The relation is the walk, made in
+Gold's own frame and over Gold's seams; Red's walk never meets a seam, and
+Gold's always does.
+
 **Questions and answers:**
 
 | Code | Asks | Answers |
@@ -191,6 +240,12 @@ belongs to is a symbol:
 | `▭` | (cube) the cube read as a flat grid |
 | `↻⌂` | (cube) back on the square, but turned |
 | `q⇄Q` | (cube) a turn the wrong way |
+| `○` | (spaces) every seam read as straight |
+| `∅m` | (spaces) the square and facing mirrored at a twist, the walker not |
+| `∅⁺` | (spaces) the change of sheet missed |
+| `∅v` | (spaces) a drifting position mirrored, its velocity not |
+| `±t` | (spaces) one tick too few or too many |
+| `⧉` | (spaces) the page offset copied instead of walked |
 
 The round summary reads `#3 · 75% · L4→5 · → nback/days · 41m`: round 3,
 75% right, level 4 to 5, next round structure n-back in days, 41 minutes
@@ -224,6 +279,20 @@ Routes on a cube read the same level their own way:
   each premise's walk 2 to 3 moves, growing to 6;
 - a loop holds 3 objects to level 8, 4 to level 18 and 5 above it; a chain
   in "does it reach?" has one premise fewer.
+
+Glued spaces read it their own way too:
+
+- fields are 4×4 below level 8, 4 or 5 a side to 15, 5 or 6 from 16;
+- below level 6 exactly one seam is twisted, from 6 either or both; from 10
+  a seam may lead onto a second sheet, and from 18 a twisted one may;
+- the moves arrive as on the cube (`h v` at 5, `< >` at 9); walks run 3 to 6
+  moves at level 1 and up to 6 to 11 at 30;
+- drift has two movers below level 12 and three from it, velocities of two
+  steps a tick from 14, and either/or velocities from 21; it runs 2 to 3
+  ticks at level 1, up to 5 to 8 at 30;
+- every walk asked about crosses a seam that matters (a twist or a sheet),
+  and a home walk never comes back over its own squares, which would bring it
+  home on any field.
 
 Eight moves is the floor for home walks because the smallest loop that closes
 on a flat grid, `^Q^Q^Q^Q`, is eight moves; below it there is no flat trap to
@@ -426,6 +495,19 @@ Examples:
   the facing with it), walks as strings (undone, normalised, read on a flat
   grid), shortest walks, the three trials, their code, words and spoken lines,
   and the cube's net for drawings; no page code.
+- `spaces.js`: glued spaces. The field and its seams, the walker across them
+  (a twist mirrors the square, the facing and the walker), drift by
+  velocities, shortest walks, the six trials and their lures, their code,
+  words and spoken lines; no page code.
+- `test/spaces.test.js`: `node apps/relations/test/spaces.test.js`. About
+  17,700 checks: once round a straight seam is home, once round a twisted
+  one is the mirrored row mirrored and twice is home, the middle row of an
+  odd field comes back on its own square mirrored, a mirrored walker's left
+  is its old right, a sheet seam changes sheet and twice changes back, every
+  walk undone comes home on every kind of field, and every trial of every
+  kind at every level has the answer its own givens give (the possible loop
+  walked premise by premise, the space options each tried against every
+  observation, the drift runs replayed).
 - `test/routes.test.js`: `node apps/relations/test/routes.test.js`. About
   218,000 checks:
   - the walker stays on the cube, on squares' centres, facing along the face;
