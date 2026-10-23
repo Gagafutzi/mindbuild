@@ -12,6 +12,7 @@ it happen to you.
 import json
 import os
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -856,13 +857,17 @@ def a_remote_hub_url_is_not_offline_even_with_a_build():
     still opens the published copy, which with the block on is on the far side
     of it. The question has to be asked of the URL, not of the directory.
     """
-    c = cfg(hub_url=G.PAGES_URL)
-    assert G.hub_dir(c), "this checkout has no build; the case cannot be tested"
-    assert G.hub_reachable_offline(c) is False, \
-        "a hub on the internet was reported as meetable offline"
-    assert G.state(c, G.Counter(c), None)["offlineCapable"] is False
-    assert G.hub_reachable_offline(cfg()) is True, \
-        "the default hub was not the local one"
+    # A build of its own, since `dist/` is gitignored and a fresh checkout
+    # (CI's) has none.
+    with tempfile.TemporaryDirectory() as built:
+        open(os.path.join(built, "index.html"), "w").close()
+        c = cfg(hub_dir=built, hub_url=G.PAGES_URL)
+        assert G.hub_dir(c), "the stand-in build was not taken for one"
+        assert G.hub_reachable_offline(c) is False, \
+            "a hub on the internet was reported as meetable offline"
+        assert G.state(c, G.Counter(c), None)["offlineCapable"] is False
+        assert G.hub_reachable_offline(cfg(hub_dir=built)) is True, \
+            "the default hub was not the local one"
 
 
 @test

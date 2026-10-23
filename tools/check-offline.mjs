@@ -43,8 +43,14 @@ if (!dir) { console.error("usage: node tools/check-offline.mjs <dir>"); process.
  * that analytics go in the hub's build and never inside a trainer, and it is a
  * request to Google on every load of that trainer. Removing it means touching
  * the Angular sub-project and rebuilding its docs/, which is its own piece of
- * work. */
-const ALLOWED = new Set(["www.googletagmanager.com"]);
+ * work.
+ *
+ * gc.zgo.at: GoatCounter, the hub's own page counter, which build-site.mjs
+ * adds to the hub's index.html only when GOATCOUNTER is set — as the Pages
+ * deploy sets it. That is the one place analytics are meant to live. The tag
+ * is `async` and a failed load is silent, so offline it costs nothing; a
+ * build without GOATCOUNTER (a local or APK build) never contains it. */
+const ALLOWED = new Set(["www.googletagmanager.com", "gc.zgo.at"]);
 
 const findings = [];
 
