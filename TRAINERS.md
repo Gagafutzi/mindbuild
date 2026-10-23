@@ -113,6 +113,26 @@ spoken arithmetic on consecutive digits — and its use as training in Cognitive
 Control Training (Siegle, Ghinassi & Thase 2007). The Bayesian staircase is
 CCT's (QUEST/ZEST family) with a guess rate of ¼ for four tiles †.
 
+### Ribbon World
+**Task.** Flat shapes ride a half-twisted loop and a plain one that touch at a
+Gate. The twist hands a shape back mirrored, a turnstile turns it, and the Gate
+lets one kind across (one hand, or one axis) when it is open. Watch a clip
+until the rules are clear, then: predict where and which way round a shape
+leaves the Gate; find the frame of a trip that cannot be; say which loop a
+shape went to under fog, and how sure; and judge whether a differently drawn
+world runs on the same rules. Nothing to count: it is answered by picturing
+the trip. Level 1–12 moves after every episode.
+**Research.** Relational complexity (Halford et al. 1998 †) sets the ceiling
+the levels climb toward. The answers are picked to separate mirror from
+rotation, the core of mental rotation (Shepard & Metzler 1971); the twist is a
+Möbius band's orientation reversal. Rule induction from a running system
+follows complex problem solving (Greiff, Wüstenberg & Funke 2012); the analogy
+question is structure mapping (Gentner 1983) across surfaces, which is how a
+schema is abstracted (Gick & Holyoak 1983). Fog answers are scored by Brier
+score (Brier 1950), calibration being what separates good forecasters (Tetlock
+& Gardner 2015). At most four shapes, the limit of tracking several moving
+objects (Pylyshyn & Storm 1988).
+
 ---
 
 ## Other trainers
@@ -217,6 +237,17 @@ It counts no minutes of its own.
 
 **Background added for this summary**
 
+- Brier, G. W. (1950). Verification of forecasts expressed in terms of
+  probability. *Monthly Weather Review*, 78(1), 1–3.
+- Gentner, D. (1983). Structure-mapping: a theoretical framework for analogy.
+  *Cognitive Science*, 7(2), 155–170.
+- Gick, M. L., & Holyoak, K. J. (1983). Schema induction and analogical
+  transfer. *Cognitive Psychology*, 15(1), 1–38.
+- Greiff, S., Wüstenberg, S., & Funke, J. (2012). Dynamic problem solving: a new
+  assessment perspective. *Applied Psychological Measurement*, 36(3), 189–213.
+- Pylyshyn, Z. W., & Storm, R. W. (1988). Tracking multiple independent
+  targets. *Spatial Vision*, 3(3), 179–197.
+- Tetlock, P. E., & Gardner, D. (2015). *Superforecasting*.
 - Au, J., et al. (2015). Improving fluid intelligence with training on working
   memory: a meta-analysis. *Psychonomic Bulletin & Review*, 22(2), 366–377.
 - Bor, D., Rothen, N., Schwartzman, D. J., Clayton, S., & Seth, A. K. (2014).

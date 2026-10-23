@@ -1,0 +1,10 @@
+{
+  "id": "ribbon",
+  "name": "Ribbon World",
+  "what": "Shapes on a twisted loop and a plain one: induce the rules, predict, find the impossible frame, judge through fog, match worlds",
+  "categories": ["spatial", "reasoning"],
+  "unit": "level",
+  "license": "MIT",
+  "maintainer": "mindbuild",
+  "build": null
+}

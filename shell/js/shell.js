@@ -60,6 +60,10 @@
       what: "Paced spoken arithmetic, n back, on a four-way cross" },
     { id: "vmt", name: "Veridical Mapping", path: "vmt/", colour: "#7c83f5", more: true,
       what: "Mapping one perceptual scale onto another, by eye and ear" },
+    /* Written on the Chimera harness, so it writes the Chimera record and is
+       counted with no adapter. */
+    { id: "ribbon", name: "Ribbon World", path: "ribbon/", colour: "#c9a227",
+      what: "A twisted loop and a plain one: find the rules, picture the trip, spot the impossible, judge through fog" },
   ];
 
   /* Stageable, but never a trainer.

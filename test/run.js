@@ -336,9 +336,9 @@ test("every key the shell watches is one an adapter recognises", () => {
  * this breaks is a key renamed on one side and not the other — and then the
  * meter shows a smaller day, not an error.
  */
-test("Relation Algebra, Listening Integration and aPOSNER reach the meter", () => {
+test("Relation Algebra, Listening Integration, aPOSNER, Veridical Mapping and Ribbon World reach the meter", () => {
   const fs = require("fs");
-  for (const [id, src] of [["relations", "trainer.js"], ["listening", "listening.js"], ["aposner", "index.html"], ["vmt", "index.html"]]) {
+  for (const [id, src] of [["relations", "trainer.js"], ["listening", "listening.js"], ["aposner", "index.html"], ["vmt", "index.html"], ["ribbon", "trainer.js"]]) {
     const code = fs.readFileSync(path.join(__dirname, "..", "apps", id, src), "utf8");
     const key = (code.match(/RECORD_KEY\s*=\s*"([^"]+)"/) || [])[1];
     assert.strictEqual(key, `chimera.${id}.record.v1`,
@@ -359,7 +359,7 @@ test("every trainer on the hub is in the site", () => {
   const build = fs.readFileSync(path.join(__dirname, "..", "tools", "build-site.mjs"), "utf8");
   const listed = shell.slice(shell.indexOf("var TRAINERS"), shell.indexOf("var ARCHIVE"));
   const ids = [...listed.matchAll(/id: "([a-z]+)"/g)].map((m) => m[1]);
-  assert.ok(["relations", "listening", "aposner", "vmt"].every((id) => ids.includes(id)), "the hub does not offer them");
+  assert.ok(["relations", "listening", "aposner", "vmt", "ribbon"].every((id) => ids.includes(id)), "the hub does not offer them");
   /* Two are built by their own toolchain and named in the build by path. */
   for (const id of ids) {
     assert.ok(new RegExp(`"${id}"`).test(build) || build.includes(`apps", "${id}"`),

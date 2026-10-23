@@ -1,0 +1,122 @@
+{
+ "format": "chimera-record",
+ "version": 1,
+ "app": "ribbon",
+ "units": {
+  "level": "level"
+ },
+ "sessions": [
+  {
+   "id": "1792752748016-qthie7",
+   "start": 1792752748016,
+   "end": 1792752755975,
+   "activeSeconds": 7.9,
+   "completed": false,
+   "input": "mouse",
+   "level": 1,
+   "trials": 4,
+   "correct": 2,
+   "accuracy": 0.5,
+   "rtMeanMs": 148,
+   "rtMedianMs": 62,
+   "rtSdMs": 197,
+   "settings": {
+    "minutes": 10,
+    "speed": 0.15
+   },
+   "trialLog": [
+    {
+     "block": 0,
+     "modality": "watch",
+     "level": 1,
+     "extra": {
+      "ticks": 36,
+      "replays": 0
+     },
+     "i": 0,
+     "t": 3619
+    },
+    {
+     "block": 0,
+     "modality": "predict",
+     "level": 1,
+     "correct": false,
+     "rtMs": 79,
+     "response": 0,
+     "extra": {
+      "why": "forgot",
+      "horizon": 1
+     },
+     "i": 1,
+     "t": 3699
+    },
+    {
+     "block": 0,
+     "modality": "predict",
+     "level": 1,
+     "correct": false,
+     "rtMs": 50,
+     "response": 0,
+     "extra": {
+      "why": "forgot",
+      "horizon": 1
+     },
+     "i": 2,
+     "t": 3801
+    },
+    {
+     "block": 0,
+     "modality": "impossible",
+     "level": 1,
+     "correct": true,
+     "rtMs": 50,
+     "response": 1,
+     "extra": {
+      "wrong": 1,
+      "alteration": "half"
+     },
+     "i": 3,
+     "t": 3897
+    },
+    {
+     "block": 0,
+     "modality": "fog",
+     "level": 1,
+     "rtMs": 499,
+     "response": 0,
+     "extra": {
+      "confidence": 0.75,
+      "outcome": 1,
+      "hit": false,
+      "brier": 0.563,
+      "pChosen": 0.3,
+      "wants": true,
+      "open": true
+     },
+     "i": 4,
+     "t": 5246
+    },
+    {
+     "block": 0,
+     "modality": "analogy",
+     "level": 1,
+     "correct": true,
+     "rtMs": 62,
+     "response": "same",
+     "extra": {
+      "same": true,
+      "change": null,
+      "replays": 0
+     },
+     "i": 5,
+     "t": 7507
+    }
+   ],
+   "levelEnd": 1
+  }
+ ],
+ "state": {
+  "level": 1
+ },
+ "appVersion": "1"
+}
