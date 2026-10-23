@@ -133,9 +133,10 @@ const SettingsComponent: React.FC<SettingsProps> = ({ settings, onSave, onBack }
               <span>{localSettings.syllableWordLength || 1}</span>
             </div>
             <p className="text-xs text-gray-400 px-1">
-              One is a single syllable. More are said straight after one another as one
-              nonsense word — four gives words like “teek-fohp-murn-lahl” — and a match
-              is the whole word again. Longer words need a longer interval.
+              One is a single syllable. More make one nonsense word, recorded whole —
+              four gives words like “teek-fohp-murn-lahl” — and a match is the whole
+              word again. 240 words per length, spread over every variety setting.
+              Longer words need a longer interval.
             </p>
 
             <div className="flex justify-between items-center">

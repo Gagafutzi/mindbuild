@@ -27,7 +27,14 @@ would give them — the low ones are not overused for having been there first.
 Each word is said from phonemes, like the syllables: primary stress on the
 first, secondary on every other one after it, no syllable break between them
 (a "." here is a full stop to this voice, and a pause). Three takes, the median
-length kept; trimmed, faded and levelled exactly as the syllables are.
+length kept; trimmed, faded and levelled exactly as the syllables are. A word
+still over OUTLIER times its length's median — the voice now and then holds a
+syllable or pauses inside a long word — is taken again, up to RETAKES times,
+keeping the take nearest the median.
+
+    python3 tools/render-words.py voice.onnx --outliers
+
+re-takes only those, in the files already written.
 """
 
 import importlib.util
@@ -47,6 +54,8 @@ WORDS_AT_FULL = 240
 # A word at speaking speed, not the slowed rate the lone syllables have.
 LENGTH_SCALE = 1.0
 SEED = 20261023
+OUTLIER = 1.4
+RETAKES = 8
 
 APP = HERE.parent
 OUT_DIR = APP / "public" / "words"
@@ -109,35 +118,42 @@ def mp3(samples, rate):
     return enc.encode(pcm) + enc.flush()
 
 
-def main() -> int:
-    if len(sys.argv) < 2:
-        print(__doc__, file=sys.stderr)
-        return 2
-    voice = R.load_voice(sys.argv[1])
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    rng = random.Random(SEED)
-    sets = []
-    for length in LENGTHS:
-        words = vocabulary(length, rng)
-        blob, sizes, longest = bytearray(), [], 0
-        for n, w in enumerate(words):
-            takes = []
-            for _ in range(3):
-                rate, raw = render(voice, phonemes(w))
-                takes.append(R.trim(raw, rate))
-            takes.sort(key=len)
-            samples = R.level(R.fade(takes[1], rate))
-            data = mp3(samples, rate)
-            blob += data
-            sizes.append(len(data))
-            longest = max(longest, round(1000 * len(samples) / rate))
-            if n % 40 == 0:
-                name = "".join(INVENTORY[s][0] for s in w)
-                print(f"  len {length}  {n:>3}/{len(words)}  {name:<24} {len(samples) / rate:.2f}s", file=sys.stderr)
-        (OUT_DIR / f"len{length}.bin").write_bytes(bytes(blob))
-        print(f"len {length}: {len(words)} words, {len(blob) / 1024:.0f}KB, longest {longest} ms", file=sys.stderr)
-        sets.append((length, words, sizes, longest))
+def take(voice, word):
+    rate, raw = render(voice, phonemes(word))
+    return rate, R.trim(raw, rate)
 
+
+def word_mp3(voice, word, takes=3, near=None):
+    """The word's MP3 and its length in seconds: the median of `takes`, or the
+    take nearest `near` seconds when given."""
+    got = [take(voice, word) for _ in range(takes)]
+    rate = got[0][0]
+    clips = [c for _, c in got]
+    if near is None:
+        clips.sort(key=len)
+        pick = clips[len(clips) // 2]
+    else:
+        pick = min(clips, key=lambda c: abs(len(c) / rate - near))
+    samples = R.level(R.fade(pick, rate))
+    return mp3(samples, rate), len(samples) / rate
+
+
+def fix_outliers(voice, length, words, clips, secs):
+    """Re-take every word over OUTLIER x the median, in place."""
+    med = sorted(secs)[len(secs) // 2]
+    for i, w in enumerate(words):
+        if secs[i] > OUTLIER * med:
+            before = secs[i]
+            clips[i], secs[i] = word_mp3(voice, w, RETAKES, near=med)
+            name = "".join(INVENTORY[s][0] for s in w)
+            print(f"  len {length}  retook {name}: {before:.2f}s -> {secs[i]:.2f}s (median {med:.2f})", file=sys.stderr)
+
+
+def write_set(length, clips):
+    (OUT_DIR / f"len{length}.bin").write_bytes(b"".join(clips))
+
+
+def write_index(sets):
     lines = [
         "/*",
         " * The whole-word recordings: which words there are, and where each one's",
@@ -157,9 +173,10 @@ def main() -> int:
         "",
         "export const WORD_SETS: Record<number, WordSet> = {",
     ]
-    for length, words, sizes, longest in sets:
+    for length, words, clips, secs in sets:
+        sizes = [len(c) for c in clips]
         lines.append(f"  {length}: {{")
-        lines.append(f"    maxMs: {longest},")
+        lines.append(f"    maxMs: {round(1000 * max(secs))},")
         lines.append("    words: [")
         for i in range(0, len(words), 12):
             lines.append("      " + " ".join("[" + ",".join(map(str, w)) + "]," for w in words[i:i + 12]))
@@ -172,6 +189,59 @@ def main() -> int:
     lines.append("};")
     INDEX.write_text("\n".join(lines) + "\n")
     print(f"wrote {INDEX}", file=sys.stderr)
+
+
+def read_written():
+    """The sets as last written: words, per-word MP3s, and their lengths
+    (from size, the encoding being constant-bitrate)."""
+    import json, re
+    src = INDEX.read_text()
+    sets = []
+    for m in re.finditer(r"  (\d+): \{\n    maxMs: \d+,\n    words: \[(.*?)\],\n    bytes: \[(.*?)\],", src, re.S):
+        length = int(m.group(1))
+        words = [tuple(w) for w in json.loads("[" + m.group(2).strip().rstrip(",") + "]")]
+        sizes = json.loads("[" + m.group(3).strip().rstrip(",") + "]")
+        blob = (OUT_DIR / f"len{length}.bin").read_bytes()
+        clips, at = [], 0
+        for n in sizes:
+            clips.append(blob[at:at + n])
+            at += n
+        sets.append((length, words, clips, [n * 8 / (R.BITRATE * 1000) for n in sizes]))
+    return sets
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    voice = R.load_voice(sys.argv[1])
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    if "--outliers" in sys.argv:
+        sets = read_written()
+        for length, words, clips, secs in sets:
+            fix_outliers(voice, length, words, clips, secs)
+            write_set(length, clips)
+        write_index(sets)
+        return 0
+
+    rng = random.Random(SEED)
+    sets = []
+    for length in LENGTHS:
+        words = vocabulary(length, rng)
+        clips, secs = [], []
+        for n, w in enumerate(words):
+            data, sec = word_mp3(voice, w)
+            clips.append(data)
+            secs.append(sec)
+            if n % 40 == 0:
+                name = "".join(INVENTORY[s][0] for s in w)
+                print(f"  len {length}  {n:>3}/{len(words)}  {name:<24} {sec:.2f}s", file=sys.stderr)
+        fix_outliers(voice, length, words, clips, secs)
+        write_set(length, clips)
+        print(f"len {length}: {len(words)} words, {sum(map(len, clips)) / 1024:.0f}KB, longest {max(secs):.2f}s", file=sys.stderr)
+        sets.append((length, words, clips, secs))
+    write_index(sets)
     return 0
 
 
