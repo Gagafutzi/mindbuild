@@ -21,6 +21,8 @@ let ctx: AudioContext | null = null;
 const sourceBuffers: (AudioBuffer | null)[] = [];
 /** What actually gets played: `sourceBuffers` stretched to `playbackRate`. */
 let playBuffers: (AudioBuffer | null)[] = [];
+/** The same, said quicker, for every syllable of a word but its last. */
+let innerBuffers: (AudioBuffer | null)[] = [];
 let playbackRate = 1;
 /** The rate `playBuffers` was built at, or null when they need rebuilding. */
 let stretchedRate: number | null = null;
@@ -108,6 +110,7 @@ function timeStretch(buffer: AudioBuffer, speed: number): AudioBuffer {
 function restretch() {
   if (!ctx || stretchedRate === playbackRate) return;
   playBuffers = sourceBuffers.map(b => (b ? timeStretch(b, playbackRate) : null));
+  innerBuffers = sourceBuffers.map(b => (b ? timeStretch(b, playbackRate * INNER_SPEEDUP) : null));
   stretchedRate = playbackRate;
 }
 
@@ -155,24 +158,130 @@ export function wordSyllables(code: number, pool: number, length: number): numbe
   return out;
 }
 
-/* Between syllables of one word: long enough that each syllable is heard as
-   its own unit, short enough that the word is heard as one thing. */
-const WORD_GAP_S = 0.03;
+/*
+ * Said as one word, not as syllables in a row.
+ *
+ * Each clip is a syllable said on its own: a full release at the end, the
+ * pitch falling to rest. Laid end to end they are a list, however short the
+ * gap. Every word cannot be rendered ahead — six syllables from 49 is 49^6 of
+ * them — so the joins are made to behave the way speech joins:
+ *
+ * - No gap: each syllable begins as the one before ends, cross-faded over
+ *   WORD_OVERLAP_S so the seam cannot click.
+ * - No breath: a clip said alone trails off for up to 200 ms after its last
+ *   sound, at -30 to -36 dB. At a junction that is cut, keeping the coda's
+ *   release (a stop's burst sits at -16 to -27 dB), so p, t and k stay heard.
+ *   The faint lead-in before a syllable's onset goes the same way, though not
+ *   the onset itself: f and sh begin quietly and are the cue.
+ * - Stop closures held to the length they have inside a word: a closure
+ *   before a burst said alone runs past 100 ms, which in a word is a pause.
+ * - Every syllable but the last is said INNER_SPEEDUP quicker, the last at
+ *   full length: words end long and run through their middle.
+ *
+ * The level of each syllable is untouched: the clips were matched in loudness
+ * so that none is harder to identify than another, and that has to hold
+ * inside a word too.
+ */
+const INNER_SPEEDUP = 1.15;
+const WORD_OVERLAP_S = 0.03;
+/* All against the clip's loudest 10 ms. */
+const TAIL_DB = -28;          // the last sound a junction keeps: a burst clears this, breath does not
+const HEAD_DB = -45;          // the first: under any onset, over the render's padding
+const QUIET_DB = -30;         // a closure, or a pause
+const QUIET_MAX_S = 0.05;     // the longest one kept inside a word
+
+/** A clip ready to be joined: trimmed at the ends asked for, its quiet runs
+    shortened. Measured on a 10 ms envelope, since single samples of breath
+    noise peak far above its loudness. */
+function wordPiece(data: Float32Array, rate: number, trimHead: boolean, trimTail: boolean): Float32Array {
+  const win = Math.round(rate * 0.01);
+  const env: number[] = [];
+  for (let i = 0; i + win <= data.length; i += win) {
+    let e = 0;
+    for (let j = 0; j < win; j++) e += data[i + j] * data[i + j];
+    env.push(Math.sqrt(e / win));
+  }
+  const peak = Math.max(...env, 1e-9);
+  const over = (db: number) => peak * Math.pow(10, db / 20);
+  const n = env.length;
+
+  let first = 0, last = n - 1;
+  if (trimHead) { while (first < last && env[first] < over(HEAD_DB)) first++; }
+  if (trimTail) { while (last > first && env[last] < over(TAIL_DB)) last--; }
+  const a = trimHead ? Math.max(0, first - 1) * win : 0;               // 10 ms before the onset
+  const z = trimTail ? Math.min(data.length, (last + 3) * win) : data.length;  // 20 ms after the release
+  if (z - a < data.length / 4) return data;                            // not a clip this understands
+
+  /* Quiet runs inside the kept span, longer than a word would hold them, lose
+     their middles. A fade either side of each cut keeps it from clicking. */
+  const keepFrames = Math.round(QUIET_MAX_S / 0.01);
+  const cuts: [number, number][] = [];
+  let run = -1;
+  for (let f = Math.ceil(a / win); f <= Math.floor(z / win); f++) {
+    const quiet = f < n && env[f] < over(QUIET_DB) && f * win >= a && (f + 1) * win <= z;
+    if (quiet && run < 0) run = f;
+    if (!quiet && run >= 0) {
+      if (f - run > keepFrames) {
+        const half = keepFrames >> 1;
+        cuts.push([(run + half) * win, (f - (keepFrames - half)) * win]);
+      }
+      run = -1;
+    }
+  }
+  if (!cuts.length) return data.slice(a, z);
+
+  const fade = Math.round(rate * 0.004);
+  const out: number[] = [];
+  let at = a;
+  for (const [c0, c1] of cuts) {
+    for (let i = at; i < c0; i++) out.push(data[i]);
+    /* Join the two sides of the cut over `fade` samples. */
+    const base = out.length - fade;
+    for (let i = 0; i < fade; i++) {
+      const w = (i + 0.5) / fade;
+      out[base + i] = out[base + i] * (1 - w) + data[c1 - fade + i] * w;
+    }
+    at = c1;
+  }
+  for (let i = at; i < z; i++) out.push(data[i]);
+  return Float32Array.from(out);
+}
 
 /** One buffer for the whole word, so it plays as a single sound with no
     scheduling seams between its syllables. */
 function wordBuffer(code: number, pool: number, length: number): AudioBuffer | null {
   if (!ctx) return null;
-  const parts = wordSyllables(code, pool, length).map(i => playBuffers[i]).filter(Boolean) as AudioBuffer[];
+  const ids = wordSyllables(code, pool, length);
+  const parts = ids
+    .map((id, k) => (k < ids.length - 1 ? innerBuffers[id] : playBuffers[id]))
+    .filter(Boolean) as AudioBuffer[];
   if (!parts.length) return null;
   if (parts.length === 1) return parts[0];
   const rate = parts[0].sampleRate;
-  const gap = Math.round(rate * WORD_GAP_S);
-  const total = parts.reduce((n, b) => n + b.length, 0) + gap * (parts.length - 1);
+
+  const pieces = parts.map((b, k) => wordPiece(b.getChannelData(0), rate, k > 0, k < parts.length - 1));
+  /* The overlap scales with the speed, and never takes more than a third of
+     either syllable, or a short one would vanish into its neighbours. */
+  const want = Math.round((rate * WORD_OVERLAP_S) / playbackRate);
+  const overlaps = pieces.slice(1).map((p, k) =>
+    Math.max(0, Math.min(want, Math.floor(pieces[k].length / 3), Math.floor(p.length / 3))));
+
+  const total = pieces.reduce((n, p) => n + p.length, 0) - overlaps.reduce((n, o) => n + o, 0);
   const out = ctx.createBuffer(1, total, rate);
   const data = out.getChannelData(0);
   let at = 0;
-  parts.forEach(b => { data.set(b.getChannelData(0), at); at += b.length + gap; });
+  pieces.forEach((p, k) => {
+    if (k === 0) { data.set(p, 0); at = p.length; return; }
+    const o = overlaps[k - 1];
+    const from = at - o;
+    /* Equal-power, so the junction does not dip in loudness halfway. */
+    for (let i = 0; i < o; i++) {
+      const w = (i + 0.5) / o;
+      data[from + i] = data[from + i] * Math.cos(w * Math.PI / 2) + p[i] * Math.sin(w * Math.PI / 2);
+    }
+    data.set(p.subarray(o), at);
+    at = from + p.length;
+  });
   return out;
 }
 
@@ -198,9 +307,10 @@ export function playSyllable(code: number, pool: number = SYLLABLES.length, leng
   playing = src;
 }
 
-/** How long the longest word of `length` syllables runs at a given speed, in ms. */
+/** How long the longest word of `length` syllables runs at a given speed, in
+    ms: an upper bound, taking no credit for the trims and overlaps. */
 export const syllableMaxMs = (rate: number, length = 1) =>
-  Math.round((SYLLABLE_MAX_MS * length) / clampSyllableRate(rate) + WORD_GAP_S * 1000 * (length - 1));
+  Math.round((SYLLABLE_MAX_MS * (1 + (length - 1) / INNER_SPEEDUP)) / clampSyllableRate(rate));
 
 /** For the settings screen: decode if needed, then say one from the pool that
     is in play, at the rate being previewed. */
