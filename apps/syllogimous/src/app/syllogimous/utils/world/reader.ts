@@ -28,7 +28,7 @@
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, Reading, copyBody, mod, moveHour } from "./space";
 import { TRANSFORMS, TransformSpec } from "./transforms";
-import { Fact, LONG, POST, Statement, View, holds, negate } from "./facts";
+import { Fact, MAX_LEN, POST, Statement, View, holds, negate } from "./facts";
 
 export interface WorldEvent { hour: number; t: TransformSpec }
 
@@ -111,10 +111,15 @@ export interface Card {
 
 export interface Reconstruction {
     world: World;
+    /** The space inside the brackets, where the card has one. */
+    inner?: World;
     types: boolean[];
     /** The order speakers were unmasked in, for the explanation. */
-    unmasked: Array<{ speaker: number; by: "claims" | Fact }>;
+    unmasked: Array<{ speaker: number; by: "claims" | Fact; space?: number }>;
 }
+
+/** A reconstruction's world for one space: 0 outside the brackets, 1 inside. */
+export const spaceOf = (rec: { world: World; inner?: World }, space = 0): World => (space === 1 ? rec.inner! : rec.world);
 
 /** Types settled by what speakers say about each other alone. */
 export function settleByClaims(card: Card): Map<number, boolean> {
@@ -138,21 +143,31 @@ export function settleByClaims(card: Card): Map<number, boolean> {
 }
 
 /** A settled speaker's statement, with what their type makes of it. */
-interface Claimed {
+export interface Claimed {
     fact: Fact;
     /** Whether the fact is so: a knight's word, or the true version of a knave's two-valued one. */
     want: boolean;
 }
 
 /**
- * The lengths a thing can have: 3 along exactly one line, a point along every
- * other. One rule rather than a length per side, because a length is no longer
- * said outright — it shows in how things lie against each other — and with
- * every side free a card would need a statement per side to pin them down.
+ * The lengths a thing can have, as far as the settled speakers say: 1 to 3
+ * along each line, fixed where a knight gives it and narrowed where a knave
+ * gives a length it is not. Rings and kinds have none.
  */
-export function sizeOptions(axes: Axis[]): number[][] {
-    return axes.map((_, l) => l).filter(l => axes[l].kind === "line")
-        .map(l => axes.map((_, i) => (i === l ? LONG : 1)));
+export function sizeOptions(axes: Axis[], x: number, claimed: Claimed[]): number[][] {
+    let out: number[][] = [[]];
+    axes.forEach((ax, a) => {
+        let lens = ax.kind === "line" ? Array.from({ length: MAX_LEN }, (_, i) => i + 1) : [1];
+        for (const c of claimed) {
+            const f = c.fact;
+            const said = f.kind === "size" && f.x === x && f.axis === a ? f.len
+                : f.kind === "sizes" && f.x === x ? f.lens.find(([b]) => b === a)?.[1] : undefined;
+            if (said === undefined) continue;
+            lens = c.want ? lens.filter(l => l === said) : lens.filter(l => l !== said);
+        }
+        out = out.flatMap(prefix => lens.map(l => [...prefix, l]));
+    });
+    return out;
 }
 
 /** Past this many readings of the lengths, the card is too open to be worth enumerating. */
@@ -169,18 +184,26 @@ interface Derived {
     consistent: boolean;
 }
 
+/* Kept across readings: a body solved under some events is only ever moved
+   under those, so its places by the hour can hang off the body itself. */
+const SOLVED = new Map<string, Map<string, Body | null>>();
+const LATER = new WeakMap<Body, Map<number, Body>>();
+/** Forget what earlier cards' readings worked out; the builder calls it per world. */
+export function clearReaderCache() { SOLVED.clear(); }
+
 /** Everything the settled speakers establish, under a reading. */
-function derive(card: Card, types: Array<boolean | undefined>, reading: Reading): Derived {
+function derive(card: Card, types: Array<boolean | undefined>, reading: Reading, space = 0): Derived {
     const axes = card.axes, n = card.things;
     const claimed: Claimed[] = [];
-    for (const s of card.statements) {
+    const here = card.statements.filter(s => (s.space ?? 0) === space);
+    for (const s of here) {
         if (types[s.speaker] === undefined || s.fact.kind === "type") continue;
         if (types[s.speaker]) { claimed.push({ fact: s.fact, want: true }); continue; }
         const f = negate(s.fact);
         claimed.push(f ? { fact: f, want: true } : { fact: s.fact, want: false });
     }
     const said = (kind: Fact["kind"]) => claimed.filter(c => c.want && c.fact.kind === kind).map(c => c.fact);
-    const pending = card.statements.filter(s => types[s.speaker] === undefined && s.fact.kind !== "type");
+    const pending = here.filter(s => types[s.speaker] === undefined && s.fact.kind !== "type");
     let consistent = true;
 
     /* Events: known up to the first hour an unsettled speaker says something happens. */
@@ -214,11 +237,30 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading)
     }
 
     const post = postBody(axes);
+    /* The search meets the same bodies on branch after branch, and one card is
+       read many times over, so where a body is at an hour and what a place runs
+       back to are each worked out once for a given set of events and way of
+       reading. Without it a seven-axis card took twenty seconds. */
+    const key = `${JSON.stringify(events)}|${reading.motion}${reading.seams}${reading.events}`;
+    let solved = SOLVED.get(key);
+    if (!solved) SOLVED.set(key, (solved = new Map()));
+    const whereAt = (b: Body, hour: number) => {
+        let m = LATER.get(b);
+        if (!m) LATER.set(b, (m = new Map()));
+        let at = m.get(hour);
+        if (!at) m.set(hour, (at = bodyAt(axes, b, events, hour, reading)));
+        return at;
+    };
+    const solve = (size: number[], v: number[], tau: number, posTau: number[]) => {
+        const k = `${size}|${v}|${tau}|${posTau}`;
+        if (!solved!.has(k)) solved!.set(k, solveStart(axes, events, size, v, tau, posTau, reading));
+        return solved!.get(k)!;
+    };
     const viewOf = (start: Array<Body | null>): View => {
         const at = (x: number, hour: number): Body | null => {
             if (x === POST) return post;
             if (!start[x] || hour >= horizon) return null;
-            return bodyAt(axes, start[x]!, events, hour, reading);
+            return whereAt(start[x]!, hour);
         };
         return {
             axes, at,
@@ -235,7 +277,7 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading)
        reader to them would only stop it at the first. It still judges the
        unsettled speakers by them, as points, which is where it goes wrong. */
     const checked = claimed.filter(c => !((!reading.motion && c.fact.kind === "pace") || (!reading.events && c.fact.kind === "event")
-        || (!reading.sizes && (c.fact.kind === "rel" || c.fact.kind === "size"))));
+        || (!reading.sizes && (c.fact.kind === "rel" || c.fact.kind === "size" || c.fact.kind === "sizes" || c.fact.kind === "cmp"))));
     const things = (f: Fact) => ("x" in f ? [f.x, ...("y" in f ? [f.y] : [])] : []).filter(t => t !== POST);
     /* Each check is made as soon as everything it names is placed. */
     const due = order.map((_, k) => checked.filter(c => {
@@ -247,7 +289,7 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading)
     /* Every way of giving each placed thing its one long side that the
        settled speakers allow, placed thing by placed thing, each checked as
        soon as it can be. */
-    const options = reading.sizes ? sizeOptions(axes) : [axes.map(() => 1)];
+    const options = Array.from({ length: n }, (_, x) => (reading.sizes ? sizeOptions(axes, x, claimed) : [axes.map(() => 1)]));
     const solutions: Array<Array<Body | null>> = [];
     const start: Array<Body | null> = Array(n).fill(null);
     const search = (k: number) => {
@@ -264,8 +306,8 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading)
             const v = ref.pos[i] + sign * p.delta[i];
             return ax.kind === "ring" ? mod(v, ax.modulus!) : ax.kind === "parity" ? mod(v, 2) : v;
         });
-        for (const size of options) {
-            const b = solveStart(axes, events, size, vel[x]!, p.hour, posTau, reading);
+        for (const size of options[x]) {
+            const b = solve(size, vel[x]!, p.hour, posTau);
             if (!b) continue;
             start[x] = b;
             const v = viewOf(start);
@@ -289,8 +331,8 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading)
  * bodies — capped, so a card that leaves too much open says so by being long.
  * For the builder, which adds what tells the lengths until only one is left.
  */
-export function worlds(card: Card, types: Array<boolean | undefined>): Array<Array<Body | null>> {
-    return derive(card, types, FULL).solutions;
+export function worlds(card: Card, types: Array<boolean | undefined>, space = 0): Array<Array<Body | null>> {
+    return derive(card, types, FULL, space).solutions;
 }
 
 /**
@@ -304,18 +346,22 @@ export function read(card: Card, reading: Reading = FULL): Reconstruction | null
     if (!reading.liars) for (let i = 0; i < card.speakers; i++) types[i] = true;
     else for (const [i, t] of settleByClaims(card)) { types[i] = t; unmasked.push({ speaker: i, by: "claims" }); }
 
+    /* Both spaces read side by side: a speaker can be unmasked by what they say
+       inside the brackets as well as outside, and what that settles is then
+       used in both. */
+    const spaces = card.statements.some(s => s.space === 1) ? [0, 1] : [0];
     for (let guard = 0; guard < card.speakers + 2; guard++) {
-        const d = derive(card, types, reading);
-        if (!d.consistent) return null;
+        const ds = spaces.map(sp => derive(card, types, reading, sp));
+        if (ds.some(d => !d.consistent)) return null;
         let changed = false;
         for (let i = 0; i < card.speakers; i++) {
             if (types[i] !== undefined) continue;
             for (const s of card.statements) {
                 if (s.speaker !== i || s.fact.kind === "type") continue;
-                const h = d.decide(s.fact);
+                const h = ds[s.space ?? 0].decide(s.fact);
                 if (h === null) continue;
                 types[i] = h;
-                unmasked.push({ speaker: i, by: s.fact });
+                unmasked.push({ speaker: i, by: s.fact, space: s.space });
                 changed = true;
                 break;
             }
@@ -324,11 +370,12 @@ export function read(card: Card, reading: Reading = FULL): Reconstruction | null
     }
 
     if (types.some(t => t === undefined)) return null;
-    const d = derive(card, types, reading);
-    if (!d.consistent || d.horizon !== Infinity || d.solutions.length !== 1 || d.solutions[0].some(b => !b)) return null;
+    const ds = spaces.map(sp => derive(card, types, reading, sp));
+    if (ds.some(d => !d.consistent || d.horizon !== Infinity || d.solutions.length !== 1 || d.solutions[0].some(b => !b))) return null;
     /* The speakers' own claims about each other have to hold of the types arrived at. */
     if (reading.liars) for (const s of card.statements) {
         if (s.fact.kind === "type" && claimHolds(s.fact.claim, types as boolean[]) !== types[s.speaker]) return null;
     }
-    return { world: { axes: card.axes, start: d.solutions[0] as Body[], events: d.events }, types: types as boolean[], unmasked };
+    const worldOf = (d: Derived): World => ({ axes: card.axes, start: d.solutions[0] as Body[], events: d.events });
+    return { world: worldOf(ds[0]), ...(ds[1] ? { inner: worldOf(ds[1]) } : {}), types: types as boolean[], unmasked };
 }

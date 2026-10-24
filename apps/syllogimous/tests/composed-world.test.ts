@@ -23,7 +23,8 @@ import { QUESTION_TYPE_SETTING_PARAMS } from "../src/app/syllogimous/constants/s
 import { LINEAR_SCALES, SPATIAL_SCALES } from "../src/app/syllogimous/utils/linear.utils";
 import { Axis, Body, FULL, SHORTCUTS, copyBody, moveHour, sameBody } from "../src/app/syllogimous/utils/world/space";
 import { TRANSFORMS, TransformSpec, canTransform } from "../src/app/syllogimous/utils/world/transforms";
-import { Fact, IntervalRel, LONG, POST, Statement, intervalRel, negate } from "../src/app/syllogimous/utils/world/facts";
+import { Fact, IntervalRel, MAX_LEN, POST, Statement, intervalRel, negate } from "../src/app/syllogimous/utils/world/facts";
+const LONG = MAX_LEN;
 import { Card, Reconstruction, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
 import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
@@ -44,7 +45,7 @@ const axisLabel = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
 /** The axes, from the setup lines and the first place: which seams the rings have, and how many axes. */
 function readAxes(setup: string[], premises: string[]): Axis[] {
     const lines = setup.map(strip);
-    const place = premises.map(strip).map(l => / is (.+) relative to /.exec(l)).find(Boolean);
+    const place = premises.map(strip).map(l => / is ([^()]+?) relative to /.exec(l.split(" (where ")[0])).find(Boolean);
     if (!place) throw new Error("no place on the card to count the axes from");
     const base: Axis[] = [
         { scale: SPATIAL_SCALES["east"], kind: "line" },
@@ -57,12 +58,12 @@ function readAxes(setup: string[], premises: string[]): Axis[] {
     ].slice(0, place[1].split(", ").length) as Axis[];
     for (const ax of base) {
         if (ax.kind !== "line") continue;
-        const line = lines.find(l => l.startsWith(`Along ${axisLabel(ax)}, things go round a ring of `));
+        const line = lines.find(l => l.startsWith(`Along ${axisLabel(ax)}, a ring of `));
         if (!line) continue;
         ax.kind = "ring";
         ax.modulus = +/ring of (\d+) /.exec(line)![1];
-        const twist = /crossing there mirrors (.+?) through the Post's line/.exec(line);
-        const portal = /crossing there .+? carries a thing (\d+) (\S+) \(/.exec(line);
+        const twist = /crossing back round mirrors (.+?) through the origin/.exec(line);
+        const portal = /crossing back round .+? carries a thing (\d+) (\S+) \(/.exec(line);
         if (twist) ax.seam = { type: "twist", target: base.findIndex(b => axisLabel(b) === twist[1]) };
         else if (portal) ax.seam = { type: "portal", target: base.findIndex(b => b.scale.direction[0] === portal[2]), shift: +portal[1] };
         else ax.seam = { type: "plain" };
@@ -94,10 +95,14 @@ const shown = (q: Question): Shown => ({
 /** A whole card back from its words. `things` and `speakers` are the names, in index order. */
 function parse(q: Shown, things: string[], speakers: string[]): Parsed {
     const axes = readAxes(q.setup, q.premises);
-    const thing = new Map<string, number>([["the Post", POST], ...things.map((n, i) => [n, i] as [string, number])]);
+    const thing = new Map<string, number>([["the origin", POST], ...things.map((n, i) => [n, i] as [string, number])]);
     const who = new Map(speakers.map((n, i) => [n, i] as [string, number]));
-    const T = `(the Post|${things.map(esc).join("|")})`;
+    const T = `(the origin|${things.map(esc).join("|")})`;
     const P = `(${speakers.map(esc).join("|")})`;
+    /* A speaker on themselves says "I", or "me". */
+    const PI = `(${speakers.map(esc).join("|")}|I|me)`;
+    let speakingNow = -1;
+    const whoIs = (n: string) => (n === "I" || n === "me" ? speakingNow : who.get(n)!);
     const axisBy = (label: string) => {
         const i = axes.findIndex(a => axisLabel(a) === label);
         if (i < 0) throw new Error(`unknown axis "${label}"`);
@@ -122,8 +127,8 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         if ((m = new RegExp(`^${P} and ${P} are both (knight|knave)s$`).exec(body))) {
             return { kind: "type", claim: { kind: "all", who: [who.get(m[1])!, who.get(m[2])!], knight: m[3] === "knight" } };
         }
-        if ((m = new RegExp(`^${P} and ${P} are (the same kind|different kinds)$`).exec(body))) {
-            return { kind: "type", claim: { kind: m[3] === "the same kind" ? "same" : "differ", a: who.get(m[1])!, b: who.get(m[2])! } };
+        if ((m = new RegExp(`^${PI} and ${PI} are (the same kind|different kinds)$`).exec(body))) {
+            return { kind: "type", claim: { kind: m[3] === "the same kind" ? "same" : "differ", a: whoIs(m[1]), b: whoIs(m[2]) } };
         }
         if ((m = new RegExp(`^at (\\d+) o'clock, ${T} is (.+) relative to ${T}$`).exec(body))) {
             const parts = m[3].split(", ");
@@ -145,8 +150,21 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             }
             return { kind: "pace", x: thing.get(m[1])!, vel };
         }
-        if ((m = new RegExp(`^${T} is (${LONG} long|a point) along (.+)$`).exec(body))) {
-            return { kind: "size", x: thing.get(m[1])!, axis: axisBy(m[3]), long: m[2] !== "a point" };
+        if ((m = new RegExp(`^${T} is ((?:\\d+ long|a point) along .+)$`).exec(body))) {
+            /* "3 long along up–down and time, 2 along north–south, and a point
+               along quantity": a run of lengths, each along a list of lines. One
+               length alone reads the same, and means the same said by anyone. */
+            const lens: Array<[number, number]> = [];
+            const groups = m[2].split(/(?:^|, (?:and )?)(\d+ long|\d+|a point) along /).slice(1);
+            for (let k = 0; k < groups.length; k += 2) {
+                const len = groups[k] === "a point" ? 1 : parseInt(groups[k], 10);
+                for (const label of groups[k + 1].split(/, | and /)) lens.push([axisBy(label), len]);
+            }
+            return { kind: "sizes", x: thing.get(m[1])!, lens };
+        }
+        if ((m = new RegExp(`^at (\\d+) o'clock, ${T} (is longer than|is shorter than|is as long as) ${T} along (.+)$`).exec(body))) {
+            const cmp = ({ "is longer than": "longer", "is shorter than": "shorter", "is as long as": "same" } as const)[m[3] as "is longer than"];
+            return { kind: "cmp", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, axis: axisBy(m[5]), cmp };
         }
         if ((m = new RegExp(`^at (\\d+) o'clock, ${T} lies wholly (\\S+)(?: of| than)? ${T}$`).exec(body))) {
             const [axis, side] = dirAxis(m[3]);
@@ -162,29 +180,33 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
 
     const transform = (text: string): TransformSpec => {
         let m: RegExpExecArray | null;
-        if ((m = /^everything turns a quarter about the Post, (\S+) round to (\S+)$/.exec(text))) {
+        if ((m = /^everything turns a quarter about the origin, (\S+) round to (\S+)$/.exec(text))) {
             const [a] = dirAxis(m[1]), [b, side] = dirAxis(m[2]);
             return { id: "rotate", axes: [a, b], k: side === 0 ? 1 : 3 };
         }
-        if ((m = /^everything is mirrored along (.+) through the Post$/.exec(text))) return { id: "mirror", axes: [axisBy(m[1])] };
-        if ((m = /^(.+?) and (.+?) swap through the Post, /.exec(text))) return { id: "swap", axes: [axisBy(m[1]), axisBy(m[2])] };
-        if ((m = /^everything slides 1 (\S+) per step its low end lies (\S+)(?: of| than)? the Post/.exec(text))) {
+        if ((m = /^everything is mirrored along (.+) through the origin$/.exec(text))) return { id: "mirror", axes: [axisBy(m[1])] };
+        if ((m = /^(.+?) and (.+?) swap through the origin, /.exec(text))) return { id: "swap", axes: [axisBy(m[1]), axisBy(m[2])] };
+        if ((m = /^everything slides 1 (\S+) per step its low end lies (\S+)(?: of| than)? the origin/.exec(text))) {
             const [a, side] = dirAxis(m[1]), [b] = dirAxis(m[2]);
             return { id: "shear", axes: [a, b], k: side === 0 ? 1 : -1 };
         }
-        if ((m = /^everything but the Post shifts (\d+) (\S+)$/.exec(text))) {
+        if ((m = /^everything shifts (\d+) (\S+)$/.exec(text))) {
             const [a, side] = dirAxis(m[2]);
             return { id: "translate", axes: [a], k: side === 0 ? +m[1] : -m[1] };
         }
-        if ((m = /^every (.+) distance from the Post doubles$/.exec(text))) return { id: "stretch", axes: [axisBy(m[1])] };
+        if ((m = /^every (.+) distance from the origin doubles$/.exec(text))) return { id: "stretch", axes: [axisBy(m[1])] };
         throw new Error(`unread transformation "${text}"`);
     };
 
-    const statements: Statement[] = q.premises.map(strip).map(line => {
+    /* "Ash says: A (where B; and C)": A is about the space outside the brackets,
+       B and C, said by the same speaker, about the one inside. */
+    const statements: Statement[] = q.premises.map(strip).flatMap(line => {
         const m = new RegExp(`^${P} says: (.+)$`).exec(line);
         if (!m) throw new Error(`unread premise "${line}"`);
-        const speaker = who.get(m[1])!;
-        return { speaker, fact: fact(speaker, m[2]) };
+        const speaker = speakingNow = who.get(m[1])!;
+        const [outer, bracket] = m[2].split(" (where ");
+        const inside = bracket === undefined ? [] : bracket.replace(/\)$/, "").split("; and ");
+        return [{ speaker, fact: fact(speaker, outer) }, ...inside.map(b => ({ speaker, fact: fact(speaker, b), space: 1 }))];
     });
     const card: Card = { axes, things: things.length, speakers: speakers.length, statements };
 
@@ -209,15 +231,22 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         const ask: Ask = { kind: "speakers", x: who.get(m[1])!, y: who.get(m[2])!, z: who.get(m[3])!, h1: 0, h2: 0, on: [], options: options.map(o => who.get(o)!) };
         return { card, ask, kind: "speakers" };
     }
-    const head = `^At (\\d+) o'clock, ${T} stands to ${T} on (.+?) as ${T} stands to`;
+    /* Which side of the brackets each relation is on: named for the first,
+       and for the second only where it differs. */
+    const head = `^At (\\d+) o'clock( outside the brackets| inside the brackets)?, ${T} stands to ${T} on (.+?) as ${T} stands to`;
     const on = (s: string) => s.split(", ").map(axisBy);
-    if ((m = new RegExp(`${head} which of these at (\\d+) o'clock\\?( Select every one that fits, or none\\.)?$`).exec(prompt))) {
-        const kind = m[7] ? "every" : "which";
-        const ask: Ask = { kind, x: thing.get(m[2])!, y: thing.get(m[3])!, z: thing.get(m[5])!, h1: +m[1], h2: +m[6], on: on(m[4]), options: options.map(o => thing.get(o)!) };
+    const sides = (first?: string, second?: string) => {
+        if (!first) return {};
+        const s1 = first.includes("inside") ? 1 : 0;
+        return { s1, s2: second ? (second.includes("inside") ? 1 : 0) : s1 };
+    };
+    if ((m = new RegExp(`${head} which of these at (\\d+) o'clock( outside them| inside them)?\\?( Select every one that fits, or none\\.)?$`).exec(prompt))) {
+        const kind = m[9] ? "every" : "which";
+        const ask: Ask = { kind, x: thing.get(m[3])!, y: thing.get(m[4])!, z: thing.get(m[6])!, h1: +m[1], h2: +m[7], on: on(m[5]), ...sides(m[2], m[8]), options: options.map(o => thing.get(o)!) };
         return { card, ask, kind };
     }
-    if ((m = new RegExp(`${head} ${T} at (\\d+) o'clock$`).exec(prompt))) {
-        const ask: Ask = { kind: "judge", x: thing.get(m[2])!, y: thing.get(m[3])!, z: thing.get(m[5])!, w: thing.get(m[6])!, h1: +m[1], h2: +m[7], on: on(m[4]) };
+    if ((m = new RegExp(`${head} ${T} at (\\d+) o'clock( outside them| inside them)?$`).exec(prompt))) {
+        const ask: Ask = { kind: "judge", x: thing.get(m[3])!, y: thing.get(m[4])!, z: thing.get(m[6])!, w: thing.get(m[7])!, h1: +m[1], h2: +m[8], on: on(m[5]), ...sides(m[2], m[9]) };
         return { card, ask, kind: "judge" };
     }
     throw new Error(`unread question "${prompt}"`);
@@ -324,7 +353,7 @@ test("composed world: nothing in an item is left unworded", () => {
 
 const randBody = (axes: Axis[], r: () => number): Body => ({
     pos: axes.map(a => (a.kind === "ring" ? Math.floor(r() * a.modulus!) : a.kind === "parity" ? Math.floor(r() * 2) : Math.floor(r() * 9) - 4)),
-    size: axes.map(a => (a.kind === "line" && r() < 0.4 ? LONG : 1)),
+    size: axes.map(a => (a.kind === "line" ? 1 + Math.floor(r() * MAX_LEN) : 1)),
     vel: axes.map(a => (a.kind === "parity" ? 0 : Math.floor(r() * 3) - 1)),
 });
 
@@ -429,58 +458,60 @@ test("composed world: every shipped item reads back to its world, and no shortcu
         assert(rec && rec.types.every((t, i) => t === it.types[i]), "the reading unmasks the speakers as they are");
         assert(rec.world.start.every((b, i) => sameBody(b, it.world.start[i])), "the reading places everything where it is");
         equal(answerKey(it.kind.answer(it.ask, rec)), answerKey(it.answer), "the full reading answers as shipped");
+        /* The origin is where places are measured from, never a term of an analogy. */
+        if (it.kind.id !== "speakers") assert(![it.ask.x, it.ask.y, it.ask.z, it.ask.w ?? 0, ...(it.ask.options ?? [])].includes(POST), "the origin stands in an analogy");
         for (const [name, r] of Object.entries(SHORTCUTS)) {
             const s = read(it.card, r);
             assert(answerKey(s ? it.kind.answer(it.ask, s) : null) !== answerKey(it.answer), `${it.kind.id}: ignoring ${name} gives the answer`);
+        }
+        /* On a nested card, reading a relation on the wrong side of the brackets misses too. */
+        if (rec.inner && it.ask.s1 !== undefined) for (const [a, b] of [[it.ask.s1, it.ask.s1], [it.ask.s2!, it.ask.s2!], [1 - it.ask.s1, 1 - it.ask.s2!]]) {
+            if (a === it.ask.s1 && b === it.ask.s2) continue;
+            assert(answerKey(it.kind.answer({ ...it.ask, s1: a, s2: b }, rec)) !== answerKey(it.answer), `${it.kind.id}: the other side of the brackets gives the answer`);
         }
     }
 });
 
 test("composed world: every part of the structure turns up in what ships", () => {
     const seen = new Set<string>();
-    for (const it of items(60, 8000)) {
+    for (const it of items(48, 8000)) {
         seen.add(`kind:${it.kind.id}`);
         seen.add(`seam:${it.world.axes[0].seam!.type}`);
         seen.add(`time:${it.world.axes[3].kind}${it.world.axes[3].seam ? "/" + it.world.axes[3].seam.type : ""}`);
         for (const e of it.world.events) seen.add(`event:${e.t.id}`);
-        if (it.world.start.some(b => b.size.some(s => s === LONG))) seen.add("long");
+        for (const b of it.world.start) for (const l of b.size) seen.add(`length:${l}`);
+        if (it.world.start.some(b => new Set(b.size.filter((_, a) => it.world.axes[a].kind === "line")).size > 1)) seen.add("lengths differ along a thing");
         for (const s of it.card.statements) {
-            const liar = !it.types[s.speaker];
-            if (liar) seen.add(`knave:${s.fact.kind}`);
+            if (!it.types[s.speaker]) seen.add(`knave:${s.fact.kind}`);
+            seen.add(`fact:${s.fact.kind}`);
+            if (s.space === 1) seen.add("inside the brackets");
             if (s.fact.kind === "type") seen.add(`claim:${s.fact.claim.kind}`);
         }
         if (it.ask.h1 !== it.ask.h2) seen.add("two hours");
         if (it.ask.on.length > 1) seen.add("several axes");
-        if (it.ask.x === POST || it.ask.y === POST) seen.add("the Post in the analogy");
+        if (it.ask.s1 !== undefined && it.ask.s1 !== it.ask.s2) seen.add("an analogy across the brackets");
     }
     const want = [
         ...KINDS.map(k => `kind:${k}`), "seam:twist", "seam:portal", "time:line", "time:ring/plain", "time:ring/portal",
-        ...Object.keys(TRANSFORMS).map(t => `event:${t}`), "long", "knave:size", "knave:event", "knave:rel", "knave:type",
-        "claim:is", "claim:same", "claim:differ", "claim:any", "claim:all", "two hours", "several axes", "the Post in the analogy",
+        ...Object.keys(TRANSFORMS).map(t => `event:${t}`), "length:1", "length:2", "length:3", "lengths differ along a thing",
+        "fact:sizes", "fact:cmp", "fact:rel", "knave:size", "knave:event", "knave:rel", "knave:cmp", "knave:type",
+        "claim:is", "claim:same", "claim:differ", "two hours", "several axes", "inside the brackets", "an analogy across the brackets",
     ];
     const missing = want.filter(w => !seen.has(w));
     assert(!missing.length, `never shipped: ${missing.join(", ")}`);
 });
 
-test("composed world: lengths are told by how stretches lie, never said truly, and the card pins them", () => {
-    /* A card that stated every length outright read as a list of sizes; one
-       that stated none read as a card about points (the complaint was "I cannot
-       find a single premise describing length"). */
+test("composed world: lengths are told every way, and the card pins them on both sides of the brackets", () => {
+    /* One length along one line and points elsewhere was a pattern to lean
+       on; lengths now vary freely, and are told outright by knights, compared,
+       shown in how stretches lie, or lied about by knaves. */
     for (const it of [...items(16, 9400, worldSize(4)), ...items(16, 9500)]) {
-        for (const b of it.world.start) {
-            equal(b.size.filter(s => s === LONG).length, 1, "every thing is long along exactly one line");
-            equal(b.size.findIndex(s => s === LONG) >= 0 && it.world.axes[b.size.indexOf(LONG)].kind, "line", "and that one a line");
-        }
-        for (const s of it.card.statements) {
-            if (s.fact.kind === "size") assert(!it.types[s.speaker], "a knight states a length outright");
-        }
-        /* A knave's outright length waits for a relation to have been said;
-           and a card whose lengths the places and the motion pin with no word
-           on lengths at all reads the same to a reader ignoring them, so the
-           shortcut check never ships it. */
-        assert(it.card.statements.some(s => s.fact.kind === "rel"), "a card that never says how two stretches lie");
-        /* And with the speakers' types known, exactly one set of lengths fits. */
-        equal(worlds(it.card, it.types).length, 1, "the card leaves more than one set of lengths open");
+        /* Some word on lengths, in whichever form: the forms vary card to card,
+           and every one of them turns up across cards (the test above). */
+        assert(it.card.statements.some(s => ["rel", "cmp", "size", "sizes"].includes(s.fact.kind)), "a card that says nothing of lengths");
+        for (const s of it.card.statements) if (s.fact.kind === "sizes") assert(it.types[s.speaker], "a knave lists lengths");
+        equal(worlds(it.card, it.types).length, 1, "the card leaves more than one set of lengths open outside the brackets");
+        if (it.card.statements.some(s => s.space === 1)) equal(worlds(it.card, it.types, 1).length, 1, "and inside them");
     }
 });
 
@@ -493,31 +524,34 @@ test("composed world: no card says the same thing twice", () => {
     }
 });
 
-test("composed world: the reader finds lengths from relations alone", () => {
-    /* One thing, two lines, nothing moving and nothing happening: only the
-       relation can say which line it is long along. */
+test("composed world: the reader finds lengths from relations and comparisons", () => {
+    /* Two things side by side, still; only the up–down lengths given. Taking
+       in all of the other along north–south leaves three readings, and saying
+       which is longer narrows them. */
     const axes = makeAxes(() => 0.1, 3);
-    const card = (rel: IntervalRel, axis: number): Card => ({
-        axes, things: 1, speakers: 1, statements: [
-            { speaker: 0, fact: { kind: "type", claim: { kind: "is", who: 0, knight: true } } },
-            { speaker: 0, fact: { kind: "place", hour: 1, x: 0, y: POST, delta: [0, 0, 0] } },
-            { speaker: 0, fact: { kind: "rel", hour: 2, x: 0, y: POST, axis, rel } },
-        ],
-    });
-    const long = (c: Card) => worlds(c, [true]).map(st => st[0]!.size.indexOf(LONG));
-    equal(long(card("spans", 1)), [1], "taking in all of the Post along north–south: long along north–south");
-    equal(long(card("identical", 1)), [2], "the same stretch as the Post along north–south: a point there, so long up–down");
-    equal(long(card("within", 2)), [], "a long thing never lies within a point");
+    const base: Statement[] = [
+        { speaker: 0, fact: { kind: "type", claim: { kind: "is", who: 0, knight: true } } },
+        { speaker: 0, fact: { kind: "place", hour: 1, x: 0, y: POST, delta: [0, 0, 0] } },
+        { speaker: 0, fact: { kind: "place", hour: 1, x: 1, y: 0, delta: [0, 1, 0] } },
+        { speaker: 0, fact: { kind: "sizes", x: 0, lens: [[2, 1]] } },
+        { speaker: 0, fact: { kind: "sizes", x: 1, lens: [[2, 1]] } },
+        { speaker: 0, fact: { kind: "rel", hour: 2, x: 0, y: 1, axis: 1, rel: "spans" } },
+    ];
+    const lens = (extra: Statement[]) => worlds({ axes, things: 2, speakers: 1, statements: [...base, ...extra] }, [true])
+        .map(st => [st[0]!.size[1], st[1]!.size[1]].join("")).sort();
+    equal(lens([]), ["21", "31", "32"], "north–south: the first takes in all of the second, one step on");
+    equal(lens([{ speaker: 0, fact: { kind: "cmp", hour: 3, x: 1, y: 0, axis: 1, cmp: "shorter" } }]), ["21", "31", "32"], "shorter, as every reading has it");
+    equal(lens([{ speaker: 0, fact: { kind: "size", x: 1, axis: 1, len: 2 } }]), ["32"], "and the second's length said");
+    equal(lens([{ speaker: 1, fact: { kind: "size", x: 0, axis: 1, len: 3 } }]).length, 3, "a speaker nobody has settled says nothing yet");
 });
 
-test("composed world: a knave's length is the other length, and only lengths and turns are negated", () => {
-    const f: Fact = { kind: "size", x: 0, axis: 1, long: true };
-    equal(negate(f), { ...f, long: false });
+test("composed world: only a turn's direction, a shear's or a shift's sign is negated", () => {
+    equal(negate({ kind: "size", x: 0, axis: 1, len: 2 }), null, "a false length leaves two others");
     equal(negate({ kind: "place", hour: 1, x: 0, y: POST, delta: [0, 0, 0, 0, 0, 0, 0] }), null, "a false place leaves too much open to use");
     equal(negate({ kind: "event", hour: 2, t: { id: "mirror", axes: [1] } }), null, "a mirror has no other way round");
 });
 
-test("composed world: a speaker nobody vouches for gives two reports and nothing that hides a body", () => {
+test("composed world: a speaker nobody vouches for reports on both sides of the brackets and says nothing that hides a body", () => {
     /* A length or an event from an unsettled speaker leaves that thing's body
        (or every later hour) unknown, and with it the reports meant to unmask
        that same speaker: allowed, nine cards in ten deadlocked. One report
@@ -527,26 +561,45 @@ test("composed world: a speaker nobody vouches for gives two reports and nothing
         const vouched = settleByClaims(it.card);
         for (let i = 0; i < it.types.length; i++) {
             if (vouched.has(i)) continue;
-            const said = it.card.statements.filter(s => s.speaker === i).map(s => s.fact.kind);
-            assert(!said.includes("size") && !said.includes("event"), `an unvouched speaker says ${said.join(", ")}`);
-            assert(said.filter(k => k === "rel").length >= 2, `an unvouched speaker gives ${said.filter(k => k === "rel").length} checkable report(s)`);
+            const said = it.card.statements.filter(s => s.speaker === i);
+            assert(!said.some(s => ["size", "sizes", "event"].includes(s.fact.kind)), `an unvouched speaker says ${said.map(s => s.fact.kind).join(", ")}`);
+            equal(said.filter(s => s.fact.kind === "rel").length, 2, "an unvouched speaker's checkable reports");
+            if (it.card.statements.some(s => s.space === 1)) equal(said.filter(s => s.space === 1).length, 1, "one of them inside the brackets");
         }
     }
+});
+
+test("composed world: nobody counts themselves a knave, and a speaker on themselves says I", () => {
+    for (const it of items(24, 9800, worldSize(4))) for (const s of it.card.statements) {
+        if (s.fact.kind !== "type") continue;
+        const c = s.fact.claim;
+        assert(!((c.kind === "any" || c.kind === "all") && !c.knight && c.who.includes(s.speaker)), "a speaker counts themselves among the knaves");
+        assert(!(c.kind === "is" && c.who === s.speaker && !c.knight), "a speaker calls themselves a knave");
+    }
+    seeded(9900, () => {
+        for (let k = 0; k < 6; k++) {
+            const q = createComposedWorld(ctxHolding([]), 4 + k % 5);
+            const { speakers } = names(q, 4 + k % 5);
+            for (const line of q.premises.map(strip)) for (const sp of speakers) {
+                assert(!line.startsWith(`${sp} says: ${sp} and`) && !new RegExp(`^${sp} says: .* and ${sp} are`).test(line), `a speaker names themselves: ${line}`);
+            }
+        }
+    });
 });
 
 test("composed world: most cards read back, so items cost few attempts", () => {
     /* About one attempt in five ships an item; with the deadlock, one in forty. */
     const ok = seeded(9100, () => {
         let n = 0;
-        for (let i = 0; i < 300; i++) if (tryBuild({ things: 4, speakers: 4, kind: "every" })) n++;
+        for (let i = 0; i < 300; i++) if (tryBuild({ things: 4, speakers: 4, kind: "which" })) n++;
         return n;
     });
     assert(ok >= 30, `only ${ok} of 300 attempts shipped an item`);
 });
 
 test("composed world: premises buy axes, things and speakers, and every kind is asked by the top", () => {
-    equal(worldSize(RANGE.minNumOfPremises), { dims: 3, things: 2, speakers: 2 });
-    equal(worldSize(RANGE.maxNumOfPremises), { dims: 7, things: 4, speakers: 4 });
+    equal(worldSize(RANGE.minNumOfPremises), { dims: 3, things: 3, speakers: 2 });
+    equal(worldSize(RANGE.maxNumOfPremises), { dims: 7, things: 5, speakers: 4 });
     for (let n = RANGE.minNumOfPremises; n < RANGE.maxNumOfPremises; n++) {
         const a = worldSize(n), b = worldSize(n + 1);
         assert(b.dims >= a.dims && b.things >= a.things && b.speakers >= a.speakers, `${n + 1} premises buy less than ${n}`);

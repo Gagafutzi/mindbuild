@@ -6,20 +6,24 @@
  * how it is worded, whether it holds of a world, and what a knave saying it
  * actually tells you:
  *
- *   place   where one thing is relative to another (or the Post) at an hour,
+ *   place   where one thing is relative to another (or the origin) at an hour,
  *           on every axis at once. Exact, so only a knight is given one: "not
  *           2 east" leaves too much open to be worth a premise.
  *   pace    how something moves every hour. Exact, knights only, for the same
  *           reason.
- *   size    one length of one thing: 3, or a point. Two-valued, so a knave's
- *           version is information — it is the other one.
+ *   size    one length of one thing, 1 (a point) to 3. A knave's version
+ *           rules one length out and leaves the other two.
+ *   sizes   several of one thing's lengths in one sentence; knights only, since
+ *           a false list leaves too much open.
+ *   cmp     whether one thing is longer, shorter or as long as another along a
+ *           line, at an hour — a turn or a swap can change which.
  *   event   a transformation of the whole space at an hour. A turn has a
  *           direction, a shear and a shift a sign, and a knave's version of one
  *           of those is the other way round; the rest are knights' alone.
  *   rel     how two things' stretches lie along one axis at an hour: wholly to
- *           one side, overlapping, one within the other, identical. Checkable
- *           against what the trusted speakers establish, which is how a speaker
- *           nobody vouches for is unmasked.
+ *           one side, overlapping, one within the other, identical. Where the
+ *           lengths show, and checkable against what the trusted speakers
+ *           establish, which is how a speaker nobody vouches for is unmasked.
  *   type    what a speaker says about speakers: the classic puzzle, which
  *           settles some of them before the space is touched.
  */
@@ -37,15 +41,27 @@ export type IntervalRel = "before" | "after" | "overlaps" | "within" | "spans" |
 export type Fact =
     | { kind: "place"; hour: number; x: number; y: number; delta: number[] }
     | { kind: "pace"; x: number; vel: number[] }
-    | { kind: "size"; x: number; axis: number; long: boolean }
+    | { kind: "size"; x: number; axis: number; len: number }
+    | { kind: "sizes"; x: number; lens: Array<[number, number]> }
+    | { kind: "cmp"; hour: number; x: number; y: number; axis: number; cmp: Cmp }
     | { kind: "event"; hour: number; t: TransformSpec }
     | { kind: "rel"; hour: number; x: number; y: number; axis: number; rel: IntervalRel }
     | { kind: "type"; claim: Claim };
 
-export interface Statement { speaker: number; fact: Fact }
+/**
+ * A fact, said by a speaker, about one of the card's two spaces: the one
+ * outside the brackets (0, or absent) or the one inside them (1). The same
+ * things are in both, arranged, sized and moving apart; the speakers and what
+ * they are are the same in both, so a knave lies inside the brackets too.
+ */
+export interface Statement { speaker: number; fact: Fact; space?: number }
 
-/** The one length a thing can have besides being a point, stated in the setup. */
-export const LONG = 3;
+/** How long a thing can be along a line: 1, a point, up to this. */
+export const MAX_LEN = 3;
+
+/** How two lengths along one line compare. */
+export type Cmp = "longer" | "shorter" | "same";
+export const compareLengths = (a: number, b: number): Cmp => (a > b ? "longer" : a < b ? "shorter" : "same");
 
 /* ------------------------------------------------------------------ *
  * Relations between bodies                                            *
@@ -97,7 +113,12 @@ export function holds(f: Fact, v: View): boolean | null {
             return x && y ? sameVec(displacement(v.axes, x, y), f.delta) : null;
         }
         case "pace": { const s = v.start(f.x); return s ? sameVec(s.vel, f.vel) : null; }
-        case "size": { const s = v.start(f.x); return s ? (s.size[f.axis] === LONG) === f.long : null; }
+        case "size": { const s = v.start(f.x); return s ? s.size[f.axis] === f.len : null; }
+        case "sizes": { const s = v.start(f.x); return s ? f.lens.every(([a, l]) => s.size[a] === l) : null; }
+        case "cmp": {
+            const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
+            return x && y ? compareLengths(x.size[f.axis], y.size[f.axis]) === f.cmp : null;
+        }
         case "rel": {
             const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
             return x && y ? intervalRel(x, y, f.axis) === f.rel : null;
@@ -119,7 +140,6 @@ export function holds(f: Fact, v: View): boolean | null {
  */
 export function negate(f: Fact): Fact | null {
     switch (f.kind) {
-        case "size": return { ...f, long: !f.long };
         case "event": {
             const opp = TRANSFORMS[f.t.id]?.opposite?.(f.t);
             return opp ? { ...f, t: opp } : null;
@@ -139,7 +159,8 @@ export interface Wording {
     speakers: string[];
 }
 
-export const POST_NAME = "the Post";
+/** Where places are measured from: a point, not a thing, and named as one. */
+export const POST_NAME = "the origin";
 export const clock = (h: number) => `${h} o'clock`;
 
 const nameOf = (w: Wording, x: number) => x === POST ? POST_NAME : subj(w.things[x]);
@@ -196,10 +217,10 @@ export function describeTransform(w: Wording, t: TransformSpec): string {
         case "shear": {
             const [a, b] = t.axes;
             return `everything slides 1 ${col(a, ax(a).direction[k > 0 ? 0 : 1])} per step its low end lies ${col(b, towards(w.axes[b], 0))} ${POST_NAME}`
-                + ` (1 ${col(a, ax(a).direction[k > 0 ? 1 : 0])} per step ${col(b, ax(b).direction[1])})`;
+                + `, 1 ${col(a, ax(a).direction[k > 0 ? 1 : 0])} per step ${col(b, ax(b).direction[1])}`;
         }
         case "translate":
-            return `everything but ${POST_NAME} shifts ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
+            return `everything shifts ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
         case "stretch":
             return `every ${col(t.axes[0], axisName(w.axes[t.axes[0]]))} distance from ${POST_NAME} doubles`;
     }
@@ -216,7 +237,23 @@ export function describeFact(w: Wording, f: Fact): string {
             return p ? `every hour, ${nameOf(w, f.x)} moves ${p}` : `${nameOf(w, f.x)} never moves`;
         }
         case "size":
-            return `${nameOf(w, f.x)} is ${f.long ? `${LONG} long` : "a point"} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
+            return `${nameOf(w, f.x)} is ${lengthWords(f.len)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
+        case "sizes": {
+            /* Several lines in one sentence, longest first and equal lengths
+               together: "3 long along north–south and time, and a point along
+               up–down". */
+            const and = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs[0]);
+            const lens = [...new Set(f.lens.map(([, l]) => l))].sort((p, q) => q - p);
+            const parts = lens.map((l, i) => {
+                const on = and(f.lens.filter(([, m]) => m === l).map(([a]) => hi(axisName(w.axes[a]), w.colors[a])));
+                return `${i === 0 ? lengthWords(l) : l === 1 ? "a point" : String(l)} along ${on}`;
+            });
+            return `${nameOf(w, f.x)} is ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}` : parts[0]}`;
+        }
+        case "cmp": {
+            const words = { longer: "is longer than", shorter: "is shorter than", same: "is as long as" }[f.cmp];
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${words} ${nameOf(w, f.y)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
+        }
         case "rel": {
             /* "Wholly north of" names its axis already; the others need telling which. */
             const along = f.rel === "before" || f.rel === "after" ? "" : ` along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
@@ -229,11 +266,30 @@ export function describeFact(w: Wording, f: Fact): string {
     }
 }
 
+/** What a speaker says of speakers, with "I" for themselves, named second. */
+function describeClaimBy(w: Wording, speaker: number, claim: Claim): string {
+    const kind = (k: boolean) => hi(k ? "knight" : "knave");
+    const name = (i: number) => subj(w.speakers[i]);
+    const pair = (a: number, b: number) => (a === speaker ? [b, a] : [a, b]);
+    const said = (i: number, object = false) => (i === speaker ? (object ? "me" : "I") : name(i));
+    switch (claim.kind) {
+        case "is":
+            return claim.who === speaker ? `I am a ${kind(claim.knight)}` : `${name(claim.who)} is a ${kind(claim.knight)}`;
+        case "same": case "differ": {
+            if (claim.a !== speaker && claim.b !== speaker) return describeClaim(claim, w.speakers);
+            const [a, b] = pair(claim.a, claim.b);
+            const k = claim.kind === "same" ? "kn-same" : "kn-differ";
+            return `${said(a)} ${own(k)} ${said(b)} ${own(`${k}-tail` as "kn-same-tail")}`;
+        }
+        default:
+            return describeClaim(claim, w.speakers);
+    }
+}
+
+const lengthWords = (len: number) => (len === 1 ? "a point" : `${len} long`);
+
 /** "Ash says: at 3 o'clock, …" — a speaker on themselves says "I". */
 export function describeStatement(w: Wording, s: Statement): string {
-    let body = describeFact(w, s.fact);
-    if (s.fact.kind === "type" && s.fact.claim.kind === "is" && s.fact.claim.who === s.speaker) {
-        body = `I am a ${hi(s.fact.claim.knight ? "knight" : "knave")}`;
-    }
+    const body = s.fact.kind === "type" ? describeClaimBy(w, s.speaker, s.fact.claim) : describeFact(w, s.fact);
     return `${subj(w.speakers[s.speaker])} says: ${body}`;
 }

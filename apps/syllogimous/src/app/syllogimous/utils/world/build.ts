@@ -21,8 +21,8 @@ import { LINEAR_SCALES, SPATIAL_SCALES } from "../linear.utils";
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, SHORTCUTS, Seam, sameBody } from "./space";
 import { TRANSFORMS, TransformSpec, canTransform } from "./transforms";
-import { Fact, IntervalRel, LONG, POST, Statement, displacement, intervalRel } from "./facts";
-import { Card, Reconstruction, World, bodyAt, postBody, read, settleByClaims, thingAt, worlds } from "./reader";
+import { Cmp, Fact, IntervalRel, POST, Statement, compareLengths, displacement, intervalRel } from "./facts";
+import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleByClaims, thingAt, worlds } from "./reader";
 import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerKey } from "./questions";
 
 export interface Item {
@@ -42,6 +42,8 @@ export interface BuildOptions {
     speakers: number;
     /** How many of the seven axes, in their fixed order; all seven by default. */
     dims?: number;
+    /** Whether the card has a second space in brackets; drawn when unset. */
+    nested?: boolean;
     /** Ask this kind only; otherwise every kind that fits the card, evenly. */
     kind?: string;
     rnd?: () => number;
@@ -100,11 +102,9 @@ const sign = (rnd: () => number) => (rnd() < 0.5 ? 1 : -1);
 function makeBody(axes: Axis[], rnd: () => number): Body {
     const lines = lineAxes(axes);
     const pos = axes.map(a => (a.kind === "ring" ? int(rnd, 0, a.modulus! - 1) : a.kind === "parity" ? int(rnd, 0, 1) : int(rnd, -3, 3)));
-    const size = axes.map(() => 1);
-    /* Long along exactly one line, which the setup states as the rule: the
-       lengths are told by how things lie against each other, and one unknown
-       per thing is what a few such statements can pin down. */
-    size[pick(lines, rnd)] = LONG;
+    /* A length of its own along every line, 1 to 3 — no pattern to lean on:
+       a point here, a stretch there, the same along two lines or along none. */
+    const size = axes.map(a => (a.kind === "line" ? pick([1, 1, 2, 3], rnd) : 1));
     const vel = axes.map(() => 0);
     /* Round the ring often, so the seams come into it; one or two lines besides,
        or at most one on the smallest space, where every clause is first-card reading. */
@@ -137,21 +137,12 @@ function makeEvents(axes: Axis[], rnd: () => number, within = [2, 3, 4, 5, 6]): 
  * ------------------------------------------------------------------ */
 
 /** Claims among the first speakers that settle exactly them. */
-function claimsFor(types: boolean[], firsts: number[], rnd: () => number, single: number): Statement[] | null {
-    /* Some of the time — always on the smallest card — one claim that settles
-       them all, "at least one of us is a knave", "we are both knaves": the
-       classic opening, and one statement where the round of claims takes one each. */
-    if (rnd() < single) {
-        const settles = (st: Statement[]) => {
-            const settled = settleByClaims({ axes: [], things: 0, speakers: types.length, statements: st });
-            return firsts.every(i => settled.get(i) === types[i]);
-        };
-        for (const i of shuffle(firsts, rnd)) for (const kind of shuffle<"any" | "all">(["any", "all"], rnd)) for (const knight of shuffle([false, true], rnd)) {
-            const claim: Claim = { kind, who: [...firsts].sort((a, b) => a - b), knight };
-            const st: Statement[] = [{ speaker: i, fact: { kind: "type", claim } }];
-            if (claimHolds(claim, types) === types[i] && settles(st)) return st;
-        }
-    }
+/**
+ * Claims among the first speakers that settle exactly them. Nobody counts
+ * themselves among the knaves — "Copy and I are both knaves" settles a card in
+ * one line, and reads as a trick of the wording rather than a puzzle.
+ */
+function claimsFor(types: boolean[], firsts: number[], rnd: () => number): Statement[] | null {
     for (let guard = 0; guard < 60; guard++) {
         const out: Statement[] = [];
         for (const i of firsts) {
@@ -171,15 +162,23 @@ function claimsFor(types: boolean[], firsts: number[], rnd: () => number, single
     return null;
 }
 
-function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => number): Card | null {
+/**
+ * The statements that pin one space down: `space` 0 outside the brackets, with
+ * the speakers' claims about each other, or 1 inside them, without — the same
+ * speakers, already settled or not. Each speaker the claims leave open gives
+ * `reports` checkable reports here.
+ */
+function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => number, space = 0, reports = 2): Statement[] | null {
     const axes = world.axes, n = world.start.length, S = types.length;
     const knights = firsts.filter(i => types[i]);
     if (!knights.length) return null;
     const statements: Statement[] = [];
-    const say = (speaker: number, fact: Fact) => statements.push({ speaker, fact });
-    const claims = claimsFor(types, firsts, rnd, axes.length <= 3 ? 1 : 0.5);
-    if (!claims) return null;
-    statements.push(...claims);
+    const say = (speaker: number, fact: Fact) => statements.push({ speaker, fact, ...(space ? { space } : {}) });
+    if (space === 0) {
+        const claims = claimsFor(types, firsts, rnd);
+        if (!claims) return null;
+        statements.push(...claims);
+    }
 
     /* Places: a tree out from the Post, each at an hour of its own. */
     const order = shuffle(Array.from({ length: n }, (_, i) => i), rnd), placed: number[] = [POST];
@@ -204,48 +203,53 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const s = opp && rnd() < 0.6 ? pick(firsts, rnd) : pick(knights, rnd);
         say(s, { kind: "event", hour: e.hour, t: types[s] ? e.t : opp! });
     }
-    /* Lengths, told by how things lie against each other. While the card still
-       allows a wrong set of lengths, one statement is added that is true of the
-       world and false of that reading: from a knight, how two stretches lie;
-       from a knave, how they would lie in the wrong reading — or, now and then,
-       a length said outright and false. Nobody ever says a length truly. */
+    /* Lengths. Some are stated: a knight gives several of a thing's lengths in
+       one sentence, leaving the rest out. The rest are told other ways, one
+       statement at a time, while the card still allows a wrong set of lengths
+       — each the one, of a few dozen drawn, that rules out the most wrong
+       readings: how two stretches lie, which of two things is the longer, or
+       a knave's length, which rules out only what it names. */
+    const ids = Array.from({ length: n }, (_, k) => k);
+    /* All but at most one line each: one length to work out per thing keeps
+       what a card leaves open to a few hundred readings, where every line open
+       was tens of thousands and a seven-axis card took a minute to build. */
+    for (let x = 0; x < n; x++) {
+        const lines = lineAxes(axes), open = rnd() < 0.8 ? pick(lines, rnd) : -1;
+        const told = lines.filter(a => a !== open);
+        if (told.length) say(pick(knights, rnd), { kind: "sizes", x, lens: told.map(a => [a, world.start[x].size[a]] as [number, number]) });
+    }
     const known = types.map((t, i) => (firsts.includes(i) ? t : undefined));
-    const ids = [POST, ...Array.from({ length: n }, (_, k) => k)];
     for (let guard = 0; ; guard++) {
-        const sols = worlds({ axes, things: n, speakers: S, statements }, known);
+        const sols = worlds({ axes, things: n, speakers: S, statements }, known, space);
         const wrong = sols.filter(st => !st.every((b, x) => b && sameBody(b, world.start[x])));
         if (sols.length && !wrong.length) break;
-        if (!sols.length || guard >= 4 * n) return null;
-        /* Of a few dozen candidates, the one that rules out the most wrong
-           readings: every statement here is first-card reading. */
-        const relIn = (st: Array<Body | null>, x: number, y: number, a: number, h: number) => {
-            const at = (k: number) => (k === POST ? postBody(axes) : st[k] ? bodyAt(axes, st[k]!, world.events, h) : null);
-            const bx = at(x), by = at(y);
-            return bx && by ? intervalRel(bx, by, a) : null;
-        };
+        if (!sols.length || guard >= 6 * n) return null;
+        const bodyIn = (st: Array<Body | null>, k: number, h: number) => (st[k] ? bodyAt(axes, st[k]!, world.events, h) : null);
         const s = pick(firsts, rnd);
         let best: Fact | null = null, bestKills = 0;
-        for (let g = 0; g < 40; g++) {
+        for (let g = 0; g < 48; g++) {
             const x = int(rnd, 0, n - 1), y = pick(ids.filter(k => k !== x), rnd);
             const a = pick(lineAxes(axes), rnd), hour = int(rnd, 1, FIRST_HOURS);
-            const truth = intervalRel(thingAt(world, x, hour), thingAt(world, y, hour), a);
-            const there = wrong.map(st => relIn(st, x, y, a, hour));
+            const form = pick(["rel", "rel", "cmp", "size"], rnd);
+            /* What the statement says in each reading, the true one first. */
+            const value = (st: Array<Body | null> | null): string | number | null => {
+                const bx = st ? bodyIn(st, x, hour) : thingAt(world, x, hour), by = st ? bodyIn(st, y, hour) : thingAt(world, y, hour);
+                if (!bx || !by) return null;
+                if (form === "rel") return intervalRel(bx, by, a);
+                if (form === "cmp") return compareLengths(bx.size[a], by.size[a]);
+                return (st ? st[x]!.size[a] : world.start[x].size[a]);
+            };
+            if (form === "size" && types[s]) continue;
+            const truth = value(null), there = wrong.map(value);
             /* A knight says how it is; a knave, how one wrong reading would have it. */
-            const said = types[s] ? truth : pick(there.filter((r): r is IntervalRel => !!r && r !== truth), rnd);
-            if (!said) continue;
+            const said = types[s] ? truth : pick(there.filter(r => r !== null && r !== truth), rnd);
+            if (said === null || said === undefined) continue;
             const kills = there.filter(r => (r === said) !== (said === truth)).length;
-            if (kills > bestKills) { best = { kind: "rel", hour, x, y, axis: a, rel: said }; bestKills = kills; }
-        }
-        /* Now and then a knave says a length outright, falsely: "a point" along
-           the line it is long on — more often on the smallest card, where it is
-           the shorter way to say as much. */
-        const unsaid = Array.from({ length: n }, (_, x) => x)
-            .filter(x => !statements.some(st => st.fact.kind === "size" && st.fact.x === x));
-        /* Only once a relation has been said: a card must show its lengths in
-           how things lie, not only in a knave's word. */
-        if (!types[s] && unsaid.length && statements.some(st => st.fact.kind === "rel") && rnd() < (axes.length <= 3 ? 0.5 : 0.3)) {
-            const x = pick(unsaid, rnd);
-            best = { kind: "size", x, axis: world.start[x].size.indexOf(LONG), long: false };
+            if (kills <= bestKills) continue;
+            bestKills = kills;
+            best = form === "rel" ? { kind: "rel", hour, x, y, axis: a, rel: said as IntervalRel }
+                : form === "cmp" ? { kind: "cmp", hour, x, y, axis: a, cmp: said as Cmp }
+                : { kind: "size", x, axis: a, len: said as number };
         }
         if (!best) return null;
         /* Never the same sentence twice: it adds nothing, and reads as a slip. */
@@ -261,11 +265,11 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
        ignoring the motion or the lengths does misjudge them. */
     const startOf = (k: number) => (k === POST ? { vel: axes.map(() => 0), size: axes.map(() => 1) } : world.start[k]);
     const telling = (x: number, y: number, a: number) =>
-        startOf(x).vel[a] !== startOf(y).vel[a] && (startOf(x).size[a] === LONG || startOf(y).size[a] === LONG);
-    for (const i of rest) for (let r = 0; r < 2; r++) {
+        startOf(x).vel[a] !== startOf(y).vel[a] && (startOf(x).size[a] > 1 || startOf(y).size[a] > 1);
+    for (const i of rest) for (let r = 0; r < reports; r++) {
         const hour = int(rnd, 1, FIRST_HOURS);
         const pairs: Array<[number, number, number]> = [];
-        for (let x = 0; x < n; x++) for (const y of [POST, ...Array.from({ length: n }, (_, k) => k)]) {
+        for (let x = 0; x < n; x++) for (const y of Array.from({ length: n }, (_, k) => k)) {
             if (y !== x) for (const a of lineAxes(axes)) pairs.push([x, y, a]);
         }
         /* The second report about some other pair or line than the first, so the
@@ -279,7 +283,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const rel = types[i] ? truth : pick(rels.filter(r => r !== truth), rnd);
         say(i, { kind: "rel", hour, x, y, axis: a, rel });
     }
-    return { axes, things: n, speakers: S, statements: shuffle(statements, rnd) };
+    return statements;
 }
 
 /* ------------------------------------------------------------------ *
@@ -294,6 +298,8 @@ const sameWorld = (a: World, b: World) =>
 /** A world, the card that pins it down, and the reading of that card. */
 interface Base {
     world: World;
+    /** The space inside the brackets, on a nested card. */
+    inner?: World;
     card: Card;
     types: boolean[];
     firsts: number[];
@@ -301,16 +307,27 @@ interface Base {
 }
 
 function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
+    clearReaderCache();
     const axes = makeAxes(rnd, opts.dims ?? 7);
     const world: World = { axes, start: Array.from({ length: opts.things }, () => makeBody(axes, rnd)), events: makeEvents(axes, rnd) };
     const types = Array.from({ length: opts.speakers }, () => rnd() < 0.5);
     if (types.every(t => t) || types.every(t => !t)) types[int(rnd, 0, types.length - 1)] = !types[0];
     const firsts = shuffle(Array.from({ length: opts.speakers }, (_, i) => i), rnd).slice(0, Math.max(2, opts.speakers - 2));
-    const card = makeCard(world, types, firsts, rnd);
-    if (!card) return null;
+    /* Nested on most cards: a second space in brackets, the same things in
+       the same kind of space, arranged, sized, moving and turned apart. Each
+       unsettled speaker reports once in each, so unmasking them needs both. */
+    const nested = opts.nested ?? rnd() < 0.75;
+    const inner: World | undefined = nested
+        ? { axes, start: Array.from({ length: opts.things }, () => makeBody(axes, rnd)), events: makeEvents(axes, rnd) }
+        : undefined;
+    const outside = makeCard(world, types, firsts, rnd, 0, nested ? 1 : 2);
+    const inside = inner ? makeCard(inner, types, firsts, rnd, 1, 1) : [];
+    if (!outside || !inside) return null;
+    const card: Card = { axes, things: opts.things, speakers: opts.speakers, statements: shuffle([...outside, ...inside], rnd) };
     const rec = read(card, FULL);
     if (!rec || !sameWorld(rec.world, world) || rec.types.some((t, i) => t !== types[i])) return null;
-    return { world, card, types, firsts, rec };
+    if (inner && (!rec.inner || !sameWorld(rec.inner, inner))) return null;
+    return { world, ...(inner ? { inner } : {}), card, types, firsts, rec };
 }
 
 /** One question with its answer, and what each way of going wrong answers instead. */
@@ -335,7 +352,7 @@ function fairStage(
 ): Stage | null {
     const { world, types } = base, things = world.start.length;
     for (let guard = 0; guard < 400; guard++) {
-        const ask = kind.draw(rec.world, things, types.length, types, rnd, span);
+        const ask = kind.draw(rec, things, types.length, types, rnd, span);
         if (!ask || unlike.some(u => JSON.stringify({ ...u, options: [] }) === JSON.stringify({ ...ask, options: [] }))) continue;
         const answer = kind.answer(ask, rec);
         if (answer === null) continue;
@@ -346,6 +363,18 @@ function fairStage(
             const a = r ? kind.answer(ask, r) : null;
             shortcuts[name] = a;
             if (answerKey(a) === answerKey(answer)) { fair = false; break; }
+        }
+        /* On a nested card, which side of the brackets each relation is read
+           on has to matter: read both on one side, or each on the other, and
+           the answer is another. */
+        if (fair && rec.inner && ask.s1 !== undefined) {
+            const s1 = ask.s1, s2 = ask.s2!;
+            for (const [a, b] of [[s1, s1], [s2, s2], [1 - s1, 1 - s2]]) {
+                if (a === s1 && b === s2) continue;
+                const other = kind.answer({ ...ask, s1: a, s2: b }, rec);
+                shortcuts[`spaces ${a}${b}`] = other;
+                if (answerKey(other) === answerKey(answer)) { fair = false; break; }
+            }
         }
         if (fair) return { kind, ask, answer, shortcuts };
     }

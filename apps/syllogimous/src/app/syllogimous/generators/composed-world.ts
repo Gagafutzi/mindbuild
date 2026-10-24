@@ -27,29 +27,24 @@ import { getRandomSymbols } from "../utils/question.utils";
 import { ndAxisColors } from "../utils/ndspace.utils";
 import { StagedItem, buildStaged } from "../utils/world/build";
 import { describeStatement, Wording } from "../utils/world/facts";
-import { renderAsk, renderTypes, setupLines } from "../utils/world/render";
+import { renderAsk, renderPremises, renderTypes, setupLines } from "../utils/world/render";
 import { GeneratorContext } from "./context";
 
 /**
  * What premises buy: axes, things and speakers, one step at a time. Every part
  * of the structure — motion, lengths, a seam, a turn of the whole space, a
  * knave, an analogy — is on every card; what grows is how much of each there
- * is to hold. The floor is three axes (the ring and the two lines its seam and
- * the transformations need), two things and two speakers: under the first
- * card's reading budget, where seven axes from the start printed 1,500
- * characters.
+ * is to hold. Three things at least, since an analogy needs a pair and a third
+ * term with two to choose between, and the origin is no thing.
  */
 const LADDER: Record<number, { dims: number; things: number; speakers: number }> = {
-    4: { dims: 3, things: 2, speakers: 2 },
-    5: { dims: 4, things: 3, speakers: 2 },
-    6: { dims: 5, things: 3, speakers: 3 },
-    7: { dims: 6, things: 4, speakers: 3 },
-    8: { dims: 7, things: 4, speakers: 4 },
+    4: { dims: 3, things: 3, speakers: 2 },
+    5: { dims: 4, things: 3, speakers: 3 },
+    6: { dims: 5, things: 4, speakers: 3 },
+    7: { dims: 6, things: 4, speakers: 4 },
+    8: { dims: 7, things: 5, speakers: 4 },
 };
 export const worldSize = (numOfPremises: number) => LADDER[Math.max(4, Math.min(8, numOfPremises))];
-
-/** Characters of premises a first card may run to; the suite's cap is 650, and names vary. */
-const FLOOR_BUDGET = 600;
 
 export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number): Question {
     ctx.logger.info("createComposedWorld");
@@ -58,28 +53,21 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     numOfPremises = clampPremises(type, numOfPremises);
 
     const size = worldSize(numOfPremises), { things } = size;
-    /* The first card is held to a reading budget of its own: the world is the
-       same size every time, but long names can make one draw half as long again
-       as the next. So on the smallest space a long draw is drawn again, and the
-       shortest of a few kept. */
-    const tries = size.dims <= 3 ? 6 : 1;
-    let best: { item: StagedItem; names: string[]; premises: string[]; length: number } | null = null;
-    for (let t = 0; t < tries && !(best && best.length <= FLOOR_BUDGET); t++) {
+    let best: { item: StagedItem; names: string[]; premises: string[] } | null = null;
+    for (let t = 0; t < 3 && !best; t++) {
         const item = buildStaged(size, 300);
         if (!item) continue;
-        /* Distinct, and none that reads as the landmark: a speaker called Post
-           says "Post says: … the Post …". Drawn again rather than given up on. */
+        /* Distinct, and none that reads as the origin. Drawn again rather than given up on. */
         let names: string[] = [];
         for (let d = 0; d < 8; d++) {
             names = getRandomSymbols(ctx.settings, things + size.speakers);
-            if (new Set(names).size === names.length && !names.some(n => /\bpost\b/i.test(n))) break;
+            if (new Set(names).size === names.length && !names.some(n => /\borigin\b/i.test(n))) break;
             names = [];
         }
         if (!names.length) continue;
         const w = wording(item, names, things);
-        const premises = item.card.statements.map(st => describeStatement(w, st));
-        const length = premises.reduce((n, l) => n + l.replace(/<[^>]+>/g, "").length, 0);
-        if (!best || length < best.length) best = { item, names, premises, length };
+        const premises = renderPremises(item.card.statements, w);
+        if (premises.length) best = { item, names, premises };
     }
     if (!best) throw new Error("Cannot generate.");
     const { item, names, premises } = best;

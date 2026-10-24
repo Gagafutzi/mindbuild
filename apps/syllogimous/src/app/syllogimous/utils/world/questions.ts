@@ -17,8 +17,8 @@
  */
 
 import { Axis, Body } from "./space";
-import { IntervalRel, POST, intervalRel } from "./facts";
-import { Reconstruction, World, thingAt } from "./reader";
+import { IntervalRel, intervalRel } from "./facts";
+import { Reconstruction, World, spaceOf, thingAt } from "./reader";
 import { mod } from "./space";
 
 /** One axis's part of a relation. */
@@ -39,11 +39,13 @@ export const answerKey = (a: Answer) => (a === null ? "none" : JSON.stringify(a)
 
 export interface Ask {
     kind: string;
-    /** Things by index, the Post as POST. */
+    /** Things by index. */
     x: number; y: number; z: number;
     /** For judge: the proposed counterpart. */
     w?: number;
     h1: number; h2: number;
+    /** The space each relation is read in: 0 outside the brackets, 1 inside. */
+    s1?: number; s2?: number;
     on: number[];
     /** Candidates offered (things or speakers), for choice and select. */
     options?: number[];
@@ -54,8 +56,8 @@ export interface QuestionKind {
     answerMode: "choice" | "boolean" | "select";
     /** Whether a card with this many things and speakers can ask it at all. */
     fits?(things: number, speakers: number): boolean;
-    /** Parameters for an item on this world, or null if it offers none; hours within `span`. */
-    draw(world: World, things: number, speakers: number, types: boolean[], rnd: () => number, span?: Span): Ask | null;
+    /** Parameters for an item on these spaces, or null if they offer none; hours within `span`. */
+    draw(spaces: Spaces, things: number, speakers: number, types: boolean[], rnd: () => number, span?: Span): Ask | null;
     answer(q: Ask, rec: Reconstruction): Answer;
 }
 
@@ -78,13 +80,15 @@ function matches(world: World, things: number, z: number, h: number, on: number[
     return among.filter(w => w !== z && sameRel(relation(world.axes, zb, thingAt(world, w, h), on), rel));
 }
 
-const everyone = (things: number) => [POST, ...Array.from({ length: things }, (_, i) => i)];
+/* Things only: the origin is a point the places are measured from, not
+   something that stands in a relation. */
+const everyone = (things: number) => Array.from({ length: things }, (_, i) => i);
 
 function drawPairs(things: number, rnd: () => number) {
     const all = everyone(things);
-    const x = pick(all.filter(t => t !== POST), rnd);
+    const x = pick(all, rnd);
     const y = pick(all.filter(t => t !== x), rnd);
-    const z = pick(all.filter(t => t !== POST && t !== x), rnd);
+    const z = pick(all.filter(t => t !== x), rnd);
     return { x, y, z };
 }
 
@@ -99,6 +103,21 @@ function hours(rnd: () => number, span: Span) {
     return { h1, h2: same ? h1 : within(span.h2) };
 }
 
+/** The space outside the brackets and, where the card has one, the space inside. */
+export interface Spaces { world: World; inner?: World }
+
+/** Which space each relation of an analogy is read in, where there are two. */
+function drawSpaces(spaces: Spaces, rnd: () => number) {
+    if (!spaces.inner) return {};
+    return { s1: rnd() < 0.5 ? 1 : 0, s2: rnd() < 0.5 ? 1 : 0 };
+}
+
+/** The relation an analogy reads first, and where the second is looked for. */
+const firstRel = (sp: Spaces, q: Ask) => {
+    const w = spaceOf(sp, q.s1);
+    return relation(w.axes, thingAt(w, q.x, q.h1), thingAt(w, q.y, q.h1), q.on);
+};
+
 export const QUESTIONS: Record<string, QuestionKind> = {
     /* "At h1, X is to Y as Z is to which of these at h2?" Two offered, one
        fits — and it is the only one anywhere, so the other is not ruled out by
@@ -107,18 +126,20 @@ export const QUESTIONS: Record<string, QuestionKind> = {
     which: {
         id: "which",
         answerMode: "choice",
-        draw(world, things, _s, _t, rnd, span = ALL_DAY) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(world.axes, rnd);
-            const rel = relation(world.axes, thingAt(world, x, h1), thingAt(world, y, h1), on);
+        /* Two to offer besides the third term. */
+        fits: things => things >= 3,
+        draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
+            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd);
+            const q: Ask = { kind: "which", x, y, z, h1, h2, on, ...drawSpaces(sp, rnd) };
             const pool = everyone(things).filter(w => w !== z);
-            const fit = matches(world, things, z, h2, on, rel, pool);
-            if (fit.length !== 1) return null;
+            const fit = matches(spaceOf(sp, q.s2), things, z, h2, on, firstRel(sp, q), pool);
+            if (fit.length !== 1 || pool.length < 2) return null;
             const other = pick(pool.filter(w => w !== fit[0]), rnd);
-            return { kind: "which", x, y, z, h1, h2, on, options: shuffle([fit[0], other], rnd) };
+            return { ...q, options: shuffle([fit[0], other], rnd) };
         },
         answer(q, rec) {
-            const rel = relation(rec.world.axes, thingAt(rec.world, q.x, q.h1), thingAt(rec.world, q.y, q.h1), q.on);
-            const m = matches(rec.world, rec.world.start.length, q.z, q.h2, q.on, rel, q.options!);
+            const w = spaceOf(rec, q.s2);
+            const m = matches(w, w.start.length, q.z, q.h2, q.on, firstRel(rec, q), q.options!);
             return m.length === 1 ? m[0] : null;
         },
     },
@@ -126,14 +147,14 @@ export const QUESTIONS: Record<string, QuestionKind> = {
     judge: {
         id: "judge",
         answerMode: "boolean",
-        draw(world, things, _s, _t, rnd, span = ALL_DAY) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(world.axes, rnd);
+        draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
+            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd);
             const w = pick(everyone(things).filter(t => t !== z), rnd);
-            return { kind: "judge", x, y, z, w, h1, h2, on };
+            return { kind: "judge", x, y, z, w, h1, h2, on, ...drawSpaces(sp, rnd) };
         },
         answer(q, rec) {
-            const rel = relation(rec.world.axes, thingAt(rec.world, q.x, q.h1), thingAt(rec.world, q.y, q.h1), q.on);
-            return sameRel(relation(rec.world.axes, thingAt(rec.world, q.z, q.h2), thingAt(rec.world, q.w!, q.h2), q.on), rel);
+            const s = spaceOf(rec, q.s2);
+            return sameRel(relation(s.axes, thingAt(s, q.z, q.h2), thingAt(s, q.w!, q.h2), q.on), firstRel(rec, q));
         },
     },
     /* "At h1, X is to Y as Z is to which of these at h2?" Every one that fits, or none. */
@@ -141,14 +162,14 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         id: "every",
         answerMode: "select",
         /* Three to choose among at least: two would be a choice with a submit button. */
-        fits: things => things >= 3,
-        draw(world, things, _s, _t, rnd, span = ALL_DAY) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(world.axes, rnd).slice(0, 2);
-            return { kind: "every", x, y, z, h1, h2, on, options: everyone(things).filter(w => w !== z) };
+        fits: things => things >= 4,
+        draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
+            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd).slice(0, 2);
+            return { kind: "every", x, y, z, h1, h2, on, ...drawSpaces(sp, rnd), options: everyone(things).filter(w => w !== z) };
         },
         answer(q, rec) {
-            const rel = relation(rec.world.axes, thingAt(rec.world, q.x, q.h1), thingAt(rec.world, q.y, q.h1), q.on);
-            return matches(rec.world, rec.world.start.length, q.z, q.h2, q.on, rel, q.options!).sort((a, b) => a - b);
+            const w = spaceOf(rec, q.s2);
+            return matches(w, w.start.length, q.z, q.h2, q.on, firstRel(rec, q), q.options!).sort((a, b) => a - b);
         },
     },
     /* "Speaker X is to Y as Z is to which speaker?" — same kind of speaker or not.
@@ -159,7 +180,7 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         id: "speakers",
         answerMode: "choice",
         fits: (_things, speakers) => speakers >= 3,
-        draw(_world, _things, speakers, types, rnd) {
+        draw(_spaces, _things, speakers, types, rnd) {
             const ids = Array.from({ length: speakers }, (_, i) => i);
             const x = pick(ids, rnd), y = pick(ids.filter(i => i !== x), rnd), z = pick(ids, rnd);
             const pool = ids.filter(i => i !== z);

@@ -28,7 +28,7 @@
 
 import { assert, test, seeded } from "./harness";
 import { EnumQuestionType } from "../src/app/syllogimous/constants/question.constants";
-import { ORDERED_QUESTION_TYPES } from "../src/app/syllogimous/constants/game.constants";
+import { EXPERIMENTAL_ONLY, ORDERED_QUESTION_TYPES } from "../src/app/syllogimous/constants/game.constants";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../src/app/syllogimous/constants/settings.constants";
 import { Settings } from "../src/app/syllogimous/models/settings.models";
 import { Logger } from "../src/app/syllogimous/utils/logger";
@@ -105,6 +105,9 @@ test("no mode's first rung is a wall", () => {
     seeded(20261901, () => {
         for (const type of ORDERED_QUESTION_TYPES) {
             if (!BUILD[type]) continue;
+            /* Never a first card: an experimental mode is chosen outright, at a
+               size the player picks, from a page that says what it is. */
+            if (EXPERIMENTAL_ONLY.has(type)) continue;
             const n = QUESTION_TYPE_SETTING_PARAMS[type].minNumOfPremises;
             const w = weigh(type, n, 25);
             if (!w) continue;
