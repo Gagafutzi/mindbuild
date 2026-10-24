@@ -21,8 +21,8 @@ import { LINEAR_SCALES, SPATIAL_SCALES } from "../linear.utils";
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, SHORTCUTS, Seam, sameBody } from "./space";
 import { TRANSFORMS, TransformSpec, canTransform } from "./transforms";
-import { Fact, LONG, POST, Statement, displacement, intervalRel } from "./facts";
-import { Card, Reconstruction, World, read, settleByClaims, thingAt } from "./reader";
+import { Fact, IntervalRel, LONG, POST, Statement, displacement, intervalRel } from "./facts";
+import { Card, Reconstruction, World, bodyAt, postBody, read, settleByClaims, thingAt, worlds } from "./reader";
 import { Answer, Ask, QUESTIONS, QuestionKind, answerKey } from "./questions";
 
 export interface Item {
@@ -93,11 +93,10 @@ function makeBody(axes: Axis[], rnd: () => number): Body {
     const lines = lineAxes(axes);
     const pos = axes.map(a => (a.kind === "ring" ? int(rnd, 0, a.modulus! - 1) : a.kind === "parity" ? int(rnd, 0, 1) : int(rnd, -3, 3)));
     const size = axes.map(() => 1);
-    /* One long side or two, but never every line: something has to stay a
-       point for "within" and "takes in all of" to come apart. On the smallest
-       space, one at most — every long side is a statement on the first card. */
-    const longs = lines.length <= 2 ? (rnd() < 0.6 ? 1 : 0) : 1 + Math.floor(rnd() * 2);
-    for (const a of shuffle(lines, rnd).slice(0, longs)) size[a] = LONG;
+    /* Long along exactly one line, which the setup states as the rule: the
+       lengths are told by how things lie against each other, and one unknown
+       per thing is what a few such statements can pin down. */
+    size[pick(lines, rnd)] = LONG;
     const vel = axes.map(() => 0);
     /* Round the ring often, so the seams come into it; one or two lines besides,
        or at most one on the smallest space, where every clause is first-card reading. */
@@ -130,7 +129,21 @@ function makeEvents(axes: Axis[], rnd: () => number): Array<{ hour: number; t: T
  * ------------------------------------------------------------------ */
 
 /** Claims among the first speakers that settle exactly them. */
-function claimsFor(types: boolean[], firsts: number[], rnd: () => number): Statement[] | null {
+function claimsFor(types: boolean[], firsts: number[], rnd: () => number, single: number): Statement[] | null {
+    /* Some of the time — always on the smallest card — one claim that settles
+       them all, "at least one of us is a knave", "we are both knaves": the
+       classic opening, and one statement where the round of claims takes one each. */
+    if (rnd() < single) {
+        const settles = (st: Statement[]) => {
+            const settled = settleByClaims({ axes: [], things: 0, speakers: types.length, statements: st });
+            return firsts.every(i => settled.get(i) === types[i]);
+        };
+        for (const i of shuffle(firsts, rnd)) for (const kind of shuffle<"any" | "all">(["any", "all"], rnd)) for (const knight of shuffle([false, true], rnd)) {
+            const claim: Claim = { kind, who: [...firsts].sort((a, b) => a - b), knight };
+            const st: Statement[] = [{ speaker: i, fact: { kind: "type", claim } }];
+            if (claimHolds(claim, types) === types[i] && settles(st)) return st;
+        }
+    }
     for (let guard = 0; guard < 60; guard++) {
         const out: Statement[] = [];
         for (const i of firsts) {
@@ -156,7 +169,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     if (!knights.length) return null;
     const statements: Statement[] = [];
     const say = (speaker: number, fact: Fact) => statements.push({ speaker, fact });
-    const claims = claimsFor(types, firsts, rnd);
+    const claims = claimsFor(types, firsts, rnd, axes.length <= 3 ? 1 : 0.5);
     if (!claims) return null;
     statements.push(...claims);
 
@@ -177,21 +190,58 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
        body unknown, and with it every report about it — including the ones that
        were to unmask that same speaker; on an event it hides every hour after.
        Allowed to anyone, nine cards in ten deadlocked. */
-    /* Lengths: every long side is said, by a knight as it is or a knave as a point,
-       and a few point sides too, so a knave's "3 long" has to be seen through. */
-    for (let x = 0; x < n; x++) for (const a of lineAxes(axes)) {
-        const long = world.start[x].size[a] === LONG;
-        /* A point side said is a knave's "3 long" to see through, but on the
-           smallest spaces it is reading the first card cannot afford. */
-        if (!long && (axes.length < 4 || rnd() < 0.8)) continue;
-        const s = pick(firsts, rnd);
-        say(s, { kind: "size", x, axis: a, long: types[s] ? long : !long });
-    }
     /* Events: a knight as they happened, or a knave the other way round where there is one. */
     for (const e of world.events) {
         const opp = TRANSFORMS[e.t.id].opposite?.(e.t);
         const s = opp && rnd() < 0.6 ? pick(firsts, rnd) : pick(knights, rnd);
         say(s, { kind: "event", hour: e.hour, t: types[s] ? e.t : opp! });
+    }
+    /* Lengths, told by how things lie against each other. While the card still
+       allows a wrong set of lengths, one statement is added that is true of the
+       world and false of that reading: from a knight, how two stretches lie;
+       from a knave, how they would lie in the wrong reading — or, now and then,
+       a length said outright and false. Nobody ever says a length truly. */
+    const known = types.map((t, i) => (firsts.includes(i) ? t : undefined));
+    const ids = [POST, ...Array.from({ length: n }, (_, k) => k)];
+    for (let guard = 0; ; guard++) {
+        const sols = worlds({ axes, things: n, speakers: S, statements }, known);
+        const wrong = sols.filter(st => !st.every((b, x) => b && sameBody(b, world.start[x])));
+        if (sols.length && !wrong.length) break;
+        if (!sols.length || guard >= 4 * n) return null;
+        /* Of a few dozen candidates, the one that rules out the most wrong
+           readings: every statement here is first-card reading. */
+        const relIn = (st: Array<Body | null>, x: number, y: number, a: number, h: number) => {
+            const at = (k: number) => (k === POST ? postBody(axes) : st[k] ? bodyAt(axes, st[k]!, world.events, h) : null);
+            const bx = at(x), by = at(y);
+            return bx && by ? intervalRel(bx, by, a) : null;
+        };
+        const s = pick(firsts, rnd);
+        let best: Fact | null = null, bestKills = 0;
+        for (let g = 0; g < 40; g++) {
+            const x = int(rnd, 0, n - 1), y = pick(ids.filter(k => k !== x), rnd);
+            const a = pick(lineAxes(axes), rnd), hour = int(rnd, 1, LAST_HOUR - 1);
+            const truth = intervalRel(thingAt(world, x, hour), thingAt(world, y, hour), a);
+            const there = wrong.map(st => relIn(st, x, y, a, hour));
+            /* A knight says how it is; a knave, how one wrong reading would have it. */
+            const said = types[s] ? truth : pick(there.filter((r): r is IntervalRel => !!r && r !== truth), rnd);
+            if (!said) continue;
+            const kills = there.filter(r => (r === said) !== (said === truth)).length;
+            if (kills > bestKills) { best = { kind: "rel", hour, x, y, axis: a, rel: said }; bestKills = kills; }
+        }
+        /* Now and then a knave says a length outright, falsely: "a point" along
+           the line it is long on — more often on the smallest card, where it is
+           the shorter way to say as much. */
+        const unsaid = Array.from({ length: n }, (_, x) => x)
+            .filter(x => !statements.some(st => st.fact.kind === "size" && st.fact.x === x));
+        /* Only once a relation has been said: a card must show its lengths in
+           how things lie, not only in a knave's word. */
+        if (!types[s] && unsaid.length && statements.some(st => st.fact.kind === "rel") && rnd() < (axes.length <= 3 ? 0.5 : 0.3)) {
+            const x = pick(unsaid, rnd);
+            best = { kind: "size", x, axis: world.start[x].size.indexOf(LONG), long: false };
+        }
+        if (!best) return null;
+        /* Never the same sentence twice: it adds nothing, and reads as a slip. */
+        if (!statements.some(st => st.speaker === s && JSON.stringify(st.fact) === JSON.stringify(best))) say(s, best);
     }
     /* Two checkable reports for each speaker nobody else's claims settle: true
        from a knight, false from a knave, at any hour, since everything they are
@@ -210,8 +260,12 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         for (let x = 0; x < n; x++) for (const y of [POST, ...Array.from({ length: n }, (_, k) => k)]) {
             if (y !== x) for (const a of lineAxes(axes)) pairs.push([x, y, a]);
         }
-        const good = pairs.filter(([x, y, a]) => telling(x, y, a));
-        const [x, y, a] = pick(good.length && rnd() < 0.85 ? good : pairs, rnd);
+        /* The second report about some other pair or line than the first, so the
+           two are never one sentence twice. */
+        const fresh = pairs.filter(([x, y, a]) => !statements.some(st => st.speaker === i && st.fact.kind === "rel"
+            && st.fact.x === x && st.fact.y === y && st.fact.axis === a));
+        const good = fresh.filter(([x, y, a]) => telling(x, y, a));
+        const [x, y, a] = pick(good.length && rnd() < 0.85 ? good : fresh, rnd);
         const truth = intervalRel(thingAt(world, x, hour), thingAt(world, y, hour), a);
         const rels = ["before", "after", "overlaps", "within", "spans", "identical"] as const;
         const rel = types[i] ? truth : pick(rels.filter(r => r !== truth), rnd);

@@ -24,7 +24,7 @@ import { LINEAR_SCALES, SPATIAL_SCALES } from "../src/app/syllogimous/utils/line
 import { Axis, Body, FULL, SHORTCUTS, copyBody, moveHour, sameBody } from "../src/app/syllogimous/utils/world/space";
 import { TRANSFORMS, TransformSpec, canTransform } from "../src/app/syllogimous/utils/world/transforms";
 import { Fact, IntervalRel, LONG, POST, Statement, intervalRel, negate } from "../src/app/syllogimous/utils/world/facts";
-import { Card, read, settleByClaims } from "../src/app/syllogimous/utils/world/reader";
+import { Card, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
 import { Ask, QUESTIONS, answerKey } from "../src/app/syllogimous/utils/world/questions";
 import { BuildOptions, Item, build, fitting, makeAxes, tryBuild } from "../src/app/syllogimous/utils/world/build";
 
@@ -108,6 +108,12 @@ function parse(q: Question, things: string[], speakers: string[]): Parsed {
         let m: RegExpExecArray | null;
         if ((m = /^I am a (knight|knave)$/.exec(body))) return { kind: "type", claim: { kind: "is", who: speaker, knight: m[1] === "knight" } };
         if ((m = new RegExp(`^${P} is a (knight|knave)$`).exec(body))) return { kind: "type", claim: { kind: "is", who: who.get(m[1])!, knight: m[2] === "knight" } };
+        if ((m = new RegExp(`^at least one of ${P} and ${P} is a (knight|knave)$`).exec(body))) {
+            return { kind: "type", claim: { kind: "any", who: [who.get(m[1])!, who.get(m[2])!], knight: m[3] === "knight" } };
+        }
+        if ((m = new RegExp(`^${P} and ${P} are both (knight|knave)s$`).exec(body))) {
+            return { kind: "type", claim: { kind: "all", who: [who.get(m[1])!, who.get(m[2])!], knight: m[3] === "knight" } };
+        }
         if ((m = new RegExp(`^${P} and ${P} are (the same kind|different kinds)$`).exec(body))) {
             return { kind: "type", claim: { kind: m[3] === "the same kind" ? "same" : "differ", a: who.get(m[1])!, b: who.get(m[2])! } };
         }
@@ -134,15 +140,13 @@ function parse(q: Question, things: string[], speakers: string[]): Parsed {
         if ((m = new RegExp(`^${T} is (${LONG} long|a point) along (.+)$`).exec(body))) {
             return { kind: "size", x: thing.get(m[1])!, axis: axisBy(m[3]), long: m[2] !== "a point" };
         }
-        if ((m = new RegExp(`^at (\\d+) o'clock, ${T} (lies wholly (\\S+)(?: of| than)?|partly overlaps|lies within|takes in all of|covers exactly the same stretch as) ${T} along (.+)$`).exec(body))) {
-            const axis = axisBy(m[6]);
-            let rel: IntervalRel;
-            if (m[4]) {
-                const [i, side] = dirAxis(m[4]);
-                if (i !== axis) throw new Error(`"${m[4]}" is not a direction of ${m[6]}`);
-                rel = side === 0 ? "after" : "before";
-            } else rel = ({ "partly overlaps": "overlaps", "lies within": "within", "takes in all of": "spans", "covers exactly the same stretch as": "identical" } as const)[m[3] as "lies within"];
-            return { kind: "rel", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[5])!, axis, rel };
+        if ((m = new RegExp(`^at (\\d+) o'clock, ${T} lies wholly (\\S+)(?: of| than)? ${T}$`).exec(body))) {
+            const [axis, side] = dirAxis(m[3]);
+            return { kind: "rel", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, axis, rel: side === 0 ? "after" : "before" };
+        }
+        if ((m = new RegExp(`^at (\\d+) o'clock, ${T} (partly overlaps|lies within|takes in all of|covers the same stretch as) ${T} along (.+)$`).exec(body))) {
+            const rel = ({ "partly overlaps": "overlaps", "lies within": "within", "takes in all of": "spans", "covers the same stretch as": "identical" } as const)[m[3] as "lies within"];
+            return { kind: "rel", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, axis: axisBy(m[5]), rel };
         }
         if ((m = /^at (\d+) o'clock, (.+)$/.exec(body))) return { kind: "event", hour: +m[1], t: transform(m[2]) };
         throw new Error(`unread statement "${body}"`);
@@ -150,12 +154,12 @@ function parse(q: Question, things: string[], speakers: string[]): Parsed {
 
     const transform = (text: string): TransformSpec => {
         let m: RegExpExecArray | null;
-        if ((m = /^the whole space turns a quarter about the Post, taking (\S+) round to (\S+)$/.exec(text))) {
+        if ((m = /^everything turns a quarter about the Post, (\S+) round to (\S+)$/.exec(text))) {
             const [a] = dirAxis(m[1]), [b, side] = dirAxis(m[2]);
             return { id: "rotate", axes: [a, b], k: side === 0 ? 1 : 3 };
         }
-        if ((m = /^the whole space is mirrored along (.+) through the Post$/.exec(text))) return { id: "mirror", axes: [axisBy(m[1])] };
-        if ((m = /^(.+?) and (.+?) trade places through the Post \(/.exec(text))) return { id: "swap", axes: [axisBy(m[1]), axisBy(m[2])] };
+        if ((m = /^everything is mirrored along (.+) through the Post$/.exec(text))) return { id: "mirror", axes: [axisBy(m[1])] };
+        if ((m = /^(.+?) and (.+?) swap through the Post, /.exec(text))) return { id: "swap", axes: [axisBy(m[1]), axisBy(m[2])] };
         if ((m = /^everything slides 1 (\S+) per step its low end lies (\S+)(?: of| than)? the Post/.exec(text))) {
             const [a, side] = dirAxis(m[1]), [b] = dirAxis(m[2]);
             return { id: "shear", axes: [a, b], k: side === 0 ? 1 : -1 };
@@ -393,10 +397,58 @@ test("composed world: every part of the structure turns up in what ships", () =>
     const want = [
         ...KINDS.map(k => `kind:${k}`), "seam:twist", "seam:portal", "time:line", "time:ring/plain", "time:ring/portal",
         ...Object.keys(TRANSFORMS).map(t => `event:${t}`), "long", "knave:size", "knave:event", "knave:rel", "knave:type",
-        "claim:is", "claim:same", "claim:differ", "two hours", "several axes", "the Post in the analogy",
+        "claim:is", "claim:same", "claim:differ", "claim:any", "claim:all", "two hours", "several axes", "the Post in the analogy",
     ];
     const missing = want.filter(w => !seen.has(w));
     assert(!missing.length, `never shipped: ${missing.join(", ")}`);
+});
+
+test("composed world: lengths are told by how stretches lie, never said truly, and the card pins them", () => {
+    /* A card that stated every length outright read as a list of sizes; one
+       that stated none read as a card about points (the complaint was "I cannot
+       find a single premise describing length"). */
+    for (const it of [...items(16, 9400, worldSize(4)), ...items(16, 9500)]) {
+        for (const b of it.world.start) {
+            equal(b.size.filter(s => s === LONG).length, 1, "every thing is long along exactly one line");
+            equal(b.size.findIndex(s => s === LONG) >= 0 && it.world.axes[b.size.indexOf(LONG)].kind, "line", "and that one a line");
+        }
+        for (const s of it.card.statements) {
+            if (s.fact.kind === "size") assert(!it.types[s.speaker], "a knight states a length outright");
+        }
+        /* A knave's outright length waits for a relation to have been said;
+           and a card whose lengths the places and the motion pin with no word
+           on lengths at all reads the same to a reader ignoring them, so the
+           shortcut check never ships it. */
+        assert(it.card.statements.some(s => s.fact.kind === "rel"), "a card that never says how two stretches lie");
+        /* And with the speakers' types known, exactly one set of lengths fits. */
+        equal(worlds(it.card, it.types).length, 1, "the card leaves more than one set of lengths open");
+    }
+});
+
+test("composed world: no card says the same thing twice", () => {
+    /* A knave's false length was drawn for any thing, including one already
+       lied about, and printed the same line twice. */
+    for (const it of [...items(40, 9600, worldSize(4)), ...items(16, 9700, worldSize(6))]) {
+        const said = it.card.statements.map(st => JSON.stringify(st));
+        equal(new Set(said).size, said.length, `a statement repeated: ${said.find((x, i) => said.indexOf(x) !== i)}`);
+    }
+});
+
+test("composed world: the reader finds lengths from relations alone", () => {
+    /* One thing, two lines, nothing moving and nothing happening: only the
+       relation can say which line it is long along. */
+    const axes = makeAxes(() => 0.1, 3);
+    const card = (rel: IntervalRel, axis: number): Card => ({
+        axes, things: 1, speakers: 1, statements: [
+            { speaker: 0, fact: { kind: "type", claim: { kind: "is", who: 0, knight: true } } },
+            { speaker: 0, fact: { kind: "place", hour: 1, x: 0, y: POST, delta: [0, 0, 0] } },
+            { speaker: 0, fact: { kind: "rel", hour: 2, x: 0, y: POST, axis, rel } },
+        ],
+    });
+    const long = (c: Card) => worlds(c, [true]).map(st => st[0]!.size.indexOf(LONG));
+    equal(long(card("spans", 1)), [1], "taking in all of the Post along north–south: long along north–south");
+    equal(long(card("identical", 1)), [2], "the same stretch as the Post along north–south: a point there, so long up–down");
+    equal(long(card("within", 2)), [], "a long thing never lies within a point");
 });
 
 test("composed world: a knave's length is the other length, and only lengths and turns are negated", () => {

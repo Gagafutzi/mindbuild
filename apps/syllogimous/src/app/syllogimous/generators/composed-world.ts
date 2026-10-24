@@ -19,10 +19,10 @@
 import { EnumQuestionType } from "../constants/question.constants";
 import { Question } from "../models/question.models";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
-import { getRandomSymbols } from "../utils/question.utils";
+import { getRandomSymbols, shuffle } from "../utils/question.utils";
 import { ndAxisColors } from "../utils/ndspace.utils";
-import { build } from "../utils/world/build";
-import { render } from "../utils/world/render";
+import { Item, build, fitting } from "../utils/world/build";
+import { Rendered, render } from "../utils/world/render";
 import { GeneratorContext } from "./context";
 
 /**
@@ -43,22 +43,44 @@ const LADDER: Record<number, { dims: number; things: number; speakers: number }>
 };
 export const worldSize = (numOfPremises: number) => LADDER[Math.max(4, Math.min(8, numOfPremises))];
 
+/** Characters of premises a first card may run to; the suite's cap is 650, and names vary. */
+const FLOOR_BUDGET = 600;
+
 export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number, kind?: string): Question {
     ctx.logger.info("createComposedWorld");
     const type = EnumQuestionType.ComposedWorld;
     if (!canGenerateQuestion(type, numOfPremises, ctx.settings)) throw new Error("Cannot generate.");
     numOfPremises = clampPremises(type, numOfPremises);
 
-    const size = worldSize(numOfPremises), { things, speakers } = size;
-    /* A kind that will not build on this card's size gives way to any other
-       rather than costing the player an error. */
-    const item = build({ ...size, kind }, 1500) ?? (kind ? null : build(size, 1500));
-    if (!item) throw new Error("Cannot generate.");
-
-    const names = getRandomSymbols(ctx.settings, things + speakers);
-    if (new Set(names).size !== names.length) throw new Error("Cannot generate.");
-    const colors = ndAxisColors(item.world.axes.map(a => ({ scale: a.scale })));
-    const r = render(item, names.slice(0, things), names.slice(things), colors);
+    const size = worldSize(numOfPremises), { things } = size;
+    /* The first card is held to a reading budget of its own: the world is the
+       same size every time, but long names can make one draw half as long again
+       as the next. So on the smallest space a long draw is drawn again, and the
+       shortest of a few kept. */
+    const tries = size.dims <= 3 ? 6 : 1;
+    let best: { item: Item; names: string[]; r: Rendered; length: number } | null = null;
+    for (let t = 0; t < tries && !(best && best.length <= FLOOR_BUDGET); t++) {
+        /* A kind that will not build on this card's size gives way to the
+           others, each tried once, rather than costing the player an error. */
+        let item: Item | null = null;
+        for (const k of kind ? [kind] : shuffle(fitting(size))) if ((item = build({ ...size, kind: k }, 1500))) break;
+        if (!item) continue;
+        /* Distinct, and none that reads as the landmark: a speaker called Post
+           says "Post says: … the Post …". Drawn again rather than given up on. */
+        let names: string[] = [];
+        for (let d = 0; d < 8; d++) {
+            names = getRandomSymbols(ctx.settings, things + size.speakers);
+            if (new Set(names).size === names.length && !names.some(n => /\bpost\b/i.test(n))) break;
+            names = [];
+        }
+        if (!names.length) continue;
+        const colors = ndAxisColors(item.world.axes.map(a => ({ scale: a.scale })));
+        const r = render(item, names.slice(0, things), names.slice(things), colors);
+        const length = r.premises.reduce((n, l) => n + l.replace(/<[^>]+>/g, "").length, 0);
+        if (!best || length < best.length) best = { item, names, r, length };
+    }
+    if (!best) throw new Error("Cannot generate.");
+    const { item, names, r } = best;
 
     const question = new Question(type);
     question.bucket = [...names];

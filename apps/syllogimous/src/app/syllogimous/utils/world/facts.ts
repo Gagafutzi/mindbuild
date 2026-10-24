@@ -174,7 +174,7 @@ const REL_WORDS: Record<IntervalRel, (w: Wording, i: number) => string> = {
     overlaps: () => "partly overlaps",
     within: () => "lies within",
     spans: () => "takes in all of",
-    identical: () => "covers exactly the same stretch as",
+    identical: () => "covers the same stretch as",
 };
 
 /** The wording of a transformation, for an event statement. */
@@ -186,17 +186,17 @@ export function describeTransform(w: Wording, t: TransformSpec): string {
         case "rotate": {
             const [a, b] = t.axes;
             const to = k === 1 ? ax(b).direction[0] : ax(b).direction[1];
-            return `the whole space turns a quarter about ${POST_NAME}, taking ${col(a, ax(a).direction[0])} round to ${col(b, to)}`;
+            return `everything turns a quarter about ${POST_NAME}, ${col(a, ax(a).direction[0])} round to ${col(b, to)}`;
         }
         case "mirror":
-            return `the whole space is ${own("cs-mirror")} ${col(t.axes[0], axisName(w.axes[t.axes[0]]))} through ${POST_NAME}`;
+            return `everything is ${own("cs-mirror")} ${col(t.axes[0], axisName(w.axes[t.axes[0]]))} through ${POST_NAME}`;
         case "swap":
-            return `${col(t.axes[0], axisName(w.axes[t.axes[0]]))} and ${col(t.axes[1], axisName(w.axes[t.axes[1]]))} trade places through ${POST_NAME}`
-                + ` (${col(t.axes[0], ax(t.axes[0]).direction[0])} becomes ${col(t.axes[1], ax(t.axes[1]).direction[0])})`;
+            return `${col(t.axes[0], axisName(w.axes[t.axes[0]]))} and ${col(t.axes[1], axisName(w.axes[t.axes[1]]))} swap through ${POST_NAME},`
+                + ` ${col(t.axes[0], ax(t.axes[0]).direction[0])} becoming ${col(t.axes[1], ax(t.axes[1]).direction[0])}`;
         case "shear": {
             const [a, b] = t.axes;
             return `everything slides 1 ${col(a, ax(a).direction[k > 0 ? 0 : 1])} per step its low end lies ${col(b, towards(w.axes[b], 0))} ${POST_NAME}`
-                + ` (the other way per step ${col(b, ax(b).direction[1])})`;
+                + ` (1 ${col(a, ax(a).direction[k > 0 ? 1 : 0])} per step ${col(b, ax(b).direction[1])})`;
         }
         case "translate":
             return `everything but ${POST_NAME} shifts ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
@@ -217,8 +217,11 @@ export function describeFact(w: Wording, f: Fact): string {
         }
         case "size":
             return `${nameOf(w, f.x)} is ${f.long ? `${LONG} long` : "a point"} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
-        case "rel":
-            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${REL_WORDS[f.rel](w, f.axis)} ${nameOf(w, f.y)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
+        case "rel": {
+            /* "Wholly north of" names its axis already; the others need telling which. */
+            const along = f.rel === "before" || f.rel === "after" ? "" : ` along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${REL_WORDS[f.rel](w, f.axis)} ${nameOf(w, f.y)}${along}`;
+        }
         case "event":
             return `at ${clock(f.hour)}, ${describeTransform(w, f.t)}`;
         case "type":

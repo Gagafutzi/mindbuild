@@ -28,7 +28,7 @@ const axisWord = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
 export function setupLines(axes: Axis[], colors: string[] = []): string[] {
     const out = [
         `Everyone speaking is a ${hi("knight")}, who only says true things, or a ${hi("knave")}, who only says false ones.`,
-        `A thing's place on each line is its low end, and it runs on from there for its length: ${LONG} where a length is said, otherwise it is a point. The Post stands at 0 on every axis, never moves and is a point.`,
+        `Every thing is ${LONG} long along exactly one line and a point along the rest; which line shows in how things lie against each other. Its place on a line is its low end, and it runs on from there. The Post stands at 0 on every axis, never moves and is a point.`,
         `Everything keeps its pace all day; anything nobody says moves stays still. A statement holds at the hour it names, after anything that happens on that hour. Every turn, mirror and stretch is about ${POST_NAME}.`,
     ];
     /* Every relation word in a marked span, so that minimal mode and fresh
