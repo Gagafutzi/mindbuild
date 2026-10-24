@@ -28,15 +28,17 @@
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, Reading, copyBody, mod, moveHour } from "./space";
 import { TRANSFORMS, TransformSpec } from "./transforms";
-import { Fact, MAX_LEN, POST, Statement, View, holds, negate } from "./facts";
+import { Fact, MAX_LEN, Observer, POST, Statement, View, holds, negate } from "./facts";
 
 export interface WorldEvent { hour: number; t: TransformSpec }
 
 export interface World {
     axes: Axis[];
-    /** Every thing's body at hour 0, the Post excepted. */
+    /** Every thing's body at hour 0. */
     start: Body[];
     events: WorldEvent[];
+    /** Where each speaker stands and faces, on a card with perspective. */
+    observers?: Observer[];
 }
 
 export const postBody = (axes: Axis[]): Body => ({ pos: axes.map(() => 0), size: axes.map(() => 1), vel: axes.map(() => 0) });
@@ -113,6 +115,8 @@ export interface Reconstruction {
     world: World;
     /** The space inside the brackets, where the card has one. */
     inner?: World;
+    /** Where each speaker stands and which ways they may face, where the card says. */
+    observers?: Placed[];
     types: boolean[];
     /** The order speakers were unmasked in, for the explanation. */
     unmasked: Array<{ speaker: number; by: "claims" | Fact; space?: number }>;
@@ -173,9 +177,14 @@ export function sizeOptions(axes: Axis[], x: number, claimed: Claimed[]): number
 /** Past this many readings of the lengths, the card is too open to be worth enumerating. */
 const SOLUTION_CAP = 32;
 
+/** Where a speaker stands, and the ways they may be facing, in one reading. */
+export type Placed = { host: number; facings: number[] } | null;
+
 interface Derived {
     /** Every world the settled speakers allow, as hour-0 bodies (null where a thing cannot be placed). */
     solutions: Array<Array<Body | null>>;
+    /** For each, where each speaker stands and the facings left open. */
+    observers: Placed[][];
     /** Whether a fact holds in every world allowed, fails in every one, or is open. */
     decide(f: Fact): boolean | null;
     events: WorldEvent[];
@@ -256,7 +265,35 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
         if (!solved!.has(k)) solved!.set(k, solveStart(axes, events, size, v, tau, posTau, reading));
         return solved!.get(k)!;
     };
-    const viewOf = (start: Array<Body | null>): View => {
+    /* Where the speakers stand, as the settled speakers say: in a thing, and
+       facing a way where that is said too. A reader who ignores headings takes
+       ahead for north and left for west, whoever is speaking. */
+    const stood: Placed[] = Array.from({ length: card.speakers }, () => null);
+    for (const c of claimed) {
+        const f = c.fact;
+        if (!c.want || f.kind !== "stands") continue;
+        const was = stood[f.who];
+        const facings = (was?.facings ?? [0, 1, 2, 3]).filter(g => f.facing === undefined || g === f.facing);
+        if (was && was.host !== f.host) consistent = false;
+        stood[f.who] = { host: f.host, facings: reading.perspective ? facings : [0] };
+    }
+    /* Each speaker's facing, narrowed by what they say they see. */
+    const facedIn = (start: Array<Body | null>): Placed[] | null => {
+        const out: Placed[] = [];
+        for (let who = 0; who < stood.length; who++) {
+            const o = stood[who];
+            if (!o) { out.push(null); continue; }
+            const own = checked.filter(c => c.fact.kind === "view" && c.fact.who === who);
+            const facings = o.facings.filter(g => {
+                const v = viewOf(start, stood.map((p, i) => (i === who ? { host: o.host, facings: [g] } : p)));
+                return own.every(c => !fails(c, v));
+            });
+            if (!facings.length) return null;
+            out.push({ host: o.host, facings });
+        }
+        return out;
+    };
+    const viewOf = (start: Array<Body | null>, obs: Placed[] = []): View => {
         const at = (x: number, hour: number): Body | null => {
             if (x === POST) return post;
             if (!start[x] || hour >= horizon) return null;
@@ -268,6 +305,7 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
             eventsKnownThrough: h => h < horizon,
             events: () => (horizon === Infinity ? events : null),
             types,
+            observer: who => obs[who] ?? null,
         };
     };
     /* A shortcut reader sets aside what its shortcut ignores and reasons on with
@@ -291,12 +329,15 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
        soon as it can be. */
     const options = Array.from({ length: n }, (_, x) => (reading.sizes ? sizeOptions(axes, x, claimed) : [axes.map(() => 1)]));
     const solutions: Array<Array<Body | null>> = [];
+    const observers: Placed[][] = [];
     const start: Array<Body | null> = Array(n).fill(null);
     const search = (k: number) => {
         if (solutions.length > SOLUTION_CAP) return;
         if (k === order.length) {
-            const v = viewOf(start);
-            if (!checked.some(c => fails(c, v))) solutions.push([...start]);
+            const obs = facedIn(start);
+            if (!obs) return;
+            const v = viewOf(start, obs);
+            if (!checked.some(c => fails(c, v))) { solutions.push([...start]); observers.push(obs); }
             return;
         }
         const { x, from, p, sign } = order[k];
@@ -318,12 +359,12 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
     search(0);
     if (!solutions.length || solutions.length > SOLUTION_CAP) consistent = false;
 
-    const views = solutions.map(viewOf);
+    const views = solutions.map((st, k) => viewOf(st, observers[k]));
     const decide = (f: Fact): boolean | null => {
         const hs = views.map(v => holds(f, v));
         return hs.length && hs.every(h => h !== null && h === hs[0]) ? hs[0] : null;
     };
-    return { solutions, decide, events, horizon, consistent };
+    return { solutions, observers, decide, events, horizon, consistent };
 }
 
 /**
@@ -377,5 +418,5 @@ export function read(card: Card, reading: Reading = FULL): Reconstruction | null
         if (s.fact.kind === "type" && claimHolds(s.fact.claim, types as boolean[]) !== types[s.speaker]) return null;
     }
     const worldOf = (d: Derived): World => ({ axes: card.axes, start: d.solutions[0] as Body[], events: d.events });
-    return { world: worldOf(ds[0]), ...(ds[1] ? { inner: worldOf(ds[1]) } : {}), types: types as boolean[], unmasked };
+    return { world: worldOf(ds[0]), ...(ds[1] ? { inner: worldOf(ds[1]) } : {}), observers: ds[0].observers[0], types: types as boolean[], unmasked };
 }

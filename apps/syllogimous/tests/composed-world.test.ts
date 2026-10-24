@@ -23,7 +23,7 @@ import { QUESTION_TYPE_SETTING_PARAMS } from "../src/app/syllogimous/constants/s
 import { LINEAR_SCALES, SPATIAL_SCALES } from "../src/app/syllogimous/utils/linear.utils";
 import { Axis, Body, FULL, SHORTCUTS, copyBody, moveHour, sameBody } from "../src/app/syllogimous/utils/world/space";
 import { TRANSFORMS, TransformSpec, canTransform } from "../src/app/syllogimous/utils/world/transforms";
-import { Fact, IntervalRel, MAX_LEN, POST, Statement, intervalRel, negate } from "../src/app/syllogimous/utils/world/facts";
+import { Fact, IntervalRel, MAX_LEN, POST, Seen, Statement, intervalRel, negate } from "../src/app/syllogimous/utils/world/facts";
 const LONG = MAX_LEN;
 import { Card, Reconstruction, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
@@ -161,6 +161,34 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
                 for (const label of groups[k + 1].split(/, | and /)) lens.push([axisBy(label), len]);
             }
             return { kind: "sizes", x: thing.get(m[1])!, lens };
+        }
+        if ((m = new RegExp(`^${PI} stands? in ${T}(?:, facing (north|east|south|west))?$`).exec(body))) {
+            const facing = m[3] ? ["north", "east", "south", "west"].indexOf(m[3]) : undefined;
+            return { kind: "stands", who: whoIs(m[1]), host: thing.get(m[2])!, ...(facing === undefined ? {} : { facing }) };
+        }
+        if ((m = new RegExp(`^at (\\d+) o'clock, ${T}'s nearest edges are (.+)$`).exec(body))) {
+            /* Ahead, left, then every other dimension in order, the last after "and". */
+            const parts = m[3].split(", ");
+            const last = parts.pop()!, cut = last.lastIndexOf(" and ");
+            parts.push(last.slice(0, cut), last.slice(cut + 5));
+            const ahead = parts[0] === "level ahead and behind" ? 0 : /^(\d+) (ahead of me|behind me)$/.exec(parts[0])!;
+            const left = parts[1] === "level to my left and right" ? 0 : /^(\d+) to my (left|right)$/.exec(parts[1])!;
+            const seen: Seen = {
+                ahead: ahead === 0 ? 0 : +ahead[1] * (ahead[2] === "behind me" ? -1 : 1),
+                left: left === 0 ? 0 : +left[1] * (left[2] === "right" ? -1 : 1),
+                rest: axes.map(() => 0),
+            };
+            let k = 2;
+            axes.forEach((ax, i) => {
+                if (i === 0 || i === 1) return;
+                const c = parts[k++];
+                if (c.startsWith("level along ")) return;
+                const v = readClause(ax, c);
+                if (v === null) throw new Error(`unread view clause "${c}" on ${axisLabel(ax)}`);
+                seen.rest[i] = ax.kind === "ring" ? ((v % ax.modulus!) + ax.modulus!) % ax.modulus! : v;
+            });
+            if (k !== parts.length) throw new Error(`a view with ${parts.length} parts for ${axes.length} axes: "${body}"`);
+            return { kind: "view", hour: +m[1], who: speakingNow, x: thing.get(m[2])!, seen };
         }
         if ((m = new RegExp(`^at (\\d+) o'clock, ${T} (is longer than|is shorter than|is as long as) ${T} along (.+)$`).exec(body))) {
             const cmp = ({ "is longer than": "longer", "is shorter than": "shorter", "is as long as": "same" } as const)[m[3] as "is longer than"];
@@ -486,6 +514,7 @@ test("composed world: every part of the structure turns up in what ships", () =>
             seen.add(`fact:${s.fact.kind}`);
             if (s.space === 1) seen.add("inside the brackets");
             if (s.fact.kind === "type") seen.add(`claim:${s.fact.claim.kind}`);
+            if (s.fact.kind === "stands" && s.fact.facing === undefined) seen.add("a heading left to work out");
         }
         if (it.ask.h1 !== it.ask.h2) seen.add("two hours");
         if (it.ask.on.length > 1) seen.add("several axes");
@@ -494,7 +523,8 @@ test("composed world: every part of the structure turns up in what ships", () =>
     const want = [
         ...KINDS.map(k => `kind:${k}`), "seam:twist", "seam:portal", "time:line", "time:ring/plain", "time:ring/portal",
         ...Object.keys(TRANSFORMS).map(t => `event:${t}`), "length:1", "length:2", "length:3", "lengths differ along a thing",
-        "fact:sizes", "fact:cmp", "fact:rel", "knave:size", "knave:event", "knave:rel", "knave:cmp", "knave:type",
+                    "fact:sizes", "fact:cmp", "fact:rel", "fact:stands", "fact:view", "knave:size", "knave:event", "knave:rel", "knave:cmp", "knave:view", "knave:type",
+            "a heading left to work out",
         "claim:is", "claim:same", "claim:differ", "two hours", "several axes", "inside the brackets", "an analogy across the brackets",
     ];
     const missing = want.filter(w => !seen.has(w));
@@ -563,7 +593,7 @@ test("composed world: a speaker nobody vouches for reports on both sides of the 
             if (vouched.has(i)) continue;
             const said = it.card.statements.filter(s => s.speaker === i);
             assert(!said.some(s => ["size", "sizes", "event"].includes(s.fact.kind)), `an unvouched speaker says ${said.map(s => s.fact.kind).join(", ")}`);
-            equal(said.filter(s => s.fact.kind === "rel").length, 2, "an unvouched speaker's checkable reports");
+            equal(said.filter(s => s.fact.kind === "rel" || s.fact.kind === "view").length, 2, "an unvouched speaker's checkable reports");
             if (it.card.statements.some(s => s.space === 1)) equal(said.filter(s => s.space === 1).length, 1, "one of them inside the brackets");
         }
     }

@@ -44,6 +44,8 @@ export type Fact =
     | { kind: "size"; x: number; axis: number; len: number }
     | { kind: "sizes"; x: number; lens: Array<[number, number]> }
     | { kind: "cmp"; hour: number; x: number; y: number; axis: number; cmp: Cmp }
+    | { kind: "stands"; who: number; host: number; facing?: number }
+    | { kind: "view"; hour: number; who: number; x: number; seen: Seen }
     | { kind: "event"; hour: number; t: TransformSpec }
     | { kind: "rel"; hour: number; x: number; y: number; axis: number; rel: IntervalRel }
     | { kind: "type"; claim: Claim };
@@ -90,8 +92,51 @@ export function displacement(axes: Axis[], x: Body, y: Body): number[] {
  * ------------------------------------------------------------------ */
 
 /** What a fact needs to be judged: bodies at an hour, and the speakers' types. */
+/**
+ * Where a speaker is: standing in a thing, at its low end, carried with it,
+ * and facing one of four ways — 0 north, 1 east, 2 south, 3 west — with up
+ * staying up. Speakers are not things, and the space's turns do not turn them.
+ */
+export interface Observer { host: number; facing: number }
+
+/**
+ * A thing as a speaker sees it: on each dimension, how far its nearest edge is
+ * from where they stand — 0 where they stand within its stretch. Ahead and
+ * left are the speaker's, taken on north–south and round east–west; every
+ * other dimension is the space's own.
+ */
+export interface Seen { ahead: number; left: number; rest: number[] }
+
+/** The two dimensions a heading turns: east–west (a ring) and north–south. */
+export const PLANE: [number, number] = [0, 1];
+export const FACINGS = ["north", "east", "south", "west"];
+
+/** How far `t`'s nearest edge is from point `p` along a line: 0 inside it. */
+const edgeFrom = (p: number, lo: number, len: number) => (p < lo ? lo - p : p > lo + len - 1 ? lo + len - 1 - p : 0);
+
+/** What a speaker standing at `from`'s low end, facing `facing`, sees of `t`. */
+export function seenFrom(axes: Axis[], from: Body, t: Body, facing: number): Seen {
+    const rest = axes.map((ax, i) => {
+        if (ax.kind === "ring") {
+            /* Round the heading's ring the shorter way, so ahead and behind are
+               both sayable and a ring of five has no tie; round any other ring,
+               counted the ring's own way, as every place on it is. */
+            const d = mod(t.pos[i] - from.pos[i], ax.modulus!);
+            return PLANE.includes(i) && d > ax.modulus! / 2 ? d - ax.modulus! : d;
+        }
+        if (ax.kind === "parity") return mod(t.pos[i] - from.pos[i], 2);
+        return edgeFrom(from.pos[i], t.pos[i], t.size[i]);
+    });
+    const [e, n] = [rest[PLANE[0]], rest[PLANE[1]]];
+    const [ahead, left] = facing === 0 ? [n, -e] : facing === 1 ? [e, n] : facing === 2 ? [-n, e] : [-e, -n];
+    return { ahead, left, rest: rest.map((v, i) => (PLANE.includes(i) ? 0 : v)) };
+}
+const sameSeen = (a: Seen, b: Seen) => a.ahead === b.ahead && a.left === b.left && a.rest.every((v, i) => v === b.rest[i]);
+
 export interface View {
     axes: Axis[];
+    /** Where a speaker stands, and every way they may be facing; null where unknown. */
+    observer(who: number): { host: number; facings: number[] } | null;
     /** A thing's body at an hour, or null where the view cannot say. */
     at(x: number, hour: number): Body | null;
     /** Hour-0 body, for the facts that are about a thing rather than a moment. */
@@ -118,6 +163,21 @@ export function holds(f: Fact, v: View): boolean | null {
         case "cmp": {
             const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
             return x && y ? compareLengths(x.size[f.axis], y.size[f.axis]) === f.cmp : null;
+        }
+        case "stands": {
+            const o = v.observer(f.who);
+            if (!o) return null;
+            if (o.host !== f.host) return false;
+            if (f.facing === undefined) return true;
+            const hs = o.facings.map(g => g === f.facing);
+            return hs.every(h => h === hs[0]) ? hs[0] : null;
+        }
+        case "view": {
+            const o = v.observer(f.who);
+            const from = o ? v.at(o.host, f.hour) : null, t = v.at(f.x, f.hour);
+            if (!o || !from || !t) return null;
+            const hs = o.facings.map(g => sameSeen(seenFrom(v.axes, from, t, g), f.seen));
+            return hs.length && hs.every(h => h === hs[0]) ? hs[0] : null;
         }
         case "rel": {
             const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
@@ -263,7 +323,31 @@ export function describeFact(w: Wording, f: Fact): string {
             return `at ${clock(f.hour)}, ${describeTransform(w, f.t)}`;
         case "type":
             return describeClaim(f.claim, w.speakers);
+        case "stands":
+            return `${subj(w.speakers[f.who])} stands in ${nameOf(w, f.host)}${f.facing === undefined ? "" : `, facing ${hi(FACINGS[f.facing])}`}`;
+        case "view":
+            return `at ${clock(f.hour)}, ${seenWords(w, f.seen, nameOf(w, f.x), subj(w.speakers[f.who]))}`;
     }
+}
+
+/**
+ * "Farm's nearest edges are 2 ahead of me, 1 to my left, 3 above, level
+ * along time, 2 wider and the same kind" — from the speaker's own place; as a
+ * third party would put it, "of Willow" for "of me".
+ */
+function seenWords(w: Wording, s: Seen, target: string, viewer: string, self = true): string {
+    const me = self ? "me" : viewer, my = self ? "my" : `${viewer}'s`;
+    const parts: string[] = [];
+    parts.push(s.ahead === 0 ? "level ahead and behind" : `${Math.abs(s.ahead)} ${s.ahead > 0 ? "ahead of" : "behind"} ${me}`);
+    parts.push(s.left === 0 ? `level to ${my} left and right` : `${Math.abs(s.left)} to ${my} ${s.left > 0 ? "left" : "right"}`);
+    w.axes.forEach((ax, i) => {
+        if (PLANE.includes(i)) return;
+        const c = w.colors[i];
+        if (ax.kind === "parity") parts.push(hi(s.rest[i] === 0 ? ax.scale.parity!.same : ax.scale.parity!.opposite, c));
+        else if (s.rest[i] === 0) parts.push(`level along ${hi(axisName(ax), c)}`);
+        else parts.push(clause(w, i, s.rest[i]));
+    });
+    return `${target}'s nearest edges are ${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
 /** What a speaker says of speakers, with "I" for themselves, named second. */
@@ -290,6 +374,10 @@ const lengthWords = (len: number) => (len === 1 ? "a point" : `${len} long`);
 
 /** "Ash says: at 3 o'clock, …" — a speaker on themselves says "I". */
 export function describeStatement(w: Wording, s: Statement): string {
-    const body = s.fact.kind === "type" ? describeClaimBy(w, s.speaker, s.fact.claim) : describeFact(w, s.fact);
+    const f = s.fact;
+    const body = f.kind === "type" ? describeClaimBy(w, s.speaker, f.claim)
+        : f.kind === "stands" && f.who === s.speaker
+            ? `I stand in ${nameOf(w, f.host)}${f.facing === undefined ? "" : `, facing ${hi(FACINGS[f.facing])}`}`
+            : describeFact(w, f);
     return `${subj(w.speakers[s.speaker])} says: ${body}`;
 }

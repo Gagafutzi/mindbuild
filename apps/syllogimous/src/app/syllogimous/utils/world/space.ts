@@ -97,9 +97,11 @@ export interface Reading {
     sizes: boolean;
     /** Transformations honoured; off means they never happened. */
     events: boolean;
+    /** Headings honoured; off means "ahead" and "left" are read as north and west whoever says them. */
+    perspective: boolean;
 }
 
-export const FULL: Reading = { liars: true, motion: true, seams: true, sizes: true, events: true };
+export const FULL: Reading = { liars: true, motion: true, seams: true, sizes: true, events: true, perspective: true };
 
 /** The shortcut readings, each with one part of the structure left out. */
 export const SHORTCUTS: Record<string, Reading> = {
@@ -108,6 +110,7 @@ export const SHORTCUTS: Record<string, Reading> = {
     seams: { ...FULL, seams: false },
     sizes: { ...FULL, sizes: false },
     events: { ...FULL, events: false },
+    perspective: { ...FULL, perspective: false },
 };
 
 /* ------------------------------------------------------------------ *

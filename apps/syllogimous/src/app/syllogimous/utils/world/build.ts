@@ -19,9 +19,9 @@
 
 import { LINEAR_SCALES, SPATIAL_SCALES } from "../linear.utils";
 import { Claim, holds as claimHolds } from "../knaves.utils";
-import { Axis, Body, FULL, SHORTCUTS, Seam, sameBody } from "./space";
+import { Axis, Body, FULL, SHORTCUTS, Seam, mod, sameBody } from "./space";
 import { TRANSFORMS, TransformSpec, canTransform } from "./transforms";
-import { Cmp, Fact, IntervalRel, POST, Statement, compareLengths, displacement, intervalRel } from "./facts";
+import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, compareLengths, displacement, intervalRel, seenFrom } from "./facts";
 import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleByClaims, thingAt, worlds } from "./reader";
 import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerKey } from "./questions";
 
@@ -191,6 +191,17 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     /* Paces, for whatever moves. */
     for (let x = 0; x < n; x++) if (world.start[x].vel.some(v => v !== 0)) say(pick(knights, rnd), { kind: "pace", x, vel: [...world.start[x].vel] });
 
+    /* Where everyone stands, outside the brackets, from a knight: the thing
+       they stand in, and, on the smaller cards or half the time, which way they
+       face. A heading left out is worked out from what they say they see. A
+       speaker the claims leave open always has theirs said, since their views
+       are what unmasks them. */
+    const obs = space === 0 ? world.observers : undefined;
+    if (obs) obs.forEach((o, who) => {
+        const faced = axes.length <= 4 || !firsts.includes(who) || rnd() < 0.5;
+        say(pick(knights, rnd), { kind: "stands", who, host: o.host, ...(faced ? { facing: o.facing } : {}) });
+    });
+
     const rest = Array.from({ length: S }, (_, i) => i).filter(i => !firsts.includes(i));
     /* Lengths and events come from the speakers the claims settle, knights and
        knaves both. An unsettled speaker's word on a length leaves that thing's
@@ -230,13 +241,19 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         for (let g = 0; g < 48; g++) {
             const x = int(rnd, 0, n - 1), y = pick(ids.filter(k => k !== x), rnd);
             const a = pick(lineAxes(axes), rnd), hour = int(rnd, 1, FIRST_HOURS);
-            const form = pick(["rel", "rel", "cmp", "size"], rnd);
+            const form = pick(obs ? ["rel", "rel", "cmp", "size", "view", "view"] : ["rel", "rel", "cmp", "size"], rnd);
+            /* A speaker's view is their own, of something they do not stand in. */
+            if (form === "view" && obs![s].host === x) continue;
             /* What the statement says in each reading, the true one first. */
             const value = (st: Array<Body | null> | null): string | number | null => {
                 const bx = st ? bodyIn(st, x, hour) : thingAt(world, x, hour), by = st ? bodyIn(st, y, hour) : thingAt(world, y, hour);
                 if (!bx || !by) return null;
                 if (form === "rel") return intervalRel(bx, by, a);
                 if (form === "cmp") return compareLengths(bx.size[a], by.size[a]);
+                if (form === "view") {
+                    const from = st ? bodyIn(st, obs![s].host, hour) : thingAt(world, obs![s].host, hour);
+                    return from ? JSON.stringify(seenFrom(axes, from, bx, obs![s].facing)) : null;
+                }
                 return (st ? st[x]!.size[a] : world.start[x].size[a]);
             };
             if (form === "size" && types[s]) continue;
@@ -249,6 +266,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
             bestKills = kills;
             best = form === "rel" ? { kind: "rel", hour, x, y, axis: a, rel: said as IntervalRel }
                 : form === "cmp" ? { kind: "cmp", hour, x, y, axis: a, cmp: said as Cmp }
+                : form === "view" ? { kind: "view", hour, who: s, x, seen: JSON.parse(said as string) as Seen }
                 : { kind: "size", x, axis: a, len: said as number };
         }
         if (!best) return null;
@@ -278,6 +296,14 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
             && st.fact.x === x && st.fact.y === y && st.fact.axis === a));
         const good = fresh.filter(([x, y, a]) => telling(x, y, a));
         const [x, y, a] = pick(good.length && rnd() < 0.85 ? good : fresh, rnd);
+        /* Or, half the time outside the brackets, what they see from where they
+           stand — false from a knave by some one dimension. */
+        if (obs && obs[i].host !== x && rnd() < 0.5) {
+            const truth = seenFrom(axes, thingAt(world, obs[i].host, hour), thingAt(world, x, hour), obs[i].facing);
+            const seen = types[i] ? truth : skew(truth, axes, rnd);
+            say(i, { kind: "view", hour, who: i, x, seen });
+            continue;
+        }
         const truth = intervalRel(thingAt(world, x, hour), thingAt(world, y, hour), a);
         const rels = ["before", "after", "overlaps", "within", "spans", "identical"] as const;
         const rel = types[i] ? truth : pick(rels.filter(r => r !== truth), rnd);
@@ -295,6 +321,16 @@ const sameWorld = (a: World, b: World) =>
     && a.events.length === b.events.length
     && a.events.every(e => b.events.some(f => f.hour === e.hour && f.t.id === e.t.id && f.t.axes.join() === e.t.axes.join() && (f.t.k ?? 1) === (e.t.k ?? 1)));
 
+/** A view wrong by one step on one dimension: what a knave says they see. */
+function skew(s: Seen, axes: Axis[], rnd: () => number): Seen {
+    const out: Seen = { ahead: s.ahead, left: s.left, rest: [...s.rest] };
+    const dims = ["ahead", "left", ...axes.map((a, i) => (PLANE.includes(i) || a.kind === "parity" ? -1 : i)).filter(i => i >= 0)];
+    const d = pick(dims, rnd), by = rnd() < 0.5 ? 1 : -1;
+    if (d === "ahead") out.ahead += by; else if (d === "left") out.left += by;
+    else { const i = d as number; out.rest[i] = axes[i].kind === "ring" ? mod(out.rest[i] + by, axes[i].modulus!) : out.rest[i] + by; }
+    return out;
+}
+
 /** A world, the card that pins it down, and the reading of that card. */
 interface Base {
     world: World;
@@ -310,6 +346,8 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     clearReaderCache();
     const axes = makeAxes(rnd, opts.dims ?? 7);
     const world: World = { axes, start: Array.from({ length: opts.things }, () => makeBody(axes, rnd)), events: makeEvents(axes, rnd) };
+    /* Every speaker stands in a thing and faces one of four ways. */
+    world.observers = Array.from({ length: opts.speakers }, () => ({ host: int(rnd, 0, opts.things - 1), facing: int(rnd, 0, 3) }));
     const types = Array.from({ length: opts.speakers }, () => rnd() < 0.5);
     if (types.every(t => t) || types.every(t => !t)) types[int(rnd, 0, types.length - 1)] = !types[0];
     const firsts = shuffle(Array.from({ length: opts.speakers }, (_, i) => i), rnd).slice(0, Math.max(2, opts.speakers - 2));
