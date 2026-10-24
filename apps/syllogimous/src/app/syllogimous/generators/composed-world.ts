@@ -85,6 +85,8 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
             prompt: ticks.prompt, explanation: ticks.explanation, premises },
         ...finishes.map((f): SeriesClaim => f.construct
             ? { text: "", isValid: true, answerMode: "construct", construct: f.construct, prompt: f.prompt, explanation: f.explanation }
+            : f.selectAnswer.length || f.prompt.includes("select every one that could")
+            ? { text: "", isValid: true, answerMode: "select", choices: f.choices, selectAnswer: f.selectAnswer, prompt: f.prompt, explanation: f.explanation }
             : { text: "", isValid: true, answerMode: "choice", choices: f.choices, correctChoice: f.correctChoice, prompt: f.prompt, explanation: f.explanation }),
         ...verdicts.map((v, i): SeriesClaim => ({ text: v.conclusion, isValid: item.judgements[i].answer === true,
             answerMode: "boolean", explanation: v.explanation, ...(i === 0 ? { premises: announced } : {}) })),

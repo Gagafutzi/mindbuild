@@ -8,7 +8,7 @@ import { Axis } from "./space";
 import { POST, POST_NAME, Statement, Wording, clause, clock, describeFact, describeStatement, placeClauses, towards } from "./facts";
 import { Item, StagedItem } from "./build";
 import { ConstructClaim } from "../../models/question.models";
-import { Answer, Ask, Part, REACH, relation } from "./questions";
+import { Answer, Ask, Part, QUESTIONS, REACH, openLength, relation } from "./questions";
 import { Reconstruction, spaceOf, thingAt } from "./reader";
 
 export interface Rendered {
@@ -191,6 +191,20 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
         out.prompt = `${head} which of these at ${clock(q.h2)}${side2}?`;
         out.choices = q.options!.map(name);
         out.correctChoice = q.options!.indexOf(answer as number);
+    } else if (q.kind === "could") {
+        out.prompt = `${head} which of these at ${clock(q.h2)}${side2}? The card leaves something open: select every one that could.`;
+        out.choices = q.options!.map(name);
+        out.selectAnswer = (answer as number[]).map(a => q.options!.indexOf(a)).sort((a, b) => a - b);
+        /* What is open, and what fits in each world it leaves. */
+        const open = openLength(rec);
+        if (open) {
+            out.explanation.push(`nothing settles ${name(open.thing)}'s length along ${hi(axisWord(axes[open.axis]), colors[open.axis])}: it could be ${open.values.length > 2 ? `${open.values.slice(0, -1).join(", ")} or ${open.values[open.values.length - 1]}` : open.values.join(" or ")}`);
+            for (const world of rec.alternatives!) {
+                const r = { ...rec, world };
+                const fits = q.options!.filter(o => QUESTIONS.judge.answer({ ...q, kind: "judge", w: o }, r) === true);
+                out.explanation.push(`if it is ${world.start[open.thing].size[open.axis]}, ${fits.length ? fits.map(name).join(" and ") : "none of them"} ${fits.length === 1 ? "fits" : "fit"}`);
+            }
+        }
     } else if (q.kind === "every") {
         out.prompt = `${head} which of these at ${clock(q.h2)}${side2}? Select every one that fits, or none.`;
         out.choices = q.options!.map(name);

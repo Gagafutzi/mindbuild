@@ -20,8 +20,10 @@ export interface TransformSpec {
     id: string;
     /** The axes acted on, by index. */
     axes: number[];
-    /** Quarter turns (rotate: 1 or 3), factor (shear: ±1), steps (translate). */
+    /** Quarter turns (rotate: 1 or 3), factor (shear: ±1), steps (translate, jump). */
     k?: number;
+    /** The one thing it happens to, for a kind that is `single`; everything otherwise. */
+    who?: number;
 }
 
 export interface TransformKind {
@@ -32,6 +34,12 @@ export interface TransformKind {
     needs: number;
     /** Two-valued statements a knave can make about it: the opposite version, or null. */
     opposite?(t: TransformSpec): TransformSpec | null;
+    /**
+     * Happens to one thing, not to the space: it changes how that thing stands
+     * to every other, the way an edit to a relation does, where a turn of the
+     * whole space changes none of them.
+     */
+    single?: boolean;
 }
 
 /* A quarter turn about the Post in the plane (a, b): (x, y) -> (-y, x) for a
@@ -107,6 +115,21 @@ export const TRANSFORMS: Record<string, TransformKind> = {
             const a = t.axes[0];
             b.pos[a] = dir > 0 ? 2 * b.pos[a] : b.pos[a] / 2;
         },
+    },
+    jump: {
+        id: "jump",
+        needs: 1,
+        single: true,
+        /* One thing jumps k along a line; its length and pace go with it. */
+        apply(b, t, dir) { b.pos[t.axes[0]] += dir * (t.k ?? 1); },
+        opposite: t => ({ ...t, k: -(t.k ?? 1) }),
+    },
+    turn: {
+        id: "turn",
+        needs: 0,
+        single: true,
+        /* One thing turns back: every pace it has reversed, where it stands. Its own inverse. */
+        apply(b) { b.vel = b.vel.map(v => -v); },
     },
 };
 

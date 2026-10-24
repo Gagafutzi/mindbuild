@@ -52,6 +52,7 @@ export type Fact =
     | { kind: "ranked"; hour: number; by: number[]; order: number[] }
     | { kind: "signal"; hour: number; x: number; y: number; mode: "at" | "after" }
     | { kind: "level"; x: number; y: number; axis: number; hour: number }
+    | { kind: "meet"; x: number; y: number; hour: number }
     | { kind: "event"; hour: number; t: TransformSpec }
     | { kind: "rel"; hour: number; x: number; y: number; axis: number; rel: IntervalRel }
     | { kind: "type"; claim: Claim };
@@ -191,6 +192,26 @@ export function firstLevel(at: (k: number, h: number) => Body | null, x: number,
     return null;
 }
 
+/**
+ * Whether two things share ground: the same place round east–west, and
+ * stretches that overlap along north–south and up–down. Lengths are what make
+ * a meeting — two points meet only where their low ends do.
+ */
+export function together(axes: Axis[], a: Body, b: Body): boolean {
+    return [0, 1, 2].every(i => i >= axes.length
+        || (axes[i].kind === "ring" ? mod(a.pos[i] - b.pos[i], axes[i].modulus!) === 0 : !["before", "after"].includes(intervalRel(a, b, i))));
+}
+
+/** The first hour, 0 to `last`, two things share ground; null if never. */
+export function firstMeet(axes: Axis[], at: (k: number, h: number) => Body | null, x: number, y: number, last: number): number | null | undefined {
+    for (let h = 0; h <= last; h++) {
+        const a = at(x, h), b = at(y, h);
+        if (!a || !b) return undefined;
+        if (together(axes, a, b)) return h;
+    }
+    return null;
+}
+
 /** Low ends' gaps added up over every line and the shorter way round every ring: steps in all. */
 export function stepsBetween(axes: Axis[], a: Body, b: Body): number {
     return axes.reduce((n, ax, i) => {
@@ -225,7 +246,7 @@ export interface View {
 }
 
 const sameVec = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
-const sameT = (a: TransformSpec, b: TransformSpec) => a.id === b.id && sameVec(a.axes, b.axes) && (a.k ?? 1) === (b.k ?? 1);
+const sameT = (a: TransformSpec, b: TransformSpec) => a.id === b.id && sameVec(a.axes, b.axes) && (a.k ?? 1) === (b.k ?? 1) && a.who === b.who;
 
 /** Whether `f` holds in the view, or null when the view does not settle it. */
 export function holds(f: Fact, v: View): boolean | null {
@@ -245,6 +266,10 @@ export function holds(f: Fact, v: View): boolean | null {
         }
         case "level": {
             const h = firstLevel(v.at, f.x, f.y, f.axis, f.hour);
+            return h === undefined ? null : h === f.hour;
+        }
+        case "meet": {
+            const h = firstMeet(v.axes, v.at, f.x, f.y, f.hour);
             return h === undefined ? null : h === f.hour;
         }
         case "pace": { const s = v.start(f.x); return s ? sameVec(s.vel, f.vel) : null; }
@@ -414,6 +439,10 @@ export function describeTransform(w: Wording, t: TransformSpec): string {
             return `everything shifts ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
         case "stretch":
             return `every ${col(t.axes[0], axisName(w.axes[t.axes[0]]))} distance from ${POST_NAME} doubles`;
+        case "jump":
+            return `${nameOf(w, t.who!)} alone jumps ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
+        case "turn":
+            return `${nameOf(w, t.who!)} alone turns back, every pace it has reversed`;
     }
     return t.id;
 }
@@ -469,6 +498,8 @@ export function describeFact(w: Wording, f: Fact): string {
         }
         case "level":
             return `${nameOf(w, f.x)} first draws level with ${nameOf(w, f.y)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])} at ${clock(f.hour)}`;
+        case "meet":
+            return `${nameOf(w, f.x)} and ${nameOf(w, f.y)} first meet at ${clock(f.hour)}`;
         case "ranked": {
             const [a, b] = f.by.map(i => w.axes[i]);
             const run = (ax: Axis, i: number) => ax.kind === "ring"

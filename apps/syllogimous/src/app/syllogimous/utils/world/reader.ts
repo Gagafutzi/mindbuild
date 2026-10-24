@@ -43,25 +43,26 @@ export interface World {
 
 export const postBody = (axes: Axis[]): Body => ({ pos: axes.map(() => 0), size: axes.map(() => 1), vel: axes.map(() => 0) });
 
-function applyEvents(b: Body, events: WorldEvent[], hour: number, dir: 1 | -1) {
-    const now = events.filter(e => e.hour === hour);
+/* `who` is the thing the body is, for the events that happen to one thing only. */
+function applyEvents(b: Body, events: WorldEvent[], hour: number, dir: 1 | -1, who?: number) {
+    const now = events.filter(e => e.hour === hour && (e.t.who === undefined || e.t.who === who));
     if (dir < 0) now.reverse();
     for (const e of now) TRANSFORMS[e.t.id].apply(b, e.t, dir);
 }
 
 /** A body at an hour: each hour, the motion and then whatever happens on it. */
-export function bodyAt(axes: Axis[], start: Body, events: WorldEvent[], hour: number, reading: Reading = FULL): Body {
+export function bodyAt(axes: Axis[], start: Body, events: WorldEvent[], hour: number, reading: Reading = FULL, who?: number): Body {
     const b = copyBody(start);
     for (let h = 1; h <= hour; h++) {
         moveHour(b, axes, 1, reading);
-        if (reading.events) applyEvents(b, events, h, 1);
+        if (reading.events) applyEvents(b, events, h, 1, who);
     }
     return b;
 }
 
 /** The same, for a thing by index; the Post never moves and nothing moves it. */
 export function thingAt(w: World, x: number, hour: number, reading: Reading = FULL): Body {
-    return x === POST ? postBody(w.axes) : bodyAt(w.axes, w.start[x], w.events, hour, reading);
+    return x === POST ? postBody(w.axes) : bodyAt(w.axes, w.start[x], w.events, hour, reading, x);
 }
 
 /* ------------------------------------------------------------------ *
@@ -75,12 +76,12 @@ const posKey = (b: Body) => b.pos.join(",");
  * and pace, or null if there is not exactly one.
  */
 export function solveStart(
-    axes: Axis[], events: WorldEvent[], size0: number[], vel0: number[], tau: number, posTau: number[], reading: Reading,
+    axes: Axis[], events: WorldEvent[], size0: number[], vel0: number[], tau: number, posTau: number[], reading: Reading, who?: number,
 ): Body | null {
     /* Lengths and the deterministic part of the pace at tau: events alone change
        those, so a run without motion gives them. A twist can still flip a pace
        component, so every flip of the non-zero ones is tried. */
-    const still = bodyAt(axes, { pos: axes.map(() => 0), size: size0, vel: vel0 }, events, tau, { ...reading, motion: false });
+    const still = bodyAt(axes, { pos: axes.map(() => 0), size: size0, vel: vel0 }, events, tau, { ...reading, motion: false }, who);
     const free = still.vel.map((v, i) => (v !== 0 ? i : -1)).filter(i => i >= 0);
     const found = new Map<string, Body>();
     for (let mask = 0; mask < (1 << free.length); mask++) {
@@ -88,12 +89,12 @@ export function solveStart(
         free.forEach((i, j) => { if (mask & (1 << j)) vel[i] = -vel[i]; });
         const b: Body = { pos: [...posTau], size: [...still.size], vel };
         for (let h = tau; h >= 1; h--) {
-            if (reading.events) applyEvents(b, events, h, -1);
+            if (reading.events) applyEvents(b, events, h, -1, who);
             moveHour(b, axes, -1, reading);
         }
         if (!b.pos.every(Number.isInteger)) continue;
         if (!b.vel.every((v, i) => v === vel0[i]) || !b.size.every((v, i) => v === size0[i])) continue;
-        const again = bodyAt(axes, b, events, tau, reading);
+        const again = bodyAt(axes, b, events, tau, reading, who);
         if (!again.pos.every((v, i) => v === posTau[i])) continue;
         found.set(posKey(b), b);
     }
@@ -117,6 +118,8 @@ export interface Reconstruction {
     world: World;
     /** The space inside the brackets, where the card has one. */
     inner?: World;
+    /** Every world the card allows outside the brackets, where it leaves some length open. */
+    alternatives?: World[];
     /** Where each speaker stands and which ways they may face, where the card says. */
     observers?: Placed[];
     types: boolean[];
@@ -175,6 +178,9 @@ export function sizeOptions(axes: Axis[], x: number, claimed: Claimed[]): number
     });
     return out;
 }
+
+/** The most worlds a card may leave open outside the brackets. */
+export const OPEN_MAX = 3;
 
 /** Past this many readings of the lengths, the card is too open to be worth enumerating. */
 const SOLUTION_CAP = 32;
@@ -255,16 +261,17 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
     const key = `${JSON.stringify(events)}|${reading.motion}${reading.seams}${reading.events}`;
     let solved = SOLVED.get(key);
     if (!solved) SOLVED.set(key, (solved = new Map()));
-    const whereAt = (b: Body, hour: number) => {
+    /* Bodies are cached by identity, and each is one thing's, so `who` needs no place in the key. */
+    const whereAt = (b: Body, hour: number, who: number) => {
         let m = LATER.get(b);
         if (!m) LATER.set(b, (m = new Map()));
         let at = m.get(hour);
-        if (!at) m.set(hour, (at = bodyAt(axes, b, events, hour, reading)));
+        if (!at) m.set(hour, (at = bodyAt(axes, b, events, hour, reading, who)));
         return at;
     };
-    const solve = (size: number[], v: number[], tau: number, posTau: number[]) => {
-        const k = `${size}|${v}|${tau}|${posTau}`;
-        if (!solved!.has(k)) solved!.set(k, solveStart(axes, events, size, v, tau, posTau, reading));
+    const solve = (size: number[], v: number[], tau: number, posTau: number[], who: number) => {
+        const k = `${size}|${v}|${tau}|${posTau}|${events.some(e => e.t.who === who) ? who : ""}`;
+        if (!solved!.has(k)) solved!.set(k, solveStart(axes, events, size, v, tau, posTau, reading, who));
         return solved!.get(k)!;
     };
     /* Where the speakers stand, as the settled speakers say: in a thing, and
@@ -301,7 +308,7 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
         const at = (x: number, hour: number): Body | null => {
             if (x === POST) return post;
             if (!start[x] || hour >= horizon) return null;
-            return whereAt(start[x]!, hour);
+            return whereAt(start[x]!, hour, x);
         };
         return {
             axes, at,
@@ -319,7 +326,7 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
        reader to them would only stop it at the first. It still judges the
        unsettled speakers by them, as points, which is where it goes wrong. */
     const checked = claimed.filter(c => !((!reading.motion && c.fact.kind === "pace") || (!reading.events && c.fact.kind === "event")
-        || (!reading.sizes && (c.fact.kind === "rel" || c.fact.kind === "size" || c.fact.kind === "sizes" || c.fact.kind === "cmp"))));
+        || (!reading.sizes && (c.fact.kind === "rel" || c.fact.kind === "size" || c.fact.kind === "sizes" || c.fact.kind === "cmp" || c.fact.kind === "meet"))));
     const things = (f: Fact) => ("x" in f ? [f.x, ...("y" in f ? [f.y] : [])] : []).filter(t => t !== POST);
     /* Each check is made as soon as everything it names is placed. */
     const due = order.map((_, k) => checked.filter(c => {
@@ -358,7 +365,7 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
             posTau[TIME] = axes[TIME].kind === "ring" ? mod(t, axes[TIME].modulus!) : t;
         }
         for (const size of options[x]) {
-            const b = solve(size, vel[x]!, p.hour, posTau);
+            const b = solve(size, vel[x]!, p.hour, posTau, x);
             if (!b) continue;
             start[x] = b;
             const v = viewOf(start);
@@ -422,11 +429,19 @@ export function read(card: Card, reading: Reading = FULL): Reconstruction | null
 
     if (types.some(t => t === undefined)) return null;
     const ds = spaces.map(sp => derive(card, types, reading, sp));
-    if (ds.some(d => !d.consistent || d.horizon !== Infinity || d.solutions.length !== 1 || d.solutions[0].some(b => !b))) return null;
+    /* Outside the brackets a card may leave a little open — a length or two
+       of one thing — and then every world it allows is kept; whatever is asked
+       has to come out the same in all of them, or be asked as what could be. */
+    if (ds.some((d, k) => !d.consistent || d.horizon !== Infinity || !d.solutions.length || d.solutions.length > (k === 0 ? OPEN_MAX : 1)
+        || d.solutions.some(st => st.some(b => !b)))) return null;
     /* The speakers' own claims about each other have to hold of the types arrived at. */
     if (reading.liars) for (const s of card.statements) {
         if (s.fact.kind === "type" && claimHolds(s.fact.claim, types as boolean[]) !== types[s.speaker]) return null;
     }
-    const worldOf = (d: Derived): World => ({ axes: card.axes, start: d.solutions[0] as Body[], events: d.events });
-    return { world: worldOf(ds[0]), ...(ds[1] ? { inner: worldOf(ds[1]) } : {}), observers: ds[0].observers[0], types: types as boolean[], unmasked };
+    const worldOf = (d: Derived, k = 0): World => ({ axes: card.axes, start: d.solutions[k] as Body[], events: d.events });
+    const all = ds[0].solutions.map((_, k) => worldOf(ds[0], k));
+    return {
+        world: all[0], ...(all.length > 1 ? { alternatives: all } : {}), ...(ds[1] ? { inner: worldOf(ds[1]) } : {}),
+        observers: ds[0].observers[0], types: types as boolean[], unmasked,
+    };
 }

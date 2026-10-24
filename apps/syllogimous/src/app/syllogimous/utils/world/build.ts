@@ -21,9 +21,9 @@ import { LINEAR_SCALES, SPATIAL_SCALES } from "../linear.utils";
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, SHORTCUTS, Seam, mod, sameBody } from "./space";
 import { TRANSFORMS, TransformSpec, canTransform } from "./transforms";
-import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, TIME, compareLengths, displacement, firstLevel, intervalRel, localTime, rankBy, seenFrom, spaceSteps, stepsBetween } from "./facts";
+import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, TIME, compareLengths, displacement, firstLevel, firstMeet, intervalRel, localTime, rankBy, seenFrom, spaceSteps, stepsBetween } from "./facts";
 import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleByClaims, thingAt, worlds } from "./reader";
-import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerKey } from "./questions";
+import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerFollows, answerKey } from "./questions";
 
 export interface Item {
     world: World;
@@ -115,14 +115,19 @@ function makeBody(axes: Axis[], rnd: () => number): Body {
     return { pos, size, vel };
 }
 
-function makeEvents(axes: Axis[], rnd: () => number, within = [2, 3, 4, 5, 6]): Array<{ hour: number; t: TransformSpec }> {
+/* Given the things, an event may happen to one of them alone — never a turn
+   back to one that has no pace to reverse. */
+function makeEvents(axes: Axis[], rnd: () => number, within = [2, 3, 4, 5, 6], start?: Body[]): Array<{ hour: number; t: TransformSpec }> {
     const lines = lineAxes(axes), out: Array<{ hour: number; t: TransformSpec }> = [];
     /* Two only where there is room for them to be told apart from one. */
     const count = axes.length >= 5 && rnd() < 0.5 ? 2 : 1, hours = shuffle(within, rnd).slice(0, count).sort((a, b) => a - b);
     for (const hour of hours) {
         for (let guard = 0; guard < 20; guard++) {
-            const id = pick(Object.keys(TRANSFORMS), rnd);
+            const id = pick(Object.keys(TRANSFORMS).filter(k => start || !TRANSFORMS[k].single), rnd);
             const t: TransformSpec = { id, axes: shuffle(lines, rnd).slice(0, TRANSFORMS[id].needs) };
+            if (TRANSFORMS[id].single) t.who = int(rnd, 0, start!.length - 1);
+            if (id === "turn" && start![t.who!].vel.every(v => v === 0)) continue;
+            if (id === "jump") t.k = sign(rnd) * int(rnd, 1, 2);
             if (id === "rotate") t.k = rnd() < 0.5 ? 1 : 3;
             if (id === "shear") t.k = sign(rnd);
             if (id === "translate") t.k = sign(rnd) * int(rnd, 1, 2);
@@ -168,7 +173,7 @@ function claimsFor(types: boolean[], firsts: number[], rnd: () => number): State
  * speakers, already settled or not. Each speaker the claims leave open gives
  * `reports` checkable reports here.
  */
-function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => number, space = 0, reports = 2): Statement[] | null {
+function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => number, space = 0, reports = 2, leaveOpen = false): Statement[] | null {
     const axes = world.axes, n = world.start.length, S = types.length;
     const knights = firsts.filter(i => types[i]);
     if (!knights.length) return null;
@@ -239,18 +244,28 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     /* All but at most one line each: one length to work out per thing keeps
        what a card leaves open to a few hundred readings, where every line open
        was tens of thousands and a seven-axis card took a minute to build. */
+    /* One length, of one thing, may be left open on purpose: told about no
+       more than to narrow it, never to settle it — what is asked then has to
+       follow however it falls, or be asked as what could be. */
+    const openThing = leaveOpen ? int(rnd, 0, n - 1) : -1;
+    let openLine = -1;
     for (let x = 0; x < n; x++) {
-        const lines = lineAxes(axes), open = rnd() < 0.8 ? pick(lines, rnd) : -1;
+        const lines = lineAxes(axes), open = x === openThing || rnd() < 0.8 ? pick(lines, rnd) : -1;
+        if (x === openThing) openLine = open;
         const told = lines.filter(a => a !== open);
         if (told.length) say(pick(knights, rnd), { kind: "sizes", x, lens: told.map(a => [a, world.start[x].size[a]] as [number, number]) });
     }
+    /* A reading that differs from the world only in that one length is not wrong. */
+    const onlyOpen = (st: Array<Body | null>) => openThing >= 0 && st.every((b, x) => b && (x === openThing
+        ? sameBody({ ...b, size: b.size.map((l, a) => (a === openLine ? world.start[x].size[a] : l)) }, world.start[x])
+        : sameBody(b, world.start[x])));
     const known = types.map((t, i) => (firsts.includes(i) ? t : undefined));
     for (let guard = 0; ; guard++) {
         const sols = worlds({ axes, things: n, speakers: S, statements }, known, space);
-        const wrong = sols.filter(st => !st.every((b, x) => b && sameBody(b, world.start[x])));
+        const wrong = sols.filter(st => !st.every((b, x) => b && sameBody(b, world.start[x])) && !onlyOpen(st));
         if (sols.length && !wrong.length) break;
         if (!sols.length || guard >= 6 * n) return null;
-        const bodyIn = (st: Array<Body | null>, k: number, h: number) => (st[k] ? bodyAt(axes, st[k]!, world.events, h) : null);
+        const bodyIn = (st: Array<Body | null>, k: number, h: number) => (st[k] ? bodyAt(axes, st[k]!, world.events, h, undefined, k) : null);
         const s = pick(firsts, rnd);
         let best: Fact | null = null, bestKills = 0;
         for (let g = 0; g < 48; g++) {
@@ -354,6 +369,19 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
                 continue;
             }
         }
+        /* Or the hour two first meet, sharing ground — searched over the pairs,
+           since most pairs never do. A knave names an hour they do not. */
+        if (roll > 0.82 && roll <= 0.92) {
+            const at = (k: number, h: number) => thingAt(world, k, h);
+            const meeting = ids.flatMap(p => ids.filter(q => q > p).map(q => [p, q, firstMeet(axes, at, p, q, LAST_HOUR)] as const))
+                .filter(([, , h]) => typeof h === "number" && h >= 1);
+            if (meeting.length) {
+                const [p, q, first] = pick(meeting, rnd);
+                const hourSaid = types[i] ? first! : pick(Array.from({ length: LAST_HOUR }, (_, k) => k + 1).filter(h => h !== first), rnd);
+                say(i, { kind: "meet", x: p, y: q, hour: hourSaid });
+                continue;
+            }
+        }
         if (roll < 0.2) {
             const steps = stepsBetween(axes, bx, by);
             say(i, { kind: "total", hour, x, y, steps: types[i] ? steps : Math.max(0, steps + pick([-2, -1, 1, 2], rnd)) });
@@ -391,7 +419,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
 const sameWorld = (a: World, b: World) =>
     a.start.length === b.start.length && a.start.every((x, i) => sameBody(x, b.start[i]))
     && a.events.length === b.events.length
-    && a.events.every(e => b.events.some(f => f.hour === e.hour && f.t.id === e.t.id && f.t.axes.join() === e.t.axes.join() && (f.t.k ?? 1) === (e.t.k ?? 1)));
+    && a.events.every(e => b.events.some(f => f.hour === e.hour && f.t.id === e.t.id && f.t.axes.join() === e.t.axes.join() && (f.t.k ?? 1) === (e.t.k ?? 1) && f.t.who === e.t.who));
 
 /** A view wrong by one step on one dimension: what a knave says they see. */
 function skew(s: Seen, axes: Axis[], rnd: () => number): Seen {
@@ -417,7 +445,8 @@ interface Base {
 function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     clearReaderCache();
     const axes = makeAxes(rnd, opts.dims ?? 7);
-    const world: World = { axes, start: Array.from({ length: opts.things }, () => makeBody(axes, rnd)), events: makeEvents(axes, rnd) };
+    const start = Array.from({ length: opts.things }, () => makeBody(axes, rnd));
+    const world: World = { axes, start, events: makeEvents(axes, rnd, undefined, start) };
     /* Every speaker stands in a thing and faces one of four ways. */
     /* Now and then a mirror twin, or one hanging head down. */
     world.observers = Array.from({ length: opts.speakers }, () => ({
@@ -432,9 +461,11 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
        unsettled speaker reports once in each, so unmasking them needs both. */
     const nested = opts.nested ?? rnd() < 0.75;
     const inner: World | undefined = nested
-        ? { axes, start: Array.from({ length: opts.things }, () => makeBody(axes, rnd)), events: makeEvents(axes, rnd) }
+        ? (s => ({ axes, start: s, events: makeEvents(axes, rnd, undefined, s) }))(Array.from({ length: opts.things }, () => makeBody(axes, rnd)))
         : undefined;
-    const outside = makeCard(world, types, firsts, rnd, 0, nested ? 1 : 2);
+    /* Now and then a card that leaves a length open, where there are enough things to ask what could be. */
+    const leaveOpen = opts.things >= 4 && rnd() < 0.7;
+    const outside = makeCard(world, types, firsts, rnd, 0, nested ? 1 : 2, leaveOpen);
     const inside = inner ? makeCard(inner, types, firsts, rnd, 1, 1) : [];
     if (!outside || !inside) return null;
     const card: Card = {
@@ -442,7 +473,11 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
         style: { compact: rnd() < 0.4, wide: rnd() < 0.7 },
     };
     const rec = read(card, FULL);
-    if (!rec || !sameWorld(rec.world, world) || rec.types.some((t, i) => t !== types[i])) return null;
+    if (!rec || rec.types.some((t, i) => t !== types[i])) return null;
+    /* The world itself among those the card allows, and the reading's world taken to be it. */
+    const truth = (rec.alternatives ?? [rec.world]).find(a => sameWorld(a, world));
+    if (!truth) return null;
+    rec.world = truth;
     if (inner && (!rec.inner || !sameWorld(rec.inner, inner))) return null;
     return { world, ...(inner ? { inner } : {}), card, types, firsts, rec };
 }
@@ -471,13 +506,18 @@ function fairStage(
     for (let guard = 0; guard < 400; guard++) {
         const ask = kind.draw(rec, things, types.length, types, rnd, span);
         if (!ask || unlike.some(u => JSON.stringify({ ...u, options: [] }) === JSON.stringify({ ...ask, options: [] }))) continue;
-        const answer = kind.answer(ask, rec);
+        const answer = answerFollows(kind, ask, rec);
         if (answer === null) continue;
+        /* What could be has to be more than what is: the open length must matter. */
+        if (kind.open) {
+            const settled = kind.answer(ask, { ...rec, alternatives: undefined });
+            if (answerKey(settled) === answerKey(answer) || !(answer as number[]).length || (answer as number[]).length === ask.options!.length) continue;
+        }
         if (kind.answerMode === "boolean" && wantTrue !== undefined && answer !== wantTrue) continue;
         const shortcuts: Record<string, Answer> = {};
         let fair = true;
         for (const [name, r] of wrongs) {
-            const a = r ? kind.answer(ask, r) : null;
+            const a = r ? answerFollows(kind, ask, r) : null;
             shortcuts[name] = a;
             if (answerKey(a) === answerKey(answer)) { fair = false; break; }
         }
@@ -488,7 +528,7 @@ function fairStage(
             const s1 = ask.s1, s2 = ask.s2!;
             for (const [a, b] of [[s1, s1], [s2, s2], [1 - s1, 1 - s2]]) {
                 if (a === s1 && b === s2) continue;
-                const other = kind.answer({ ...ask, s1: a, s2: b }, rec);
+                const other = answerFollows(kind, { ...ask, s1: a, s2: b }, rec);
                 shortcuts[`spaces ${a}${b}`] = other;
                 if (answerKey(other) === answerKey(answer)) { fair = false; break; }
             }
@@ -558,7 +598,13 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
     const finishing = ["which", "which", "build", ...(QUESTIONS.speakers.fits!(opts.things, opts.speakers) ? ["speakers"] : [])];
     const reads = shortcutReads(card);
     const analogies: Stage[] = [];
-    for (let k = 0, want = int(rnd, 2, 3); k < want; k++) {
+    /* A card left open asks what could be, first. */
+    if (rec.alternatives) {
+        const could = fairStage(QUESTIONS.could, base, rec, reads, rnd, early);
+        if (!could) return null;
+        analogies.push(could);
+    }
+    for (let k = analogies.length, want = int(rnd, 2, 3); k < want; k++) {
         /* A kind that will not go on this world gives way to the other, rather
            than the world — which cost far more to build than a question. */
         let stage: Stage | null = null;
@@ -575,7 +621,7 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
     /* A few draws of what to announce before the world is given up: whether a
        verdict turns on the new transformation depends on which one it is. */
     for (let tries = 0; tries < 6; tries++) {
-        const added = makeEvents(world.axes, rnd, LATER_HOURS);
+        const added = makeEvents(world.axes, rnd, LATER_HOURS, world.start);
         if (!added.length) continue;
         const later: Statement[] = added.map(e => {
             const opp = TRANSFORMS[e.t.id].opposite?.(e.t);
@@ -610,7 +656,7 @@ export function buildStaged(opts: BuildOptions, attempts = 400): StagedItem | nu
 
 /** The kinds of question a card of this size can ask. */
 export const fitting = (opts: BuildOptions) =>
-    Object.keys(QUESTIONS).filter(k => QUESTIONS[k].fits?.(opts.things, opts.speakers) ?? true);
+    Object.keys(QUESTIONS).filter(k => !QUESTIONS[k].open && (QUESTIONS[k].fits?.(opts.things, opts.speakers) ?? true));
 
 /**
  * The kind is drawn once, outside the retries: drawn afresh on each attempt, the

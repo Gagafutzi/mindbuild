@@ -25,10 +25,10 @@ import { Axis, Body, FULL, SHORTCUTS, copyBody, moveHour, sameBody } from "../sr
 import { TRANSFORMS, TransformSpec, canTransform } from "../src/app/syllogimous/utils/world/transforms";
 import { Fact, IntervalRel, MAX_LEN, POST, Seen, Statement, intervalRel, negate } from "../src/app/syllogimous/utils/world/facts";
 const LONG = MAX_LEN;
-import { Card, Reconstruction, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
+import { Card, OPEN_MAX, Reconstruction, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
 import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
-import { Ask, QUESTIONS, REACH, answerKey } from "../src/app/syllogimous/utils/world/questions";
+import { Ask, QUESTIONS, REACH, answerFollows, answerKey } from "../src/app/syllogimous/utils/world/questions";
 import { BuildOptions, Item, build, buildStaged, fitting, makeAxes, tryBuild } from "../src/app/syllogimous/utils/world/build";
 
 const TYPE = EnumQuestionType.ComposedWorld;
@@ -226,6 +226,9 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         if ((m = new RegExp(`^${T} first draws level with ${T} along (.+) at (\\d+) o'clock$`).exec(body))) {
             return { kind: "level", x: thing.get(m[1])!, y: thing.get(m[2])!, axis: axisBy(m[3]), hour: +m[4] };
         }
+        if ((m = new RegExp(`^${T} and ${T} first meet at (\\d+) o'clock$`).exec(body))) {
+            return { kind: "meet", x: thing.get(m[1])!, y: thing.get(m[2])!, hour: +m[3] };
+        }
         if ((m = new RegExp(`^at (\\d+) o'clock, ${T} is (\\d+) steps? in all from ${T}$`).exec(body))) {
             return { kind: "total", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, steps: +m[3] };
         }
@@ -271,6 +274,11 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             return { id: "translate", axes: [a], k: side === 0 ? +m[1] : -m[1] };
         }
         if ((m = /^every (.+) distance from the origin doubles$/.exec(text))) return { id: "stretch", axes: [axisBy(m[1])] };
+        if ((m = new RegExp(`^${T} alone jumps (\\d+) (\\S+)$`).exec(text))) {
+            const [a, side] = dirAxis(m[3]);
+            return { id: "jump", axes: [a], who: thing.get(m[1])!, k: side === 0 ? +m[2] : -m[2] };
+        }
+        if ((m = new RegExp(`^${T} alone turns back, every pace it has reversed$`).exec(text))) return { id: "turn", axes: [], who: thing.get(m[1])! };
         throw new Error(`unread transformation "${text}"`);
     };
 
@@ -327,6 +335,10 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         const ask: Ask = { kind: "build", x: thing.get(m[3])!, y: thing.get(m[4])!, z: thing.get(m[5])!, w: thing.get(m[8])!, h1: +m[1], h2: +m[6], on: axes.map((_, i) => i), ...sides(m[2], m[7]) };
         return { card, ask, kind: "build" };
     }
+    if ((m = new RegExp(`${head} which of these at (\\d+) o'clock( outside them| inside them)?\\? The card leaves something open: select every one that could\\.$`).exec(prompt))) {
+        const ask: Ask = { kind: "could", x: thing.get(m[3])!, y: thing.get(m[4])!, z: thing.get(m[6])!, h1: +m[1], h2: +m[7], on: on(m[5]), ...sides(m[2], m[8]), options: options.map(o => thing.get(o)!) };
+        return { card, ask, kind: "could" };
+    }
     if ((m = new RegExp(`${head} which of these at (\\d+) o'clock( outside them| inside them)?\\?( Select every one that fits, or none\\.)?$`).exec(prompt))) {
         const kind = m[9] ? "every" : "which";
         const ask: Ask = { kind, x: thing.get(m[3])!, y: thing.get(m[4])!, z: thing.get(m[6])!, h1: +m[1], h2: +m[7], on: on(m[5]), ...sides(m[2], m[8]), options: options.map(o => thing.get(o)!) };
@@ -349,7 +361,7 @@ function shipped(q: Question, p: Parsed): string {
             return sl.modulus ? ((v % sl.modulus) + sl.modulus) % sl.modulus : v;
         }));
     }
-    if (p.kind === "types") return answerKey([...q.selectAnswer].map(i => p.ask.options![i]).sort((a, b) => a - b));
+    if (p.kind === "types" || p.kind === "could" || p.kind === "every") return answerKey([...q.selectAnswer].map(i => p.ask.options![i]).sort((a, b) => a - b));
     if (p.kind === "judge") return answerKey(q.isValid);
     return answerKey(p.ask.options![q.correctChoice]);
 }
@@ -360,7 +372,7 @@ function answered(p: Parsed, rec: Reconstruction): string {
         const offered = new Set(p.ask.options);
         return answerKey(rec.types.map((t, i) => 2 * i + (t ? 0 : 1)).filter(k => offered.has(k)).sort((a, b) => a - b));
     }
-    return answerKey(QUESTIONS[p.kind].answer(p.ask, rec));
+    return answerKey(answerFollows(QUESTIONS[p.kind], p.ask, rec));
 }
 
 function names(q: Question, n: number) {
@@ -395,7 +407,9 @@ test("composed world: in stages — ticks, analogies to finish, then verdicts ac
     for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) seeded(1000 + premises, () => {
         const q = createComposedWorld(ctxHolding([]), premises);
         const modes = walk(q, premises, () => undefined).join(" ");
-        assert(/^select ((choice|construct) ){2,3}(boolean ?){2,3}$/.test(modes), `the stages run ${modes}`);
+        /* A card left open asks what could be — a second select — before the analogies to finish. */
+        const finish = /^select ((?:select )?(?:(?:choice|construct) )+)(boolean ?){2,3}$/.exec(modes);
+        assert(!!finish && [2, 3].includes(finish[1].trim().split(" ").length), `the stages run ${modes}`);
         assert(q.premises.length > q.series[0].premises!.length, "the last stage announces nothing new");
     });
 });
@@ -551,18 +565,18 @@ test("composed world: every shipped item reads back to its world, and no shortcu
     for (const it of [...items(24, 7000), ...items(12, 7100, worldSize(4)), ...items(12, 7200, worldSize(6))]) {
         const rec = read(it.card, FULL)!;
         assert(rec && rec.types.every((t, i) => t === it.types[i]), "the reading unmasks the speakers as they are");
-        assert(rec.world.start.every((b, i) => sameBody(b, it.world.start[i])), "the reading places everything where it is");
-        equal(answerKey(it.kind.answer(it.ask, rec)), answerKey(it.answer), "the full reading answers as shipped");
+        assert((rec.alternatives ?? [rec.world]).some(w => w.start.every((b, i) => sameBody(b, it.world.start[i]))), "the reading places everything where it is");
+        equal(answerKey(answerFollows(it.kind, it.ask, rec)), answerKey(it.answer), "the full reading answers as shipped");
         /* The origin is where places are measured from, never a term of an analogy. */
         if (it.kind.id !== "speakers") assert(![it.ask.x, it.ask.y, it.ask.z, it.ask.w ?? 0, ...(it.ask.options ?? [])].includes(POST), "the origin stands in an analogy");
         for (const [name, r] of Object.entries(SHORTCUTS)) {
             const s = read(it.card, r);
-            assert(answerKey(s ? it.kind.answer(it.ask, s) : null) !== answerKey(it.answer), `${it.kind.id}: ignoring ${name} gives the answer`);
+            assert(answerKey(s ? answerFollows(it.kind, it.ask, s) : null) !== answerKey(it.answer), `${it.kind.id}: ignoring ${name} gives the answer`);
         }
         /* On a nested card, reading a relation on the wrong side of the brackets misses too. */
         if (rec.inner && it.ask.s1 !== undefined) for (const [a, b] of [[it.ask.s1, it.ask.s1], [it.ask.s2!, it.ask.s2!], [1 - it.ask.s1, 1 - it.ask.s2!]]) {
             if (a === it.ask.s1 && b === it.ask.s2) continue;
-            assert(answerKey(it.kind.answer({ ...it.ask, s1: a, s2: b }, rec)) !== answerKey(it.answer), `${it.kind.id}: the other side of the brackets gives the answer`);
+            assert(answerKey(answerFollows(it.kind, { ...it.ask, s1: a, s2: b }, rec)) !== answerKey(it.answer), `${it.kind.id}: the other side of the brackets gives the answer`);
         }
     }
 });
@@ -596,11 +610,11 @@ test("composed world: every part of the structure turns up in what ships", () =>
         if (it.ask.s1 !== undefined && it.ask.s1 !== it.ask.s2) seen.add("an analogy across the brackets");
     }
     const want = [
-        ...KINDS.map(k => `kind:${k}`), "seam:twist", "seam:portal", "time:line", "time:ring/plain", "time:ring/portal",
+        ...KINDS.filter(k => !QUESTIONS[k].open).map(k => `kind:${k}`), "seam:twist", "seam:portal", "time:line", "time:ring/plain", "time:ring/portal",
         ...Object.keys(TRANSFORMS).map(t => `event:${t}`), "length:1", "length:2", "length:3", "lengths differ along a thing",
                     "fact:sizes", "fact:cmp", "fact:rel", "fact:stands", "fact:view", "knave:size", "knave:event", "knave:rel", "knave:cmp", "knave:view", "knave:type",
             "a heading left to work out", "fact:not", "fact:total", "fact:ranked", "a mirror twin", "head down", "an equal gap",
-            "compact places", "two links in a sentence", "local clocks", "fact:signal", "fact:level", "the light cone in an analogy", "an analogy to build",
+            "compact places", "two links in a sentence", "local clocks", "fact:signal", "fact:level", "fact:meet", "the light cone in an analogy", "an analogy to build", "an analogy left open",
         "claim:is", "claim:same", "claim:differ", "two hours", "several axes", "inside the brackets", "an analogy across the brackets",
     ];
     /* And what actually ships: staged items, whose analogies are drawn from the same kinds. */
@@ -610,6 +624,7 @@ test("composed world: every part of the structure turns up in what ships", () =>
             if (st) for (const stage of [...st.analogies, ...st.judgements]) {
                 if (stage.ask.on.includes(REACH)) seen.add("the light cone in an analogy");
                 if (stage.kind.id === "build") seen.add("an analogy to build");
+                if (stage.kind.id === "could") seen.add("an analogy left open");
             }
         }
     });
@@ -626,7 +641,13 @@ test("composed world: lengths are told every way, and the card pins them on both
            and every one of them turns up across cards (the test above). */
         assert(it.card.statements.some(s => ["rel", "cmp", "size", "sizes"].includes(s.fact.kind)), "a card that says nothing of lengths");
         for (const s of it.card.statements) if (s.fact.kind === "sizes") assert(it.types[s.speaker], "a knave lists lengths");
-        equal(worlds(it.card, it.types).length, 1, "the card leaves more than one set of lengths open outside the brackets");
+        /* Outside the brackets a card may leave one length of one thing open, on purpose, and nothing else. */
+        const open = worlds(it.card, it.types);
+        assert(open.length >= 1 && open.length <= OPEN_MAX, `the card leaves ${open.length} worlds open outside the brackets`);
+        const differ = new Set<string>();
+        for (const st of open) st.forEach((b, x) => b!.size.forEach((l, a) => { if (l !== open[0][x]!.size[a]) differ.add(`${x}/${a}`); }));
+        assert(differ.size <= 1, `the worlds left open differ in ${differ.size} lengths`);
+        for (const st of open) assert(st.every((b, x) => b!.pos.every((v, a) => v === open[0][x]!.pos[a])), "the worlds left open differ in more than a length");
         if (it.card.statements.some(s => s.space === 1)) equal(worlds(it.card, it.types, 1).length, 1, "and inside them");
     }
 });
@@ -679,7 +700,7 @@ test("composed world: a speaker nobody vouches for reports on both sides of the 
             if (vouched.has(i)) continue;
             const said = it.card.statements.filter(s => s.speaker === i);
             assert(!said.some(s => ["size", "sizes", "event"].includes(s.fact.kind)), `an unvouched speaker says ${said.map(s => s.fact.kind).join(", ")}`);
-            equal(said.filter(s => ["rel", "view", "not", "total", "ranked", "signal", "level"].includes(s.fact.kind)).length, 2, "an unvouched speaker's checkable reports");
+            equal(said.filter(s => ["rel", "view", "not", "total", "ranked", "signal", "level", "meet"].includes(s.fact.kind)).length, 2, "an unvouched speaker's checkable reports");
             if (it.card.statements.some(s => s.space === 1)) equal(said.filter(s => s.space === 1).length, 1, "one of them inside the brackets");
         }
     }
@@ -721,7 +742,7 @@ test("composed world: premises buy axes, things and speakers, and every kind is 
         assert(b.dims >= a.dims && b.things >= a.things && b.speakers >= a.speakers, `${n + 1} premises buy less than ${n}`);
         assert(b.dims + b.things + b.speakers > a.dims + a.things + a.speakers, `${n + 1} premises buy nothing over ${n}`);
     }
-    equal(fitting(worldSize(RANGE.maxNumOfPremises)), KINDS, "every kind of question at the top");
+    equal(fitting(worldSize(RANGE.maxNumOfPremises)), KINDS.filter(k => !QUESTIONS[k].open), "every kind of question at the top, the open ones on open cards");
     /* And the floor still has the whole structure: a seam, a line to turn in, motion, lengths. */
     for (const it of items(8, 9300, worldSize(RANGE.minNumOfPremises))) {
         assert(it.world.axes[0].seam && it.world.axes[0].seam.type !== "plain", "the floor's ring has a seam");

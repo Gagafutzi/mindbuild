@@ -64,6 +64,8 @@ export interface QuestionKind {
     answerMode: "choice" | "boolean" | "select" | "construct";
     /** Whether a card with this many things and speakers can ask it at all. */
     fits?(things: number, speakers: number): boolean;
+    /** Asked only where the card leaves something open, and answered over every world it allows. */
+    open?: boolean;
     /** Parameters for an item on these spaces, or null if they offer none; hours within `span`. */
     draw(spaces: Spaces, things: number, speakers: number, types: boolean[], rnd: () => number, span?: Span): Ask | null;
     answer(q: Ask, rec: Reconstruction): Answer;
@@ -114,7 +116,29 @@ function hours(rnd: () => number, span: Span) {
 }
 
 /** The space outside the brackets and, where the card has one, the space inside. */
-export interface Spaces { world: World; inner?: World }
+export interface Spaces { world: World; inner?: World; alternatives?: World[] }
+
+/** The one length the worlds a card allows disagree on, and the values it takes in them. */
+export function openLength(sp: Spaces): { thing: number; axis: number; values: number[] } | null {
+    const alts = sp.alternatives;
+    if (!alts || alts.length < 2) return null;
+    for (let k = 0; k < alts[0].start.length; k++) for (let a = 0; a < alts[0].axes.length; a++) {
+        const values = [...new Set(alts.map(w => w.start[k].size[a]))];
+        if (values.length > 1) return { thing: k, axis: a, values: values.sort() };
+    }
+    return null;
+}
+
+/**
+ * What follows from the card: the answer every world it allows gives, or none
+ * where they differ. A kind asked about what could be answers over them itself.
+ */
+export function answerFollows(kind: QuestionKind, q: Ask, rec: Reconstruction): Answer {
+    if (kind.open) return kind.answer(q, rec);
+    const worlds = rec.alternatives ?? [rec.world];
+    const answers = worlds.map(world => kind.answer(q, { ...rec, world }));
+    return answers.every(a => answerKey(a) === answerKey(answers[0])) ? answers[0] : null;
+}
 
 /** Which space each relation of an analogy is read in, where there are two. */
 function drawSpaces(spaces: Spaces, rnd: () => number) {
@@ -187,6 +211,37 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         answer(q, rec) {
             const w = spaceOf(rec, q.s2);
             return matches(w, w.start.length, q.z, q.h2, q.on, firstRel(rec, q), q.options!).sort((a, b) => a - b);
+        },
+    },
+    /* "At h1, X stands to Y as Z stands to which of these at h2? Select every
+       one that could": on a card that leaves a length open, every candidate
+       that fits in some world the card allows. Outside the brackets only, where
+       the openness is. */
+    could: {
+        id: "could",
+        answerMode: "select",
+        open: true,
+        fits: things => things >= 4,
+        draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
+            /* About what is open: the thing whose length differs between the
+               worlds allowed, on the line it differs along, as a term on one side
+               of the analogy or the other. */
+            const open = openLength(sp);
+            if (!open) return null;
+            let { x, y, z } = drawPairs(things, rnd);
+            if (rnd() < 0.5) { x = open.thing; if (y === x) y = pick(everyone(things).filter(t => t !== x), rnd); if (z === x) z = pick(everyone(things).filter(t => t !== x), rnd); }
+            else { z = open.thing; if (x === z) x = pick(everyone(things).filter(t => t !== z), rnd); if (y === x) y = pick(everyone(things).filter(t => t !== x), rnd); }
+            const { h1, h2 } = hours(rnd, span);
+            const on = [...new Set([open.axis, ...drawAxes(sp.world.axes, rnd).filter(i => i !== REACH).slice(0, rnd() < 0.5 ? 0 : 1)])].sort((a, b) => a - b);
+            return { kind: "could", x, y, z, h1, h2, on, ...(sp.inner ? { s1: 0, s2: 0 } : {}), options: everyone(things).filter(w => w !== z) };
+        },
+        answer(q, rec) {
+            const fit = new Set<number>();
+            for (const world of rec.alternatives ?? [rec.world]) {
+                const r = { ...rec, world };
+                for (const m of matches(world, world.start.length, q.z, q.h2, q.on, firstRel(r, q), q.options!)) fit.add(m);
+            }
+            return [...fit].sort((a, b) => a - b);
         },
     },
     /* "At h1, X stands to Y as Z stands to a point P at h2: build where P is
