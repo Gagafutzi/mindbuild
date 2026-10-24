@@ -554,7 +554,8 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
 
     /* Stage 2: analogies to finish, in the first part of the day. */
     const early: Span = { h1: [1, FIRST_HOURS], h2: [1, FIRST_HOURS] };
-    const finishing = ["which", ...(QUESTIONS.speakers.fits!(opts.things, opts.speakers) ? ["speakers"] : [])];
+    /* Picked, built, or about the speakers themselves. */
+    const finishing = ["which", "which", "build", ...(QUESTIONS.speakers.fits!(opts.things, opts.speakers) ? ["speakers"] : [])];
     const reads = shortcutReads(card);
     const analogies: Stage[] = [];
     for (let k = 0, want = int(rnd, 2, 3); k < want; k++) {

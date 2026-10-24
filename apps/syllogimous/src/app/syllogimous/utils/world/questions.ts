@@ -61,7 +61,7 @@ export interface Ask {
 
 export interface QuestionKind {
     id: string;
-    answerMode: "choice" | "boolean" | "select";
+    answerMode: "choice" | "boolean" | "select" | "construct";
     /** Whether a card with this many things and speakers can ask it at all. */
     fits?(things: number, speakers: number): boolean;
     /** Parameters for an item on these spaces, or null if they offer none; hours within `span`. */
@@ -187,6 +187,28 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         answer(q, rec) {
             const w = spaceOf(rec, q.s2);
             return matches(w, w.start.length, q.z, q.h2, q.on, firstRel(rec, q), q.options!).sort((a, b) => a - b);
+        },
+    },
+    /* "At h1, X stands to Y as Z stands to a point P at h2: build where P is
+       relative to W." The missing term found by moving Z as Y lies from X —
+       low ends, on every dimension — and read off from a fourth thing, so all
+       four places at both hours go into it. */
+    build: {
+        id: "build",
+        answerMode: "construct",
+        fits: things => things >= 3,
+        draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
+            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span);
+            const w = pick(everyone(things).filter(t => t !== z), rnd);
+            return { kind: "build", x, y, z, w, h1, h2, on: sp.world.axes.map((_, i) => i), ...drawSpaces(sp, rnd) };
+        },
+        answer(q, rec) {
+            const a = spaceOf(rec, q.s1), b = spaceOf(rec, q.s2);
+            const X = thingAt(a, q.x, q.h1), Y = thingAt(a, q.y, q.h1), Z = thingAt(b, q.z, q.h2), W = thingAt(b, q.w!, q.h2);
+            return b.axes.map((ax, i) => {
+                const d = Z.pos[i] - (X.pos[i] - Y.pos[i]) - W.pos[i];
+                return ax.kind === "ring" ? mod(d, ax.modulus!) : ax.kind === "parity" ? mod(d, 2) : d;
+            });
         },
     },
     /* "Speaker X is to Y as Z is to which speaker?" — same kind of speaker or not.

@@ -111,11 +111,14 @@ export interface SeriesClaim {
      * knight, ticked; an analogy, picked; a verdict, true or false. The advance
      * swaps the control along with the claim, and clears what belonged to the
      * last one. Absent means the item's own mode, which is every other series.
-     * Never "construct" or "map", whose apparatus the advance cannot swap.
+     * Never "map", whose apparatus the advance cannot swap; "construct" brings
+     * its own claims to build.
      */
-    answerMode?: "boolean" | "choice" | "select";
+    answerMode?: "boolean" | "choice" | "select" | "construct";
     /** The options that are true, for a claim answered by selecting. */
     selectAnswer?: number[];
+    /** What to build, for a claim answered by building. */
+    construct?: ConstructClaim[];
 }
 
 export interface ConstructClaim {

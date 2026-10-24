@@ -296,6 +296,7 @@ export class GameComponent {
             // longer on screen.
             this.selectPicks = [];
             this.choiceFocus = -1;
+            this.picks = blankPicks(this.game.question.construct);
             this.showClaimSite();
             // Answering a conclusion buys seconds, so the bar has further to
             // fall than it did a moment ago and its sweep has to be re-armed.

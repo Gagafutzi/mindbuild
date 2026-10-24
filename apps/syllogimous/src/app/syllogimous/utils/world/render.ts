@@ -7,6 +7,7 @@ import { hi, subj } from "../phrasing";
 import { Axis } from "./space";
 import { POST, POST_NAME, Statement, Wording, clause, clock, describeFact, describeStatement, placeClauses, towards } from "./facts";
 import { Item, StagedItem } from "./build";
+import { ConstructClaim } from "../../models/question.models";
 import { Answer, Ask, Part, REACH, relation } from "./questions";
 import { Reconstruction, spaceOf, thingAt } from "./reader";
 
@@ -77,6 +78,8 @@ function partWords(axes: Axis[], i: number, p: Part, colors: string[]): string {
 
 /** One question, worded: what it asks, its options, and how the answer follows. */
 export interface RenderedAsk {
+    /** For a build: the one claim to build, a slot a dimension. */
+    construct?: ConstructClaim[];
     prompt: string;
     conclusion: string;
     choices: string[];
@@ -161,6 +164,29 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
        label nothing on the card decoded. The analogy's frame is the question's
        own wording, not a relation of the space. */
     const head = `At ${clock(q.h1)}${side1}, ${name(q.x)} stands to ${name(q.y)} on ${on} as ${name(q.z)} stands to`;
+    if (q.kind === "build") {
+        /* Where the missing term is, from the fourth thing: a direction and a
+           distance a dimension, judged round a ring the way any dial is. */
+        const d = answer as number[];
+        out.prompt = `At ${clock(q.h1)}${side1}, ${name(q.x)} stands to ${name(q.y)} as ${name(q.z)} stands to a point ${hi("P")} at ${clock(q.h2)}${side2}`
+            + ` — where is ${hi("P")}, relative to ${name(q.w!)}?`;
+        out.construct = [{ a: hi("P"), b: name(q.w!), slots: axes.map((ax, i) => {
+            const s = ax.scale, colorClass = colors[i];
+            if (ax.kind === "parity") return { label: s.name, colorClass, directions: [s.parity!.sameRelation, s.parity!.oppositeRelation], answerDirection: d[i] === 0 ? 0 : 1, answerMagnitude: 0, asksDistance: false };
+            if (ax.kind === "ring") {
+                const m = ax.modulus!, forward = d[i] <= m / 2;
+                return { label: s.name, colorClass, directions: [s.cyclic!.direction[0], s.cyclic!.direction[1], s.cyclic!.same], modulus: m,
+                    answerDirection: d[i] === 0 ? 2 : forward ? 0 : 1, answerMagnitude: d[i] === 0 ? 0 : forward ? d[i] : m - d[i], asksDistance: true };
+            }
+            return { label: s.name, colorClass, directions: [s.direction[0], s.direction[1], s.same], answerDirection: d[i] === 0 ? 2 : d[i] > 0 ? 0 : 1, answerMagnitude: Math.abs(d[i]), asksDistance: true };
+        }) }];
+        const where = (x: number, h: number, s?: number) => `${name(x)} at ${clock(h)}: ${thingAt(spaceOf(rec, s), x, h).pos.map((v, i) => clause(w, i, v)).join(", ")}`;
+        out.explanation.push(
+            `from ${POST_NAME}, ${where(q.x, q.h1, q.s1)}; ${where(q.y, q.h1, q.s1)}`,
+            `so ${hi("P")} is where ${name(q.z)} would be moved by how ${name(q.y)} lies from ${name(q.x)}: ${d.map((v, i) => clause(w, i, v)).join(", ")} relative to ${name(q.w!)}`,
+            `${where(q.z, q.h2, q.s2)}; ${where(q.w!, q.h2, q.s2)}`);
+        return out;
+    }
     if (q.kind === "which") {
         out.prompt = `${head} which of these at ${clock(q.h2)}${side2}?`;
         out.choices = q.options!.map(name);

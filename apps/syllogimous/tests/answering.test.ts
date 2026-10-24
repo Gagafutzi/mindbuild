@@ -143,6 +143,12 @@ function faultsIn(q: Question): string[] {
             if (claim.isValid !== true) out.push(`select: claim ${i} is scored as false`);
             continue;
         }
+        /* A claim built rather than judged brings what is to be built. */
+        if (mode === "construct" && claim.answerMode === "construct") {
+            if (!claim.construct?.length) out.push(`construct: claim ${i} has nothing to build`);
+            if (claim.isValid !== true) out.push(`construct: claim ${i} is scored as false`);
+            continue;
+        }
         if (mode === "construct" || mode === "map") {
             out.push(`${mode}: a series the card cannot advance`);
             break;

@@ -323,6 +323,10 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         const s1 = first.includes("inside") ? 1 : 0;
         return { s1, s2: second ? (second.includes("inside") ? 1 : 0) : s1 };
     };
+    if ((m = new RegExp(`^At (\\d+) o'clock( outside the brackets| inside the brackets)?, ${T} stands to ${T} as ${T} stands to a point P at (\\d+) o'clock( outside them| inside them)? — where is P, relative to ${T}\\?$`).exec(prompt))) {
+        const ask: Ask = { kind: "build", x: thing.get(m[3])!, y: thing.get(m[4])!, z: thing.get(m[5])!, w: thing.get(m[8])!, h1: +m[1], h2: +m[6], on: axes.map((_, i) => i), ...sides(m[2], m[7]) };
+        return { card, ask, kind: "build" };
+    }
     if ((m = new RegExp(`${head} which of these at (\\d+) o'clock( outside them| inside them)?\\?( Select every one that fits, or none\\.)?$`).exec(prompt))) {
         const kind = m[9] ? "every" : "which";
         const ask: Ask = { kind, x: thing.get(m[3])!, y: thing.get(m[4])!, z: thing.get(m[6])!, h1: +m[1], h2: +m[7], on: on(m[5]), ...sides(m[2], m[8]), options: options.map(o => thing.get(o)!) };
@@ -337,6 +341,14 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
 
 /** The answer the claim on screen was shipped with, in the engine's terms. */
 function shipped(q: Question, p: Parsed): string {
+    if (p.kind === "build") {
+        /* The slots back into a displacement: forward, back, or level, a dimension each. */
+        return answerKey(q.construct[0].slots.map(sl => {
+            const v = sl.answerDirection === 2 ? 0 : sl.answerDirection === 0 ? sl.answerMagnitude : -sl.answerMagnitude;
+            if (!sl.asksDistance) return sl.answerDirection;
+            return sl.modulus ? ((v % sl.modulus) + sl.modulus) % sl.modulus : v;
+        }));
+    }
     if (p.kind === "types") return answerKey([...q.selectAnswer].map(i => p.ask.options![i]).sort((a, b) => a - b));
     if (p.kind === "judge") return answerKey(q.isValid);
     return answerKey(p.ask.options![q.correctChoice]);
@@ -383,7 +395,7 @@ test("composed world: in stages — ticks, analogies to finish, then verdicts ac
     for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) seeded(1000 + premises, () => {
         const q = createComposedWorld(ctxHolding([]), premises);
         const modes = walk(q, premises, () => undefined).join(" ");
-        assert(/^select (choice ){2,3}(boolean ?){2,3}$/.test(modes), `the stages run ${modes}`);
+        assert(/^select ((choice|construct) ){2,3}(boolean ?){2,3}$/.test(modes), `the stages run ${modes}`);
         assert(q.premises.length > q.series[0].premises!.length, "the last stage announces nothing new");
     });
 });
@@ -588,14 +600,17 @@ test("composed world: every part of the structure turns up in what ships", () =>
         ...Object.keys(TRANSFORMS).map(t => `event:${t}`), "length:1", "length:2", "length:3", "lengths differ along a thing",
                     "fact:sizes", "fact:cmp", "fact:rel", "fact:stands", "fact:view", "knave:size", "knave:event", "knave:rel", "knave:cmp", "knave:view", "knave:type",
             "a heading left to work out", "fact:not", "fact:total", "fact:ranked", "a mirror twin", "head down", "an equal gap",
-            "compact places", "two links in a sentence", "local clocks", "fact:signal", "fact:level", "the light cone in an analogy",
+            "compact places", "two links in a sentence", "local clocks", "fact:signal", "fact:level", "the light cone in an analogy", "an analogy to build",
         "claim:is", "claim:same", "claim:differ", "two hours", "several axes", "inside the brackets", "an analogy across the brackets",
     ];
     /* And what actually ships: staged items, whose analogies are drawn from the same kinds. */
     seeded(8100, () => {
         for (let k = 0; k < 8; k++) {
             const st = buildStaged({ dims: 7, things: 4, speakers: 4 }, 300);
-            if (st) for (const stage of [...st.analogies, ...st.judgements]) if (stage.ask.on.includes(REACH)) seen.add("the light cone in an analogy");
+            if (st) for (const stage of [...st.analogies, ...st.judgements]) {
+                if (stage.ask.on.includes(REACH)) seen.add("the light cone in an analogy");
+                if (stage.kind.id === "build") seen.add("an analogy to build");
+            }
         }
     });
     const missing = want.filter(w => !seen.has(w));

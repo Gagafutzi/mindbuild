@@ -89,6 +89,8 @@ function advanceClaim(q: Question) {
         }
         q.selectAnswer = next.answerMode === "select" ? [...(next.selectAnswer ?? [])] : [];
         q.selectAsked = next.answerMode === "select";
+        q.construct = next.answerMode === "construct" ? [...(next.construct ?? [])] : [];
+        if (next.answerMode === "construct") { q.choices = []; q.correctChoice = -1; q.choicePrompt = next.prompt ?? ""; }
         q.userChoice = -1;
     }
     // A claim that brought its own derivation is a claim the item's own would

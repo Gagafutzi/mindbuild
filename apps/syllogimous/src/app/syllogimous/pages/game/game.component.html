@@ -386,7 +386,8 @@
 
         <div *ngIf="game.question.answerMode === 'construct' && builderReady" class="build">
             <div class="build__head">
-                <span class="small text-muted">State the relation</span>
+                <!-- A staged item's build says what is being built. -->
+                <span class="small text-muted" [innerHTML]="game.question.choicePrompt || 'State the relation'"></span>
                 <span class="build__left" [class.is-done]="constructComplete">{{ slotsLeft }}</span>
             </div>
             <div class="build__claim" *ngFor="let claim of game.question.construct; let ci = index">
