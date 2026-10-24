@@ -39,7 +39,7 @@ export const POST = -1;
 export type IntervalRel = "before" | "after" | "overlaps" | "within" | "spans" | "identical";
 
 export type Fact =
-    | { kind: "place"; hour: number; x: number; y: number; delta: number[]; bridge?: [number, number] }
+    | { kind: "place"; hour: number; x: number; y: number; delta: number[]; bridge?: [number, number]; local?: boolean }
     | { kind: "pace"; x: number; vel: number[] }
     | { kind: "size"; x: number; axis: number; len: number }
     | { kind: "sizes"; x: number; lens: Array<[number, number]> }
@@ -50,6 +50,8 @@ export type Fact =
     | { kind: "analog"; h1: number; h2: number; x: number; y: number; z: number; w: number; on: number[] }
     | { kind: "total"; hour: number; x: number; y: number; steps: number }
     | { kind: "ranked"; hour: number; by: number[]; order: number[] }
+    | { kind: "signal"; hour: number; x: number; y: number; mode: "at" | "after" }
+    | { kind: "level"; x: number; y: number; axis: number; hour: number }
     | { kind: "event"; hour: number; t: TransformSpec }
     | { kind: "rel"; hour: number; x: number; y: number; axis: number; rel: IntervalRel }
     | { kind: "type"; claim: Claim };
@@ -156,6 +158,39 @@ export function seenFrom(axes: Axis[], from: Body, t: Body, frame: Frame | numbe
 /** The up–down axis, which a head-down speaker reads the other way. */
 export const UP = 2;
 
+/** The time dimension, which local clocks and rings of sound are reckoned on. */
+export const TIME = 3;
+const EAST = 0;
+
+/**
+ * A place's time gap as local clocks read it: one step later per step
+ * clockwise from the origin round east–west, so a thing further round reads
+ * later than the same moment does at the origin.
+ */
+export function localTime(axes: Axis[], delta: number[], x: Body, y: Body): number {
+    const d = delta[TIME] + (mod(x.pos[EAST], axes[EAST].modulus!) - mod(y.pos[EAST], axes[EAST].modulus!));
+    return axes[TIME].kind === "ring" ? mod(d, axes[TIME].modulus!) : d;
+}
+
+/** Steps through space between two low ends, the way a ring of sound spreads: round east–west, along north–south and up–down. */
+export function spaceSteps(axes: Axis[], a: Body, b: Body): number {
+    return [0, 1, 2].reduce((n, i) => {
+        const d = a.pos[i] - b.pos[i];
+        if (axes[i].kind === "ring") { const m = mod(d, axes[i].modulus!); return n + Math.min(m, axes[i].modulus! - m); }
+        return n + Math.abs(d);
+    }, 0);
+}
+
+/** The first hour, 0 to `last`, two low ends are level along a line; null if never. */
+export function firstLevel(at: (k: number, h: number) => Body | null, x: number, y: number, axis: number, last: number): number | null | undefined {
+    for (let h = 0; h <= last; h++) {
+        const a = at(x, h), b = at(y, h);
+        if (!a || !b) return undefined;
+        if (a.pos[axis] === b.pos[axis]) return h;
+    }
+    return null;
+}
+
 /** Low ends' gaps added up over every line and the shorter way round every ring: steps in all. */
 export function stepsBetween(axes: Axis[], a: Body, b: Body): number {
     return axes.reduce((n, ax, i) => {
@@ -197,7 +232,20 @@ export function holds(f: Fact, v: View): boolean | null {
     switch (f.kind) {
         case "place": {
             const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
-            return x && y ? sameVec(displacement(v.axes, x, y), f.delta) : null;
+            if (!x || !y) return null;
+            const d = displacement(v.axes, x, y);
+            if (f.local) d[TIME] = localTime(v.axes, d, x, y);
+            return sameVec(d, f.delta);
+        }
+        case "signal": {
+            const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
+            if (!x || !y) return null;
+            const late = x.pos[TIME] - y.pos[TIME], far = spaceSteps(v.axes, x, y);
+            return f.mode === "at" ? late === far : late > far;
+        }
+        case "level": {
+            const h = firstLevel(v.at, f.x, f.y, f.axis, f.hour);
+            return h === undefined ? null : h === f.hour;
         }
         case "pace": { const s = v.start(f.x); return s ? sameVec(s.vel, f.vel) : null; }
         case "size": { const s = v.start(f.x); return s ? s.size[f.axis] === f.len : null; }
@@ -296,6 +344,7 @@ export function placeClauses(w: Wording, f: Extract<Fact, { kind: "place" }>): s
             const [a] = f.bridge, sa = w.axes[a].scale, sb = w.axes[i].scale;
             return hi(`as many ${sb.direction[d > 0 ? 0 : 1]} as ${sa.direction[f.delta[a] > 0 ? 0 : 1]}`, w.colors[i]);
         }
+        if (f.local && i === TIME) return `${clause(w, i, d)} ${hi("by local clocks", w.colors[i])}`;
         return w.compact && d === 0 ? "" : clause(w, i, d);
     }).filter(Boolean);
     return parts.length ? parts.join(", ") : "level on every dimension";
@@ -414,6 +463,12 @@ export function describeFact(w: Wording, f: Fact): string {
                 + ` as ${nameOf(w, f.z)} stands to ${nameOf(w, f.w)} at ${clock(f.h2)}`;
         case "total":
             return `at ${clock(f.hour)}, ${nameOf(w, f.x)} is ${f.steps} ${f.steps === 1 ? "step" : "steps"} in all from ${nameOf(w, f.y)}`;
+        case "signal": {
+            const when = f.mode === "at" ? "just as" : "only after";
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} stands ${when} a ring from ${nameOf(w, f.y)} would reach it`;
+        }
+        case "level":
+            return `${nameOf(w, f.x)} first draws level with ${nameOf(w, f.y)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])} at ${clock(f.hour)}`;
         case "ranked": {
             const [a, b] = f.by.map(i => w.axes[i]);
             const run = (ax: Axis, i: number) => ax.kind === "ring"

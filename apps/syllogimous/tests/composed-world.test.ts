@@ -28,8 +28,8 @@ const LONG = MAX_LEN;
 import { Card, Reconstruction, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
 import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
-import { Ask, QUESTIONS, answerKey } from "../src/app/syllogimous/utils/world/questions";
-import { BuildOptions, Item, build, fitting, makeAxes, tryBuild } from "../src/app/syllogimous/utils/world/build";
+import { Ask, QUESTIONS, REACH, answerKey } from "../src/app/syllogimous/utils/world/questions";
+import { BuildOptions, Item, build, buildStaged, fitting, makeAxes, tryBuild } from "../src/app/syllogimous/utils/world/build";
 
 const TYPE = EnumQuestionType.ComposedWorld;
 const RANGE = QUESTION_TYPE_SETTING_PARAMS[TYPE];
@@ -122,7 +122,8 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         const delta = axes.map(() => 0);
         const bridges: Array<[number, number, number]> = [];
         if (text === "level on every dimension") return delta;
-        for (const c of text.split(", ")) {
+        for (let c of text.split(", ")) {
+            if (c.endsWith(" by local clocks")) { c = c.slice(0, -" by local clocks".length); local = true; }
             const br = /^as many (\S+(?: in the cycle)?) as (\S+)$/.exec(c);
             if (br) { const [b, side] = dirAxis(br[1]), [a] = dirAxis(br[2]); bridges.push([a, b, side === 0 ? 1 : -1]); continue; }
             const i = axes.findIndex(ax => readClause(ax, c) !== null);
@@ -132,6 +133,12 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         }
         for (const [a, b, sign] of bridges) delta[b] = sign * Math.abs(delta[a]);
         return delta;
+    };
+    let local = false;
+    const placed = (hour: number, x: number, y: number, text: string, body: string): Fact => {
+        local = false;
+        const delta = clauses(text, body);
+        return { kind: "place", hour, x, y, delta, ...(local ? { local: true } : {}) };
     };
 
     const fact = (speaker: number, body: string): Fact => {
@@ -148,7 +155,7 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             return { kind: "type", claim: { kind: m[3] === "the same kind" ? "same" : "differ", a: whoIs(m[1]), b: whoIs(m[2]) } };
         }
         if ((m = new RegExp(`^at (\\d+) o'clock, ${T} is (.+) relative to ${T}$`).exec(body))) {
-            return { kind: "place", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, delta: clauses(m[3], body) };
+            return placed(+m[1], thing.get(m[2])!, thing.get(m[4])!, m[3], body);
         }
         if ((m = new RegExp(`^${T} never moves$`).exec(body))) return { kind: "pace", x: thing.get(m[1])!, vel: axes.map(() => 0) };
         if ((m = new RegExp(`^every hour, ${T} moves (.+)$`).exec(body))) {
@@ -213,6 +220,12 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             const rel = ({ "partly overlaps": "overlaps", "lies within": "within", "takes in all of": "spans", "covers the same stretch as": "identical" } as const)[m[3] as "lies within"];
             return { kind: "rel", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, axis: axisBy(m[5]), rel };
         }
+        if ((m = new RegExp(`^at (\\d+) o'clock, ${T} stands (just as|only after) a ring from ${T} would reach it$`).exec(body))) {
+            return { kind: "signal", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, mode: m[3] === "just as" ? "at" : "after" };
+        }
+        if ((m = new RegExp(`^${T} first draws level with ${T} along (.+) at (\\d+) o'clock$`).exec(body))) {
+            return { kind: "level", x: thing.get(m[1])!, y: thing.get(m[2])!, axis: axisBy(m[3]), hour: +m[4] };
+        }
         if ((m = new RegExp(`^at (\\d+) o'clock, ${T} is (\\d+) steps? in all from ${T}$`).exec(body))) {
             return { kind: "total", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, steps: +m[3] };
         }
@@ -274,7 +287,7 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         const head = fact(speaker, first);
         const linked = second === undefined || head.kind !== "place" ? [] : (() => {
             const t = new RegExp(`^(.+) relative to ${T}$`).exec(second)!;
-            return [{ speaker, fact: { kind: "place", hour: head.hour, x: head.y, y: thing.get(t[2])!, delta: clauses(t[1], second) } as Fact }];
+            return [{ speaker, fact: placed(head.hour, head.y, thing.get(t[2])!, t[1], second) }];
         })();
         return [{ speaker, fact: head }, ...linked, ...inside.map(b => ({ speaker, fact: fact(speaker, b), space: 1 }))];
     });
@@ -304,7 +317,7 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
     /* Which side of the brackets each relation is on: named for the first,
        and for the second only where it differs. */
     const head = `^At (\\d+) o'clock( outside the brackets| inside the brackets)?, ${T} stands to ${T} on (.+?) as ${T} stands to`;
-    const on = (s: string) => s.split(", ").map(axisBy);
+    const on = (s: string) => s.split(", ").map(l => (l === "whether a ring reaches" ? REACH : axisBy(l)));
     const sides = (first?: string, second?: string) => {
         if (!first) return {};
         const s1 = first.includes("inside") ? 1 : 0;
@@ -560,12 +573,14 @@ test("composed world: every part of the structure turns up in what ships", () =>
             if (s.fact.kind === "stands" && s.fact.twin) seen.add("a mirror twin");
             if (s.fact.kind === "stands" && s.fact.upside) seen.add("head down");
             if (s.fact.kind === "place" && s.fact.bridge) seen.add("an equal gap");
+            if (s.fact.kind === "place" && s.fact.local) seen.add("local clocks");
         }
         if (it.card.style?.compact) seen.add("compact places");
         if (it.card.style?.wide && it.card.statements.some(a => a.fact.kind === "place" && it.card.statements.some(b => b !== a && b.speaker === a.speaker
             && b.fact.kind === "place" && b.fact.hour === (a.fact as { hour: number }).hour && b.fact.x === (a.fact as { y: number }).y))) seen.add("two links in a sentence");
         if (it.ask.h1 !== it.ask.h2) seen.add("two hours");
         if (it.ask.on.length > 1) seen.add("several axes");
+        if (it.ask.on.includes(REACH)) seen.add("the light cone in an analogy");
         if (it.ask.s1 !== undefined && it.ask.s1 !== it.ask.s2) seen.add("an analogy across the brackets");
     }
     const want = [
@@ -573,9 +588,16 @@ test("composed world: every part of the structure turns up in what ships", () =>
         ...Object.keys(TRANSFORMS).map(t => `event:${t}`), "length:1", "length:2", "length:3", "lengths differ along a thing",
                     "fact:sizes", "fact:cmp", "fact:rel", "fact:stands", "fact:view", "knave:size", "knave:event", "knave:rel", "knave:cmp", "knave:view", "knave:type",
             "a heading left to work out", "fact:not", "fact:total", "fact:ranked", "a mirror twin", "head down", "an equal gap",
-            "compact places", "two links in a sentence",
+            "compact places", "two links in a sentence", "local clocks", "fact:signal", "fact:level", "the light cone in an analogy",
         "claim:is", "claim:same", "claim:differ", "two hours", "several axes", "inside the brackets", "an analogy across the brackets",
     ];
+    /* And what actually ships: staged items, whose analogies are drawn from the same kinds. */
+    seeded(8100, () => {
+        for (let k = 0; k < 8; k++) {
+            const st = buildStaged({ dims: 7, things: 4, speakers: 4 }, 300);
+            if (st) for (const stage of [...st.analogies, ...st.judgements]) if (stage.ask.on.includes(REACH)) seen.add("the light cone in an analogy");
+        }
+    });
     const missing = want.filter(w => !seen.has(w));
     assert(!missing.length, `never shipped: ${missing.join(", ")}`);
 });
@@ -642,7 +664,7 @@ test("composed world: a speaker nobody vouches for reports on both sides of the 
             if (vouched.has(i)) continue;
             const said = it.card.statements.filter(s => s.speaker === i);
             assert(!said.some(s => ["size", "sizes", "event"].includes(s.fact.kind)), `an unvouched speaker says ${said.map(s => s.fact.kind).join(", ")}`);
-            equal(said.filter(s => ["rel", "view", "not", "total", "ranked"].includes(s.fact.kind)).length, 2, "an unvouched speaker's checkable reports");
+            equal(said.filter(s => ["rel", "view", "not", "total", "ranked", "signal", "level"].includes(s.fact.kind)).length, 2, "an unvouched speaker's checkable reports");
             if (it.card.statements.some(s => s.space === 1)) equal(said.filter(s => s.space === 1).length, 1, "one of them inside the brackets");
         }
     }

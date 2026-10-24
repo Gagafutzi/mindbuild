@@ -28,7 +28,7 @@
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, Reading, copyBody, mod, moveHour } from "./space";
 import { TRANSFORMS, TransformSpec } from "./transforms";
-import { Fact, MAX_LEN, Observer, POST, Statement, View, holds, negate } from "./facts";
+import { Fact, MAX_LEN, Observer, POST, Statement, TIME, View, holds, negate } from "./facts";
 
 export interface WorldEvent { hour: number; t: TransformSpec }
 
@@ -351,6 +351,12 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
             const v = ref.pos[i] + sign * p.delta[i];
             return ax.kind === "ring" ? mod(v, ax.modulus!) : ax.kind === "parity" ? mod(v, 2) : v;
         });
+        /* Read on local clocks, the time gap is the clocks' and not the world's:
+           take off the step per step clockwise that the two clocks differ by. */
+        if (p.local) {
+            const t = ref.pos[TIME] + sign * p.delta[TIME] - (mod(posTau[0], axes[0].modulus!) - mod(ref.pos[0], axes[0].modulus!));
+            posTau[TIME] = axes[TIME].kind === "ring" ? mod(t, axes[TIME].modulus!) : t;
+        }
         for (const size of options[x]) {
             const b = solve(size, vel[x]!, p.hour, posTau);
             if (!b) continue;

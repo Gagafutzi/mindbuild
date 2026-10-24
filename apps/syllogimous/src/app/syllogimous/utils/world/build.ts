@@ -21,7 +21,7 @@ import { LINEAR_SCALES, SPATIAL_SCALES } from "../linear.utils";
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, SHORTCUTS, Seam, mod, sameBody } from "./space";
 import { TRANSFORMS, TransformSpec, canTransform } from "./transforms";
-import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, compareLengths, displacement, intervalRel, rankBy, seenFrom, stepsBetween } from "./facts";
+import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, TIME, compareLengths, displacement, firstLevel, intervalRel, localTime, rankBy, seenFrom, spaceSteps, stepsBetween } from "./facts";
 import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleByClaims, thingAt, worlds } from "./reader";
 import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerKey } from "./questions";
 
@@ -191,11 +191,15 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const hour = chained ? chained.hour : int(rnd, 1, FIRST_HOURS), speaker = chained ? chained.speaker : pick(knights, rnd);
         placedBy.set(x, { hour, speaker });
         const delta = displacement(axes, thingAt(world, x, hour), thingAt(world, y, hour));
+        /* Sometimes the time gap as local clocks read it, one step later per
+           step clockwise round east–west. */
+        const local = axes.length > TIME && rnd() < 0.3;
+        if (local) delta[TIME] = localTime(axes, delta, thingAt(world, x, hour), thingAt(world, y, hour));
         /* Now and then the gap on one line given by another's: "as many above as north". */
-        const lines = lineAxes(axes).filter(i => delta[i] !== 0);
+        const lines = lineAxes(axes).filter(i => delta[i] !== 0 && !(local && i === TIME));
         const pairs = lines.flatMap(a => lines.filter(b => b > a && Math.abs(delta[b]) === Math.abs(delta[a])).map(b => [a, b] as [number, number]));
         const bridge = pairs.length && rnd() < 0.6 ? { bridge: pick(pairs, rnd) } : {};
-        say(speaker, { kind: "place", hour, x, y, delta, ...bridge });
+        say(speaker, { kind: "place", hour, x, y, delta, ...bridge, ...(local ? { local: true } : {}) });
         placed.push(x);
     }
     /* Paces, for whatever moves. */
@@ -322,6 +326,34 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         }
         /* Or steps in all, or a ranked list — false from a knave by a little. */
         const roll = rnd(), bx = thingAt(world, x, hour), by = thingAt(world, y, hour);
+        /* Or, where time is a line, whether a ring from one would reach the
+           other in time: just as it arrives, or only after. */
+        if (roll < 0.2 && axes[TIME]?.kind === "line") {
+            /* Of the pairs, one a knight could say it of: a ring from the second
+               reaches the first by its time, just then or before. */
+            const ring = (p: number, q: number) => {
+                const bp = thingAt(world, p, hour), bq = thingAt(world, q, hour);
+                const late = bp.pos[TIME] - bq.pos[TIME], far = spaceSteps(axes, bp, bq);
+                return late === far ? "at" : late > far ? "after" : null;
+            };
+            const pairsOf = ids.flatMap(p => ids.filter(q => q !== p).map(q => [p, q] as [number, number]));
+            const sayable = pairsOf.filter(([p, q]) => ring(p, q) !== null);
+            if (sayable.length) {
+                const [p, q] = pick(sayable, rnd), truth = ring(p, q)!;
+                say(i, { kind: "signal", hour, x: p, y: q, mode: types[i] ? truth : truth === "at" ? "after" : "at" });
+                continue;
+            }
+        }
+        /* Or the hour one first draws level with another along a line. */
+        if (roll > 0.92) {
+            const at = (k: number, h: number) => thingAt(world, k, h);
+            const first = firstLevel(at, x, y, a, LAST_HOUR);
+            if (typeof first === "number" && first >= 1) {
+                const hourSaid = types[i] ? first : pick(Array.from({ length: LAST_HOUR }, (_, k) => k + 1).filter(h => h !== first), rnd);
+                say(i, { kind: "level", x, y, axis: a, hour: hourSaid });
+                continue;
+            }
+        }
         if (roll < 0.2) {
             const steps = stepsBetween(axes, bx, by);
             say(i, { kind: "total", hour, x, y, steps: types[i] ? steps : Math.max(0, steps + pick([-2, -1, 1, 2], rnd)) });

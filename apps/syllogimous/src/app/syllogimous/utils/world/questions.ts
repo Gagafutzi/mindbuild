@@ -17,15 +17,23 @@
  */
 
 import { Axis, Body } from "./space";
-import { IntervalRel, intervalRel } from "./facts";
+import { IntervalRel, TIME, intervalRel, spaceSteps } from "./facts";
 import { Reconstruction, World, spaceOf, thingAt } from "./reader";
 import { mod } from "./space";
 
 /** One axis's part of a relation. */
-export type Part = IntervalRel | number | "same" | "opposite";
+export type Part = IntervalRel | number | "same" | "opposite" | "reaches" | "short";
+
+/**
+ * Not an axis but read like one: whether a ring from the first, spreading a
+ * step later per step through space, reaches the second by its time — the
+ * light cone, as a relation an analogy can carry.
+ */
+export const REACH = -2;
 
 export function relation(axes: Axis[], a: Body, b: Body, on: number[]): Part[] {
     return on.map(i => {
+        if (i === REACH) return b.pos[TIME] - a.pos[TIME] >= spaceSteps(axes, b, a) ? "reaches" : "short";
         const ax = axes[i];
         if (ax.kind === "ring") return mod(a.pos[i] - b.pos[i], ax.modulus!);
         if (ax.kind === "parity") return mod(a.pos[i] - b.pos[i], 2) === 0 ? "same" : "opposite";
@@ -71,7 +79,9 @@ function shuffle<T>(xs: T[], rnd: () => number): T[] {
 /** Which axes a relation is read on: one to three, mixing lines with a ring or kinds. */
 function drawAxes(axes: Axis[], rnd: () => number): number[] {
     const n = 1 + Math.floor(rnd() * 3);
-    return shuffle(axes.map((_, i) => i), rnd).slice(0, n).sort((a, b) => a - b);
+    const on = shuffle(axes.map((_, i) => i), rnd).slice(0, n).sort((a, b) => a - b);
+    /* Where time is a line, now and then the light cone besides. */
+    return axes[TIME]?.kind === "line" && rnd() < 0.25 ? [...on, REACH] : on;
 }
 
 /** Every thing (and the Post) standing to `z` at `h` as the relation says. */

@@ -7,7 +7,7 @@ import { hi, subj } from "../phrasing";
 import { Axis } from "./space";
 import { POST, POST_NAME, Statement, Wording, clause, clock, describeFact, describeStatement, placeClauses, towards } from "./facts";
 import { Item, StagedItem } from "./build";
-import { Answer, Ask, Part, relation } from "./questions";
+import { Answer, Ask, Part, REACH, relation } from "./questions";
 import { Reconstruction, spaceOf, thingAt } from "./reader";
 
 export interface Rendered {
@@ -32,8 +32,15 @@ const axisWord = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
  * every card they took half the screen above the premises, read once and then
  * scrolled past on every item after.
  */
-export function setupLines(axes: Axis[], colors: string[] = [], compact = false): string[] {
+export function setupLines(axes: Axis[], colors: string[] = [], compact = false, statements: Statement[] = []): string[] {
     const out: string[] = compact ? ["A place leaves out every dimension it is level on."] : [];
+    /* The rule a card leans on, on the cards that lean on it. */
+    if (statements.some(st => st.fact.kind === "place" && st.fact.local)) {
+        out.push(`Local clocks read one step ${hi("later", colors[3])} per step ${hi("clockwise", colors[0])} from ${POST_NAME}.`);
+    }
+    if (statements.some(st => st.fact.kind === "signal")) {
+        out.push(`A ring spreads one step ${hi("later", colors[3])} for every step it travels round ${hi("east–west", colors[0])}, along ${hi("north–south", colors[1])} and ${hi("up–down", colors[2])}.`);
+    }
     axes.forEach((a, i) => {
         if (a.kind !== "ring") return;
         const cyc = a.scale.cyclic!, seam = a.seam!;
@@ -54,6 +61,7 @@ export function setupLines(axes: Axis[], colors: string[] = [], compact = false)
 }
 
 function partWords(axes: Axis[], i: number, p: Part, colors: string[]): string {
+    if (i === REACH) return hi(p === "reaches" ? "reached by a ring from it" : "out of a ring's reach", colors[3]);
     const ax = axes[i];
     if (ax.kind === "ring") {
         const n = p as number, cyc = ax.scale.cyclic!;
@@ -143,7 +151,7 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
         return out;
     }
 
-    const on = q.on.map(i => hi(axisWord(axes[i]), colors[i])).join(", ");
+    const on = q.on.map(i => (i === REACH ? hi("whether a ring reaches", colors[3]) : hi(axisWord(axes[i]), colors[i]))).join(", ");
     const at = (x: number, h: number, s?: number) => thingAt(spaceOf(rec, s), x, h);
     const relText = (a: number, b: number, h: number, s?: number) =>
         relation(axes, at(a, h, s), at(b, h, s), q.on).map((p, k) => partWords(axes, q.on[k], p, colors)).join(", ");
