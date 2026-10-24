@@ -66,7 +66,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
         }
         if (!names.length) continue;
         const w = wording(item, names, things);
-        const premises = renderPremises(item.card.statements, w);
+        const premises = renderPremises(item.card.statements, w, item.card.style?.wide);
         if (premises.length) best = { item, names, premises };
     }
     if (!best) throw new Error("Cannot generate.");
@@ -91,7 +91,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
 
     const question = new Question(type);
     question.bucket = [...names];
-    question.setup = setupLines(item.world.axes, w.colors);
+    question.setup = setupLines(item.world.axes, w.colors, w.compact);
     question.premises = premises;
     question.explanation = ticks.explanation;
     question.answerMode = "select";
@@ -110,5 +110,8 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
 
 function wording(item: StagedItem, names: string[], things: number): Wording {
     const axes = item.world.axes;
-    return { axes, colors: ndAxisColors(axes.map(a => ({ scale: a.scale }))), things: names.slice(0, things), speakers: names.slice(things) };
+    return {
+        axes, colors: ndAxisColors(axes.map(a => ({ scale: a.scale }))), things: names.slice(0, things), speakers: names.slice(things),
+        compact: item.card.style?.compact,
+    };
 }

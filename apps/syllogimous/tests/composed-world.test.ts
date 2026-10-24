@@ -43,10 +43,8 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const axisLabel = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
 
 /** The axes, from the setup lines and the first place: which seams the rings have, and how many axes. */
-function readAxes(setup: string[], premises: string[]): Axis[] {
+function readAxes(setup: string[], dims: number): Axis[] {
     const lines = setup.map(strip);
-    const place = premises.map(strip).map(l => / is ([^()]+?) relative to /.exec(l.split(" (where ")[0])).find(Boolean);
-    if (!place) throw new Error("no place on the card to count the axes from");
     const base: Axis[] = [
         { scale: SPATIAL_SCALES["east"], kind: "line" },
         { scale: SPATIAL_SCALES["north"], kind: "line" },
@@ -55,7 +53,7 @@ function readAxes(setup: string[], premises: string[]): Axis[] {
         { scale: LINEAR_SCALES["contains"], kind: "line" },
         { scale: LINEAR_SCALES["quantity"], kind: "line" },
         { scale: LINEAR_SCALES["distinction"], kind: "parity" },
-    ].slice(0, place[1].split(", ").length) as Axis[];
+    ].slice(0, dims) as Axis[];
     for (const ax of base) {
         if (ax.kind !== "line") continue;
         const line = lines.find(l => l.startsWith(`Along ${axisLabel(ax)}, a ring of `));
@@ -87,14 +85,14 @@ function readClause(ax: Axis, c: string): number | null {
 interface Parsed { card: Card; ask: Ask; kind: string }
 
 /** What the screen shows for the claim that is up. */
-interface Shown { setup: string[]; premises: string[]; prompt: string; choices: string[] }
-const shown = (q: Question): Shown => ({
-    setup: q.setup, premises: q.premises, prompt: strip(q.choicePrompt || (q.conclusion as string)), choices: q.choices.map(strip),
+interface Shown { setup: string[]; premises: string[]; prompt: string; choices: string[]; dims: number }
+const shown = (q: Question, dims: number): Shown => ({
+    setup: q.setup, premises: q.premises, prompt: strip(q.choicePrompt || (q.conclusion as string)), choices: q.choices.map(strip), dims,
 });
 
 /** A whole card back from its words. `things` and `speakers` are the names, in index order. */
 function parse(q: Shown, things: string[], speakers: string[]): Parsed {
-    const axes = readAxes(q.setup, q.premises);
+    const axes = readAxes(q.setup, q.dims);
     const thing = new Map<string, number>([["the origin", POST], ...things.map((n, i) => [n, i] as [string, number])]);
     const who = new Map(speakers.map((n, i) => [n, i] as [string, number]));
     const T = `(the origin|${things.map(esc).join("|")})`;
@@ -117,6 +115,25 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         throw new Error(`unknown direction "${word}"`);
     };
 
+    /* A place's clauses, matched to their dimensions by their words: a compact
+       place leaves out what it is level on, and "as many above as north" takes
+       its size from the other line's. */
+    const clauses = (text: string, body: string): number[] => {
+        const delta = axes.map(() => 0);
+        const bridges: Array<[number, number, number]> = [];
+        if (text === "level on every dimension") return delta;
+        for (const c of text.split(", ")) {
+            const br = /^as many (\S+(?: in the cycle)?) as (\S+)$/.exec(c);
+            if (br) { const [b, side] = dirAxis(br[1]), [a] = dirAxis(br[2]); bridges.push([a, b, side === 0 ? 1 : -1]); continue; }
+            const i = axes.findIndex(ax => readClause(ax, c) !== null);
+            if (i < 0) throw new Error(`unread clause "${c}" in "${body}"`);
+            const v = readClause(axes[i], c)!;
+            delta[i] = axes[i].kind === "ring" ? ((v % axes[i].modulus!) + axes[i].modulus!) % axes[i].modulus! : v;
+        }
+        for (const [a, b, sign] of bridges) delta[b] = sign * Math.abs(delta[a]);
+        return delta;
+    };
+
     const fact = (speaker: number, body: string): Fact => {
         let m: RegExpExecArray | null;
         if ((m = /^I am a (knight|knave)$/.exec(body))) return { kind: "type", claim: { kind: "is", who: speaker, knight: m[1] === "knight" } };
@@ -131,14 +148,7 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             return { kind: "type", claim: { kind: m[3] === "the same kind" ? "same" : "differ", a: whoIs(m[1]), b: whoIs(m[2]) } };
         }
         if ((m = new RegExp(`^at (\\d+) o'clock, ${T} is (.+) relative to ${T}$`).exec(body))) {
-            const parts = m[3].split(", ");
-            if (parts.length !== axes.length) throw new Error(`a place needs every axis: "${body}"`);
-            const delta = parts.map((c, i) => {
-                const v = readClause(axes[i], c);
-                if (v === null) throw new Error(`unread clause "${c}" on ${axisLabel(axes[i])}`);
-                return axes[i].kind === "ring" ? ((v % axes[i].modulus!) + axes[i].modulus!) % axes[i].modulus! : v;
-            });
-            return { kind: "place", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, delta };
+            return { kind: "place", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, delta: clauses(m[3], body) };
         }
         if ((m = new RegExp(`^${T} never moves$`).exec(body))) return { kind: "pace", x: thing.get(m[1])!, vel: axes.map(() => 0) };
         if ((m = new RegExp(`^every hour, ${T} moves (.+)$`).exec(body))) {
@@ -162,9 +172,10 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             }
             return { kind: "sizes", x: thing.get(m[1])!, lens };
         }
-        if ((m = new RegExp(`^${PI} stands? in ${T}(?:, facing (north|east|south|west))?$`).exec(body))) {
+        if ((m = new RegExp(`^${PI} stands? in ${T}(?:, facing (north|east|south|west))?(, a mirror twin)?(, head down)?$`).exec(body))) {
             const facing = m[3] ? ["north", "east", "south", "west"].indexOf(m[3]) : undefined;
-            return { kind: "stands", who: whoIs(m[1]), host: thing.get(m[2])!, ...(facing === undefined ? {} : { facing }) };
+            return { kind: "stands", who: whoIs(m[1]), host: thing.get(m[2])!, ...(facing === undefined ? {} : { facing }),
+                ...(m[4] ? { twin: true } : {}), ...(m[5] ? { upside: true } : {}) };
         }
         if ((m = new RegExp(`^at (\\d+) o'clock, ${T}'s nearest edges are (.+)$`).exec(body))) {
             /* Ahead, left, then every other dimension in order, the last after "and". */
@@ -202,6 +213,30 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             const rel = ({ "partly overlaps": "overlaps", "lies within": "within", "takes in all of": "spans", "covers the same stretch as": "identical" } as const)[m[3] as "lies within"];
             return { kind: "rel", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, axis: axisBy(m[5]), rel };
         }
+        if ((m = new RegExp(`^at (\\d+) o'clock, ${T} is (\\d+) steps? in all from ${T}$`).exec(body))) {
+            return { kind: "total", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, steps: +m[3] };
+        }
+        if ((m = new RegExp(`^at (\\d+) o'clock, from (?:furthest (\\S+) to furthest \\S+|fewest to most steps (\\S+) from the origin), ties by (.+): (.+)$`).exec(body))) {
+            const first = m[2] ? dirAxis(m[2])[0] : axes.findIndex(a => a.kind === "ring" && a.scale.cyclic!.direction[0] === m![3]);
+            return { kind: "ranked", hour: +m[1], by: [first, axisBy(m[4])], order: m[5].split(", ").map(n => thing.get(n)!) };
+        }
+        /* A knight's denial: the statement's own verb, denied. */
+        const denials: Array<[RegExp, (m: RegExpExecArray) => Fact]> = [
+            [new RegExp(`^at (\\d+) o'clock, ${T} does not lie wholly (\\S+)(?: of| than)? ${T}$`), m => {
+                const [axis, side] = dirAxis(m[3]);
+                return { kind: "rel", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, axis, rel: side === 0 ? "after" : "before" };
+            }],
+            [new RegExp(`^at (\\d+) o'clock, ${T} (does not partly overlap|does not lie within|does not take in all of|does not cover the same stretch as) ${T} along (.+)$`), m => ({
+                kind: "rel", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, axis: axisBy(m[5]),
+                rel: ({ "does not partly overlap": "overlaps", "does not lie within": "within", "does not take in all of": "spans", "does not cover the same stretch as": "identical" } as const)[m[3] as "does not lie within"],
+            })],
+            [new RegExp(`^at (\\d+) o'clock, ${T} (is not longer than|is not shorter than|is not as long as) ${T} along (.+)$`), m => ({
+                kind: "cmp", hour: +m[1], x: thing.get(m[2])!, y: thing.get(m[4])!, axis: axisBy(m[5]),
+                cmp: ({ "is not longer than": "longer", "is not shorter than": "shorter", "is not as long as": "same" } as const)[m[3] as "is not longer than"],
+            })],
+            [new RegExp(`^${T} is not (\\d+ long|a point) along (.+)$`), m => ({ kind: "size", x: thing.get(m[1])!, axis: axisBy(m[3]), len: m[2] === "a point" ? 1 : parseInt(m[2], 10) })],
+        ];
+        for (const [re, make] of denials) if ((m = re.exec(body))) return { kind: "not", f: make(m) };
         if ((m = /^at (\d+) o'clock, (.+)$/.exec(body))) return { kind: "event", hour: +m[1], t: transform(m[2]) };
         throw new Error(`unread statement "${body}"`);
     };
@@ -234,7 +269,14 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         const speaker = speakingNow = who.get(m[1])!;
         const [outer, bracket] = m[2].split(" (where ");
         const inside = bracket === undefined ? [] : bracket.replace(/\)$/, "").split("; and ");
-        return [{ speaker, fact: fact(speaker, outer) }, ...inside.map(b => ({ speaker, fact: fact(speaker, b), space: 1 }))];
+        /* "A is … relative to B, which is … relative to C": two places, one hour. */
+        const [first, second] = outer.split(", which is ");
+        const head = fact(speaker, first);
+        const linked = second === undefined || head.kind !== "place" ? [] : (() => {
+            const t = new RegExp(`^(.+) relative to ${T}$`).exec(second)!;
+            return [{ speaker, fact: { kind: "place", hour: head.hour, x: head.y, y: thing.get(t[2])!, delta: clauses(t[1], second) } as Fact }];
+        })();
+        return [{ speaker, fact: head }, ...linked, ...inside.map(b => ({ speaker, fact: fact(speaker, b), space: 1 }))];
     });
     const card: Card = { axes, things: things.length, speakers: speakers.length, statements };
 
@@ -310,7 +352,7 @@ function walk(q: Question, premises: number, each: (p: Parsed, at: number, first
     const modes: string[] = [];
     let first: Parsed | null = null;
     for (;;) {
-        const p = parse(shown(q), things, speakers);
+        const p = parse(shown(q, worldSize(premises).dims), things, speakers);
         first = first ?? p;
         modes.push(q.answerMode);
         each(p, q.seriesAt, first);
@@ -515,7 +557,13 @@ test("composed world: every part of the structure turns up in what ships", () =>
             if (s.space === 1) seen.add("inside the brackets");
             if (s.fact.kind === "type") seen.add(`claim:${s.fact.claim.kind}`);
             if (s.fact.kind === "stands" && s.fact.facing === undefined) seen.add("a heading left to work out");
+            if (s.fact.kind === "stands" && s.fact.twin) seen.add("a mirror twin");
+            if (s.fact.kind === "stands" && s.fact.upside) seen.add("head down");
+            if (s.fact.kind === "place" && s.fact.bridge) seen.add("an equal gap");
         }
+        if (it.card.style?.compact) seen.add("compact places");
+        if (it.card.style?.wide && it.card.statements.some(a => a.fact.kind === "place" && it.card.statements.some(b => b !== a && b.speaker === a.speaker
+            && b.fact.kind === "place" && b.fact.hour === (a.fact as { hour: number }).hour && b.fact.x === (a.fact as { y: number }).y))) seen.add("two links in a sentence");
         if (it.ask.h1 !== it.ask.h2) seen.add("two hours");
         if (it.ask.on.length > 1) seen.add("several axes");
         if (it.ask.s1 !== undefined && it.ask.s1 !== it.ask.s2) seen.add("an analogy across the brackets");
@@ -524,7 +572,8 @@ test("composed world: every part of the structure turns up in what ships", () =>
         ...KINDS.map(k => `kind:${k}`), "seam:twist", "seam:portal", "time:line", "time:ring/plain", "time:ring/portal",
         ...Object.keys(TRANSFORMS).map(t => `event:${t}`), "length:1", "length:2", "length:3", "lengths differ along a thing",
                     "fact:sizes", "fact:cmp", "fact:rel", "fact:stands", "fact:view", "knave:size", "knave:event", "knave:rel", "knave:cmp", "knave:view", "knave:type",
-            "a heading left to work out",
+            "a heading left to work out", "fact:not", "fact:total", "fact:ranked", "a mirror twin", "head down", "an equal gap",
+            "compact places", "two links in a sentence",
         "claim:is", "claim:same", "claim:differ", "two hours", "several axes", "inside the brackets", "an analogy across the brackets",
     ];
     const missing = want.filter(w => !seen.has(w));
@@ -593,7 +642,7 @@ test("composed world: a speaker nobody vouches for reports on both sides of the 
             if (vouched.has(i)) continue;
             const said = it.card.statements.filter(s => s.speaker === i);
             assert(!said.some(s => ["size", "sizes", "event"].includes(s.fact.kind)), `an unvouched speaker says ${said.map(s => s.fact.kind).join(", ")}`);
-            equal(said.filter(s => s.fact.kind === "rel" || s.fact.kind === "view").length, 2, "an unvouched speaker's checkable reports");
+            equal(said.filter(s => ["rel", "view", "not", "total", "ranked"].includes(s.fact.kind)).length, 2, "an unvouched speaker's checkable reports");
             if (it.card.statements.some(s => s.space === 1)) equal(said.filter(s => s.space === 1).length, 1, "one of them inside the brackets");
         }
     }

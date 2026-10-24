@@ -21,7 +21,7 @@ import { LINEAR_SCALES, SPATIAL_SCALES } from "../linear.utils";
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, SHORTCUTS, Seam, mod, sameBody } from "./space";
 import { TRANSFORMS, TransformSpec, canTransform } from "./transforms";
-import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, compareLengths, displacement, intervalRel, seenFrom } from "./facts";
+import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, compareLengths, displacement, intervalRel, rankBy, seenFrom, stepsBetween } from "./facts";
 import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleByClaims, thingAt, worlds } from "./reader";
 import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerKey } from "./questions";
 
@@ -182,10 +182,20 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
 
     /* Places: a tree out from the Post, each at an hour of its own. */
     const order = shuffle(Array.from({ length: n }, (_, i) => i), rnd), placed: number[] = [POST];
+    /* Half the time a place shares its hour and speaker with the one before it
+       in the chain, so the two can be said in one sentence. */
+    const placedBy = new Map<number, { hour: number; speaker: number }>();
     for (const x of order) {
-        const y = rnd() < 0.3 ? POST : pick(placed, rnd), hour = int(rnd, 1, FIRST_HOURS);
+        const y = rnd() < 0.3 ? POST : pick(placed, rnd);
+        const chained = placedBy.get(y) && rnd() < 0.5 ? placedBy.get(y)! : null;
+        const hour = chained ? chained.hour : int(rnd, 1, FIRST_HOURS), speaker = chained ? chained.speaker : pick(knights, rnd);
+        placedBy.set(x, { hour, speaker });
         const delta = displacement(axes, thingAt(world, x, hour), thingAt(world, y, hour));
-        say(pick(knights, rnd), { kind: "place", hour, x, y, delta });
+        /* Now and then the gap on one line given by another's: "as many above as north". */
+        const lines = lineAxes(axes).filter(i => delta[i] !== 0);
+        const pairs = lines.flatMap(a => lines.filter(b => b > a && Math.abs(delta[b]) === Math.abs(delta[a])).map(b => [a, b] as [number, number]));
+        const bridge = pairs.length && rnd() < 0.6 ? { bridge: pick(pairs, rnd) } : {};
+        say(speaker, { kind: "place", hour, x, y, delta, ...bridge });
         placed.push(x);
     }
     /* Paces, for whatever moves. */
@@ -199,7 +209,8 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     const obs = space === 0 ? world.observers : undefined;
     if (obs) obs.forEach((o, who) => {
         const faced = axes.length <= 4 || !firsts.includes(who) || rnd() < 0.5;
-        say(pick(knights, rnd), { kind: "stands", who, host: o.host, ...(faced ? { facing: o.facing } : {}) });
+        say(pick(knights, rnd), { kind: "stands", who, host: o.host, ...(faced ? { facing: o.facing } : {}),
+            ...(o.twin ? { twin: true } : {}), ...(o.upside ? { upside: true } : {}) });
     });
 
     const rest = Array.from({ length: S }, (_, i) => i).filter(i => !firsts.includes(i));
@@ -252,22 +263,27 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
                 if (form === "cmp") return compareLengths(bx.size[a], by.size[a]);
                 if (form === "view") {
                     const from = st ? bodyIn(st, obs![s].host, hour) : thingAt(world, obs![s].host, hour);
-                    return from ? JSON.stringify(seenFrom(axes, from, bx, obs![s].facing)) : null;
+                    return from ? JSON.stringify(seenFrom(axes, from, bx, obs![s])) : null;
                 }
                 return (st ? st[x]!.size[a] : world.start[x].size[a]);
             };
-            if (form === "size" && types[s]) continue;
+            if (form === "size" && types[s] && rnd() < 0.7) continue;
             const truth = value(null), there = wrong.map(value);
-            /* A knight says how it is; a knave, how one wrong reading would have it. */
-            const said = types[s] ? truth : pick(there.filter(r => r !== null && r !== truth), rnd);
+            /* A knight says how it is, or now and then denies how a wrong reading
+               has it; a knave says how a wrong reading has it, or denies the truth. */
+            const denied = form !== "view" && rnd() < 0.25;
+            const others = there.filter(r => r !== null && r !== truth);
+            const said = types[s] === denied ? pick(others, rnd) : truth;
             if (said === null || said === undefined) continue;
-            const kills = there.filter(r => (r === said) !== (said === truth)).length;
+            /* A reading is ruled out where it makes the statement's claim come out other than the speaker's type does. */
+            const kills = there.filter(r => ((r === said) !== denied) !== types[s]).length;
             if (kills <= bestKills) continue;
             bestKills = kills;
-            best = form === "rel" ? { kind: "rel", hour, x, y, axis: a, rel: said as IntervalRel }
+            const plain: Fact = form === "rel" ? { kind: "rel", hour, x, y, axis: a, rel: said as IntervalRel }
                 : form === "cmp" ? { kind: "cmp", hour, x, y, axis: a, cmp: said as Cmp }
                 : form === "view" ? { kind: "view", hour, who: s, x, seen: JSON.parse(said as string) as Seen }
                 : { kind: "size", x, axis: a, len: said as number };
+            best = denied ? { kind: "not", f: plain } : plain;
         }
         if (!best) return null;
         /* Never the same sentence twice: it adds nothing, and reads as a slip. */
@@ -299,14 +315,38 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         /* Or, half the time outside the brackets, what they see from where they
            stand — false from a knave by some one dimension. */
         if (obs && obs[i].host !== x && rnd() < 0.5) {
-            const truth = seenFrom(axes, thingAt(world, obs[i].host, hour), thingAt(world, x, hour), obs[i].facing);
+            const truth = seenFrom(axes, thingAt(world, obs[i].host, hour), thingAt(world, x, hour), obs[i]);
             const seen = types[i] ? truth : skew(truth, axes, rnd);
             say(i, { kind: "view", hour, who: i, x, seen });
             continue;
         }
-        const truth = intervalRel(thingAt(world, x, hour), thingAt(world, y, hour), a);
+        /* Or steps in all, or a ranked list — false from a knave by a little. */
+        const roll = rnd(), bx = thingAt(world, x, hour), by = thingAt(world, y, hour);
+        if (roll < 0.2) {
+            const steps = stepsBetween(axes, bx, by);
+            say(i, { kind: "total", hour, x, y, steps: types[i] ? steps : Math.max(0, steps + pick([-2, -1, 1, 2], rnd)) });
+            continue;
+        }
+        if (roll < 0.35 && n >= 3) {
+            const by2 = pick(lineAxes(axes).filter(b => b !== a), rnd) ?? a;
+            const truly = rankBy(axes, world.start.map((_, k) => thingAt(world, k, hour)), ids, [a, by2]);
+            if (truly) {
+                /* A knave's list has two neighbours the wrong way round. */
+                const said = [...truly];
+                if (!types[i]) { const j = int(rnd, 0, said.length - 2); [said[j], said[j + 1]] = [said[j + 1], said[j]]; }
+                say(i, { kind: "ranked", hour, by: [a, by2], order: said });
+                continue;
+            }
+        }
+        const truth = intervalRel(bx, by, a);
         const rels = ["before", "after", "overlaps", "within", "spans", "identical"] as const;
-        const rel = types[i] ? truth : pick(rels.filter(r => r !== truth), rnd);
+        /* A denial is checkable too: a knight denies a way they do not lie, a knave the way they do. */
+        if (roll < 0.5) {
+            const rel = types[i] ? pick(rels.filter(q => q !== truth), rnd) : truth;
+            say(i, { kind: "not", f: { kind: "rel", hour, x, y, axis: a, rel } });
+            continue;
+        }
+        const rel = types[i] ? truth : pick(rels.filter(q => q !== truth), rnd);
         say(i, { kind: "rel", hour, x, y, axis: a, rel });
     }
     return statements;
@@ -347,7 +387,11 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     const axes = makeAxes(rnd, opts.dims ?? 7);
     const world: World = { axes, start: Array.from({ length: opts.things }, () => makeBody(axes, rnd)), events: makeEvents(axes, rnd) };
     /* Every speaker stands in a thing and faces one of four ways. */
-    world.observers = Array.from({ length: opts.speakers }, () => ({ host: int(rnd, 0, opts.things - 1), facing: int(rnd, 0, 3) }));
+    /* Now and then a mirror twin, or one hanging head down. */
+    world.observers = Array.from({ length: opts.speakers }, () => ({
+        host: int(rnd, 0, opts.things - 1), facing: int(rnd, 0, 3),
+        ...(rnd() < 0.2 ? { twin: true } : {}), ...(rnd() < 0.2 ? { upside: true } : {}),
+    }));
     const types = Array.from({ length: opts.speakers }, () => rnd() < 0.5);
     if (types.every(t => t) || types.every(t => !t)) types[int(rnd, 0, types.length - 1)] = !types[0];
     const firsts = shuffle(Array.from({ length: opts.speakers }, (_, i) => i), rnd).slice(0, Math.max(2, opts.speakers - 2));
@@ -361,7 +405,10 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     const outside = makeCard(world, types, firsts, rnd, 0, nested ? 1 : 2);
     const inside = inner ? makeCard(inner, types, firsts, rnd, 1, 1) : [];
     if (!outside || !inside) return null;
-    const card: Card = { axes, things: opts.things, speakers: opts.speakers, statements: shuffle([...outside, ...inside], rnd) };
+    const card: Card = {
+        axes, things: opts.things, speakers: opts.speakers, statements: shuffle([...outside, ...inside], rnd),
+        style: { compact: rnd() < 0.4, wide: rnd() < 0.7 },
+    };
     const rec = read(card, FULL);
     if (!rec || !sameWorld(rec.world, world) || rec.types.some((t, i) => t !== types[i])) return null;
     if (inner && (!rec.inner || !sameWorld(rec.inner, inner))) return null;

@@ -5,7 +5,7 @@
 
 import { hi, subj } from "../phrasing";
 import { Axis } from "./space";
-import { POST, POST_NAME, Statement, Wording, clause, clock, describeFact, describeStatement, towards } from "./facts";
+import { POST, POST_NAME, Statement, Wording, clause, clock, describeFact, describeStatement, placeClauses, towards } from "./facts";
 import { Item, StagedItem } from "./build";
 import { Answer, Ask, Part, relation } from "./questions";
 import { Reconstruction, spaceOf, thingAt } from "./reader";
@@ -32,8 +32,8 @@ const axisWord = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
  * every card they took half the screen above the premises, read once and then
  * scrolled past on every item after.
  */
-export function setupLines(axes: Axis[], colors: string[] = []): string[] {
-    const out: string[] = [];
+export function setupLines(axes: Axis[], colors: string[] = [], compact = false): string[] {
+    const out: string[] = compact ? ["A place leaves out every dimension it is level on."] : [];
     axes.forEach((a, i) => {
         if (a.kind !== "ring") return;
         const cyc = a.scale.cyclic!, seam = a.seam!;
@@ -96,18 +96,33 @@ const sideWords = (rec: Reconstruction, s: number | undefined, again = false) =>
  * up–down (where Cog lies within Bee along up–down)". The words collide; the
  * brackets say which space each part is about.
  */
-export function renderPremises(statements: Statement[], w: Wording): string[] {
-    const outer = statements.filter(st => !st.space), inner = statements.filter(st => st.space === 1);
+export function renderPremises(statements: Statement[], w: Wording, wide = false): string[] {
+    const inner = statements.filter(st => st.space === 1);
+    /* Two links in one sentence, where a speaker's two places chain at one hour:
+       "at 3 o'clock, Ash is 2 north relative to Bee, which is 1 above relative to Cog". */
+    const linked = new Map<Statement, Statement>();
+    if (wide) for (const a of statements) {
+        if (a.space || a.fact.kind !== "place" || linked.has(a) || [...linked.values()].includes(a)) continue;
+        const fa = a.fact;
+        const b = statements.find(c => c !== a && !c.space && c.speaker === a.speaker && c.fact.kind === "place"
+            && c.fact.hour === fa.hour && c.fact.x === fa.y && !linked.has(c) && ![...linked.values()].includes(c));
+        if (b) linked.set(a, b);
+    }
+    const tails = new Set(linked.values());
+    const outer = statements.filter(st => !st.space && !tails.has(st));
     const riders = new Map<Statement, Statement[]>();
     for (const st of inner) {
-        const hosts = outer.filter(o => o.speaker === st.speaker);
+        const hosts = outer.filter(o => o.speaker === st.speaker && !tails.has(o));
         /* The fewest riders first, so the brackets spread over the speaker's lines. */
         const host = hosts.sort((a, b) => (riders.get(a)?.length ?? 0) - (riders.get(b)?.length ?? 0))[0];
         if (!host) return [];
         riders.set(host, [...(riders.get(host) ?? []), st]);
     }
     return outer.map(o => {
-        const line = describeStatement(w, o);
+        const tail = linked.get(o);
+        const line = tail && tail.fact.kind === "place"
+            ? `${describeStatement(w, o)}, which is ${placeClauses(w, tail.fact)} relative to ${tail.fact.y === POST ? POST_NAME : subj(w.things[tail.fact.y])}`
+            : describeStatement(w, o);
         const on = riders.get(o);
         return on ? `${line} ${hi(`(where ${on.map(st => describeFact(w, st.fact)).join("; and ")})`)}` : line;
     });

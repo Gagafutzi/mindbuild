@@ -134,7 +134,14 @@ export const QUESTIONS: Record<string, QuestionKind> = {
             const pool = everyone(things).filter(w => w !== z);
             const fit = matches(spaceOf(sp, q.s2), things, z, h2, on, firstRel(sp, q), pool);
             if (fit.length !== 1 || pool.length < 2) return null;
-            const other = pick(pool.filter(w => w !== fit[0]), rnd);
+            /* The other option a near miss where there is one: the candidate
+               whose relation to Z differs from the asked one on fewest dimensions,
+               so it cannot be ruled out at a glance. */
+            const w2 = spaceOf(sp, q.s2), want = firstRel(sp, q);
+            const misses = (c: number) => relation(w2.axes, thingAt(w2, z, h2), thingAt(w2, c, h2), on).filter((p, k) => p !== want[k]).length;
+            const rest = pool.filter(w => w !== fit[0]);
+            const fewest = Math.min(...rest.map(misses));
+            const other = pick(rest.filter(c => misses(c) === fewest), rnd);
             return { ...q, options: shuffle([fit[0], other], rnd) };
         },
         answer(q, rec) {

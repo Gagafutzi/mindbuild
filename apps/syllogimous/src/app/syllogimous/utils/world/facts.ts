@@ -39,13 +39,17 @@ export const POST = -1;
 export type IntervalRel = "before" | "after" | "overlaps" | "within" | "spans" | "identical";
 
 export type Fact =
-    | { kind: "place"; hour: number; x: number; y: number; delta: number[] }
+    | { kind: "place"; hour: number; x: number; y: number; delta: number[]; bridge?: [number, number] }
     | { kind: "pace"; x: number; vel: number[] }
     | { kind: "size"; x: number; axis: number; len: number }
     | { kind: "sizes"; x: number; lens: Array<[number, number]> }
     | { kind: "cmp"; hour: number; x: number; y: number; axis: number; cmp: Cmp }
-    | { kind: "stands"; who: number; host: number; facing?: number }
+    | { kind: "stands"; who: number; host: number; facing?: number; twin?: boolean; upside?: boolean }
     | { kind: "view"; hour: number; who: number; x: number; seen: Seen }
+    | { kind: "not"; f: Fact }
+    | { kind: "analog"; h1: number; h2: number; x: number; y: number; z: number; w: number; on: number[] }
+    | { kind: "total"; hour: number; x: number; y: number; steps: number }
+    | { kind: "ranked"; hour: number; by: number[]; order: number[] }
     | { kind: "event"; hour: number; t: TransformSpec }
     | { kind: "rel"; hour: number; x: number; y: number; axis: number; rel: IntervalRel }
     | { kind: "type"; claim: Claim };
@@ -97,7 +101,17 @@ export function displacement(axes: Axis[], x: Body, y: Body): number[] {
  * and facing one of four ways — 0 north, 1 east, 2 south, 3 west — with up
  * staying up. Speakers are not things, and the space's turns do not turn them.
  */
-export interface Observer { host: number; facing: number }
+export interface Observer {
+    host: number;
+    facing: number;
+    /** A mirror twin: left and right swapped, ahead and behind not. */
+    twin?: boolean;
+    /** Hanging head down: left and right swapped, and above and below. */
+    upside?: boolean;
+}
+
+/** The parts of a frame a facing does not settle. */
+export interface Frame { facing: number; twin?: boolean; upside?: boolean }
 
 /**
  * A thing as a speaker sees it: on each dimension, how far its nearest edge is
@@ -114,8 +128,9 @@ export const FACINGS = ["north", "east", "south", "west"];
 /** How far `t`'s nearest edge is from point `p` along a line: 0 inside it. */
 const edgeFrom = (p: number, lo: number, len: number) => (p < lo ? lo - p : p > lo + len - 1 ? lo + len - 1 - p : 0);
 
-/** What a speaker standing at `from`'s low end, facing `facing`, sees of `t`. */
-export function seenFrom(axes: Axis[], from: Body, t: Body, facing: number): Seen {
+/** What a speaker standing at `from`'s low end, in frame `frame`, sees of `t`. */
+export function seenFrom(axes: Axis[], from: Body, t: Body, frame: Frame | number): Seen {
+    const { facing, twin, upside } = typeof frame === "number" ? { facing: frame } as Frame : frame;
     const rest = axes.map((ax, i) => {
         if (ax.kind === "ring") {
             /* Round the heading's ring the shorter way, so ahead and behind are
@@ -129,14 +144,41 @@ export function seenFrom(axes: Axis[], from: Body, t: Body, facing: number): See
     });
     const [e, n] = [rest[PLANE[0]], rest[PLANE[1]]];
     const [ahead, left] = facing === 0 ? [n, -e] : facing === 1 ? [e, n] : facing === 2 ? [-n, e] : [-e, -n];
-    return { ahead, left, rest: rest.map((v, i) => (PLANE.includes(i) ? 0 : v)) };
+    /* Head down turns left to right and above to below; a mirror twin turns
+       left to right again, so a twin hanging head down has them back. */
+    const flipLeft = !!twin !== !!upside;
+    return {
+        ahead, left: flipLeft ? -left : left,
+        rest: rest.map((v, i) => (PLANE.includes(i) ? 0 : upside && i === UP ? -v : v)),
+    };
+}
+
+/** The up–down axis, which a head-down speaker reads the other way. */
+export const UP = 2;
+
+/** Low ends' gaps added up over every line and the shorter way round every ring: steps in all. */
+export function stepsBetween(axes: Axis[], a: Body, b: Body): number {
+    return axes.reduce((n, ax, i) => {
+        if (ax.kind === "parity") return n;
+        const d = a.pos[i] - b.pos[i];
+        if (ax.kind === "ring") { const m = mod(d, ax.modulus!); return n + Math.min(m, ax.modulus! - m); }
+        return n + Math.abs(d);
+    }, 0);
+}
+
+/** Things in order by their low ends on `by[0]`, ties by `by[1]`; null if two tie on both. */
+export function rankBy(axes: Axis[], bodies: Body[], ids: number[], by: number[]): number[] | null {
+    const key = (k: number) => by.map(a => (axes[a].kind === "ring" ? mod(bodies[k].pos[a], axes[a].modulus!) : bodies[k].pos[a]));
+    const sorted = [...ids].sort((p, q) => { const a = key(p), b = key(q); return a[0] - b[0] || a[1] - b[1]; });
+    for (let i = 1; i < sorted.length; i++) if (key(sorted[i]).every((v, j) => v === key(sorted[i - 1])[j])) return null;
+    return sorted;
 }
 const sameSeen = (a: Seen, b: Seen) => a.ahead === b.ahead && a.left === b.left && a.rest.every((v, i) => v === b.rest[i]);
 
 export interface View {
     axes: Axis[];
     /** Where a speaker stands, and every way they may be facing; null where unknown. */
-    observer(who: number): { host: number; facings: number[] } | null;
+    observer(who: number): { host: number; facings: number[]; twin?: boolean; upside?: boolean } | null;
     /** A thing's body at an hour, or null where the view cannot say. */
     at(x: number, hour: number): Body | null;
     /** Hour-0 body, for the facts that are about a thing rather than a moment. */
@@ -176,8 +218,30 @@ export function holds(f: Fact, v: View): boolean | null {
             const o = v.observer(f.who);
             const from = o ? v.at(o.host, f.hour) : null, t = v.at(f.x, f.hour);
             if (!o || !from || !t) return null;
-            const hs = o.facings.map(g => sameSeen(seenFrom(v.axes, from, t, g), f.seen));
+            const hs = o.facings.map(g => sameSeen(seenFrom(v.axes, from, t, { facing: g, twin: o.twin, upside: o.upside }), f.seen));
             return hs.length && hs.every(h => h === hs[0]) ? hs[0] : null;
+        }
+        case "not": { const h = holds(f.f, v); return h === null ? null : !h; }
+        case "analog": {
+            const b = (k: number, h: number) => v.at(k, h);
+            const [x, y, z, w] = [b(f.x, f.h1), b(f.y, f.h1), b(f.z, f.h2), b(f.w, f.h2)];
+            if (!x || !y || !z || !w) return null;
+            const part = (p: Body, q: Body, i: number) => {
+                const ax = v.axes[i];
+                return ax.kind === "ring" ? String(mod(p.pos[i] - q.pos[i], ax.modulus!)) : ax.kind === "parity" ? String(mod(p.pos[i] - q.pos[i], 2)) : intervalRel(p, q, i);
+            };
+            return f.on.every(i => part(x, y, i) === part(z, w, i));
+        }
+        case "total": {
+            const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
+            return x && y ? stepsBetween(v.axes, x, y) === f.steps : null;
+        }
+        case "ranked": {
+            const bodies = f.order.map(k => v.at(k, f.hour));
+            if (bodies.some(b => !b)) return null;
+            const all: Body[] = []; f.order.forEach((k, i) => (all[k] = bodies[i]!));
+            const order = rankBy(v.axes, all, [...f.order].sort((a, b) => a - b), f.by);
+            return order ? order.join() === f.order.join() : false;
         }
         case "rel": {
             const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
@@ -217,6 +281,24 @@ export interface Wording {
     colors: string[];
     things: string[];
     speakers: string[];
+    /** Places leave out every dimension they are level on. */
+    compact?: boolean;
+}
+
+/**
+ * A place's clauses: one per dimension, or, compact, only those it is not
+ * level on; and where the fact bridges two lines, the second as "as many
+ * above as north" — the gap on one given by the other's.
+ */
+export function placeClauses(w: Wording, f: Extract<Fact, { kind: "place" }>): string {
+    const parts = f.delta.map((d, i) => {
+        if (f.bridge && f.bridge[1] === i) {
+            const [a] = f.bridge, sa = w.axes[a].scale, sb = w.axes[i].scale;
+            return hi(`as many ${sb.direction[d > 0 ? 0 : 1]} as ${sa.direction[f.delta[a] > 0 ? 0 : 1]}`, w.colors[i]);
+        }
+        return w.compact && d === 0 ? "" : clause(w, i, d);
+    }).filter(Boolean);
+    return parts.length ? parts.join(", ") : "level on every dimension";
 }
 
 /** Where places are measured from: a point, not a thing, and named as one. */
@@ -291,7 +373,7 @@ export function describeTransform(w: Wording, t: TransformSpec): string {
 export function describeFact(w: Wording, f: Fact): string {
     switch (f.kind) {
         case "place":
-            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} is ${f.delta.map((d, i) => clause(w, i, d)).join(", ")} relative to ${nameOf(w, f.y)}`;
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} is ${placeClauses(w, f)} relative to ${nameOf(w, f.y)}`;
         case "pace": {
             const p = paceWords(w, f.vel);
             return p ? `every hour, ${nameOf(w, f.x)} moves ${p}` : `${nameOf(w, f.x)} never moves`;
@@ -324,7 +406,21 @@ export function describeFact(w: Wording, f: Fact): string {
         case "type":
             return describeClaim(f.claim, w.speakers);
         case "stands":
-            return `${subj(w.speakers[f.who])} stands in ${nameOf(w, f.host)}${f.facing === undefined ? "" : `, facing ${hi(FACINGS[f.facing])}`}`;
+            return `${subj(w.speakers[f.who])} stands in ${nameOf(w, f.host)}${standsTail(f)}`;
+        case "not":
+            return negatedWords(w, f.f);
+        case "analog":
+            return `at ${clock(f.h1)}, ${nameOf(w, f.x)} stands to ${nameOf(w, f.y)} on ${f.on.map(i => hi(axisName(w.axes[i]), w.colors[i])).join(", ")}`
+                + ` as ${nameOf(w, f.z)} stands to ${nameOf(w, f.w)} at ${clock(f.h2)}`;
+        case "total":
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} is ${f.steps} ${f.steps === 1 ? "step" : "steps"} in all from ${nameOf(w, f.y)}`;
+        case "ranked": {
+            const [a, b] = f.by.map(i => w.axes[i]);
+            const run = (ax: Axis, i: number) => ax.kind === "ring"
+                ? `fewest to most steps ${hi(ax.scale.cyclic!.direction[0], w.colors[i])} from ${POST_NAME}`
+                : `furthest ${hi(ax.scale.direction[1], w.colors[i])} to furthest ${hi(ax.scale.direction[0], w.colors[i])}`;
+            return `at ${clock(f.hour)}, from ${run(a, f.by[0])}, ties by ${hi(axisName(b), w.colors[f.by[1]])}: ${f.order.map(k => nameOf(w, k)).join(", ")}`;
+        }
         case "view":
             return `at ${clock(f.hour)}, ${seenWords(w, f.seen, nameOf(w, f.x), subj(w.speakers[f.who]))}`;
     }
@@ -372,12 +468,41 @@ function describeClaimBy(w: Wording, speaker: number, claim: Claim): string {
 
 const lengthWords = (len: number) => (len === 1 ? "a point" : `${len} long`);
 
+/** ", facing east, a mirror twin, head down" — what a frame has besides a place. */
+function standsTail(f: Extract<Fact, { kind: "stands" }>): string {
+    return [f.facing === undefined ? "" : `, facing ${hi(FACINGS[f.facing])}`, f.twin ? `, a ${hi("mirror twin")}` : "", f.upside ? `, ${hi("head down")}` : ""].join("");
+}
+
+/** A knight's "not": the fact's own words with the verb denied. */
+function negatedWords(w: Wording, f: Fact): string {
+    const along = (a: number) => hi(axisName(w.axes[a]), w.colors[a]);
+    switch (f.kind) {
+        case "rel": {
+            const words: Record<IntervalRel, string> = {
+                before: `does not lie wholly ${towards(w.axes[f.axis], 1)}`, after: `does not lie wholly ${towards(w.axes[f.axis], 0)}`,
+                overlaps: "does not partly overlap", within: "does not lie within", spans: "does not take in all of",
+                identical: "does not cover the same stretch as",
+            };
+            const tail = f.rel === "before" || f.rel === "after" ? "" : ` along ${along(f.axis)}`;
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${words[f.rel]} ${nameOf(w, f.y)}${tail}`;
+        }
+        case "cmp": {
+            const words = { longer: "is not longer than", shorter: "is not shorter than", same: "is not as long as" }[f.cmp];
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${words} ${nameOf(w, f.y)} along ${along(f.axis)}`;
+        }
+        case "size":
+            return `${nameOf(w, f.x)} is not ${lengthWords(f.len)} along ${along(f.axis)}`;
+        default:
+            return `it is not so that ${describeFact(w, f)}`;
+    }
+}
+
 /** "Ash says: at 3 o'clock, …" — a speaker on themselves says "I". */
 export function describeStatement(w: Wording, s: Statement): string {
     const f = s.fact;
     const body = f.kind === "type" ? describeClaimBy(w, s.speaker, f.claim)
         : f.kind === "stands" && f.who === s.speaker
-            ? `I stand in ${nameOf(w, f.host)}${f.facing === undefined ? "" : `, facing ${hi(FACINGS[f.facing])}`}`
+            ? `I stand in ${nameOf(w, f.host)}${standsTail(f)}`
             : describeFact(w, f);
     return `${subj(w.speakers[s.speaker])} says: ${body}`;
 }

@@ -109,6 +109,8 @@ export interface Card {
     things: number;
     speakers: number;
     statements: Statement[];
+    /** How this card is worded: places compact, and two links to a sentence where they chain. */
+    style?: { compact?: boolean; wide?: boolean };
 }
 
 export interface Reconstruction {
@@ -178,7 +180,7 @@ export function sizeOptions(axes: Axis[], x: number, claimed: Claimed[]): number
 const SOLUTION_CAP = 32;
 
 /** Where a speaker stands, and the ways they may be facing, in one reading. */
-export type Placed = { host: number; facings: number[] } | null;
+export type Placed = { host: number; facings: number[]; twin?: boolean; upside?: boolean } | null;
 
 interface Derived {
     /** Every world the settled speakers allow, as hour-0 bodies (null where a thing cannot be placed). */
@@ -275,7 +277,9 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
         const was = stood[f.who];
         const facings = (was?.facings ?? [0, 1, 2, 3]).filter(g => f.facing === undefined || g === f.facing);
         if (was && was.host !== f.host) consistent = false;
-        stood[f.who] = { host: f.host, facings: reading.perspective ? facings : [0] };
+        stood[f.who] = reading.perspective
+            ? { host: f.host, facings, twin: f.twin, upside: f.upside }
+            : { host: f.host, facings: [0] };
     }
     /* Each speaker's facing, narrowed by what they say they see. */
     const facedIn = (start: Array<Body | null>): Placed[] | null => {
@@ -285,11 +289,11 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
             if (!o) { out.push(null); continue; }
             const own = checked.filter(c => c.fact.kind === "view" && c.fact.who === who);
             const facings = o.facings.filter(g => {
-                const v = viewOf(start, stood.map((p, i) => (i === who ? { host: o.host, facings: [g] } : p)));
+                const v = viewOf(start, stood.map((p, i) => (i === who ? { ...o, facings: [g] } : p)));
                 return own.every(c => !fails(c, v));
             });
             if (!facings.length) return null;
-            out.push({ host: o.host, facings });
+            out.push({ ...o, facings });
         }
         return out;
     };
