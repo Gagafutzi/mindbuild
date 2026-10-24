@@ -4,7 +4,7 @@
  */
 
 import { hi, subj } from "../phrasing";
-import { Axis } from "./space";
+import { Axis, Frames } from "./space";
 import { POST, POST_NAME, Statement, Wording, clause, clock, describeFact, describeStatement, placeClauses, towards } from "./facts";
 import { Item, StagedItem } from "./build";
 import { ConstructClaim } from "../../models/question.models";
@@ -33,8 +33,13 @@ const axisWord = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
  * every card they took half the screen above the premises, read once and then
  * scrolled past on every item after.
  */
-export function setupLines(axes: Axis[], colors: string[] = [], compact = false, statements: Statement[] = []): string[] {
+export function setupLines(axes: Axis[], colors: string[] = [], compact = false, statements: Statement[] = [], frames?: Frames): string[] {
     const out: string[] = compact ? ["A place leaves out every dimension it is level on."] : [];
+    if (frames) {
+        const k = axes.findIndex(a => a.kind === "parity"), line = (i: number) => hi(axisWord(axes[i]), colors[i]);
+        const how = frames.rule === "mirror" ? `${line(frames.axes[0])} the other way round` : `${line(frames.axes[0])} and ${line(frames.axes[1])} traded`;
+        out.push(`A place said relative to a thing of the ${hi("opposite kind", colors[k])} to ${POST_NAME} is in its reckoning: ${how}.`);
+    }
     /* The rule a card leans on, on the cards that lean on it. */
     if (statements.some(st => st.fact.kind === "place" && st.fact.local)) {
         out.push(`Local clocks read one step ${hi("later", colors[3])} per step ${hi("clockwise", colors[0])} from ${POST_NAME}.`);

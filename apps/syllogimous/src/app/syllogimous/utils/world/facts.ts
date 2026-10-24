@@ -30,7 +30,7 @@
 
 import { Claim, describeClaim, holds as claimHolds } from "../knaves.utils";
 import { hi, own, subj } from "../phrasing";
-import { Axis, Body, mod } from "./space";
+import { Axis, Body, Frames, mod, reckon } from "./space";
 import { TRANSFORMS, TransformSpec } from "./transforms";
 
 /** Index of the Post among things a fact can name. */
@@ -243,7 +243,15 @@ export interface View {
     eventsKnownThrough(hour: number): boolean;
     events(): Array<{ hour: number; t: TransformSpec }> | null;
     types: Array<boolean | undefined>;
+    /** How the other kind reckons, on a card that has kinds and a reading that honours them. */
+    frames?: Frames;
 }
+
+/** Whether a body is of the other kind from the origin, on a space with kinds. */
+export const otherKind = (axes: Axis[], b: Body) => {
+    const k = axes.findIndex(a => a.kind === "parity");
+    return k >= 0 && mod(b.pos[k], 2) === 1;
+};
 
 const sameVec = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 const sameT = (a: TransformSpec, b: TransformSpec) => a.id === b.id && sameVec(a.axes, b.axes) && (a.k ?? 1) === (b.k ?? 1) && a.who === b.who;
@@ -254,8 +262,9 @@ export function holds(f: Fact, v: View): boolean | null {
         case "place": {
             const x = v.at(f.x, f.hour), y = v.at(f.y, f.hour);
             if (!x || !y) return null;
-            const d = displacement(v.axes, x, y);
+            let d = displacement(v.axes, x, y);
             if (f.local) d[TIME] = localTime(v.axes, d, x, y);
+            if (v.frames && otherKind(v.axes, y)) d = reckon(v.frames, d);
             return sameVec(d, f.delta);
         }
         case "signal": {

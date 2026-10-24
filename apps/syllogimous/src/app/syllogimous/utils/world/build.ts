@@ -19,9 +19,9 @@
 
 import { LINEAR_SCALES, SPATIAL_SCALES } from "../linear.utils";
 import { Claim, holds as claimHolds } from "../knaves.utils";
-import { Axis, Body, FULL, SHORTCUTS, Seam, mod, sameBody } from "./space";
+import { Axis, Body, FULL, Frames, SHORTCUTS, Seam, mod, reckon, sameBody } from "./space";
 import { TRANSFORMS, TransformSpec, canTransform } from "./transforms";
-import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, TIME, compareLengths, displacement, firstLevel, firstMeet, intervalRel, localTime, rankBy, seenFrom, spaceSteps, stepsBetween } from "./facts";
+import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, TIME, compareLengths, displacement, firstLevel, firstMeet, intervalRel, localTime, otherKind, rankBy, seenFrom, spaceSteps, stepsBetween } from "./facts";
 import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleByClaims, thingAt, worlds } from "./reader";
 import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerFollows, answerKey } from "./questions";
 
@@ -137,6 +137,17 @@ function makeEvents(axes: Axis[], rnd: () => number, within = [2, 3, 4, 5, 6], s
     return out;
 }
 
+/**
+ * Half the time, on a space with kinds, the other kind reckons one line the
+ * other way round or two lines traded — the same in both spaces, which are
+ * the same kind of space.
+ */
+function makeFrames(axes: Axis[], rnd: () => number): Frames | undefined {
+    if (!axes.some(a => a.kind === "parity") || rnd() >= 0.5) return undefined;
+    const straight = [1, 2, 4, 5].filter(i => axes[i]?.kind === "line");
+    return rnd() < 0.5 ? { rule: "mirror", axes: [pick(straight, rnd)] } : { rule: "swap", axes: shuffle(straight, rnd).slice(0, 2).sort((a, b) => a - b) };
+}
+
 /* ------------------------------------------------------------------ *
  * The testimony                                                       *
  * ------------------------------------------------------------------ */
@@ -195,7 +206,9 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const chained = placedBy.get(y) && rnd() < 0.5 ? placedBy.get(y)! : null;
         const hour = chained ? chained.hour : int(rnd, 1, FIRST_HOURS), speaker = chained ? chained.speaker : pick(knights, rnd);
         placedBy.set(x, { hour, speaker });
-        const delta = displacement(axes, thingAt(world, x, hour), thingAt(world, y, hour));
+        let delta = displacement(axes, thingAt(world, x, hour), thingAt(world, y, hour));
+        /* Relative to a thing of the other kind, said as it reckons. */
+        if (world.frames && otherKind(axes, thingAt(world, y, hour))) delta = reckon(world.frames, delta);
         /* Sometimes the time gap as local clocks read it, one step later per
            step clockwise round east–west. */
         const local = axes.length > TIME && rnd() < 0.3;
@@ -261,7 +274,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         : sameBody(b, world.start[x])));
     const known = types.map((t, i) => (firsts.includes(i) ? t : undefined));
     for (let guard = 0; ; guard++) {
-        const sols = worlds({ axes, things: n, speakers: S, statements }, known, space);
+        const sols = worlds({ axes, things: n, speakers: S, statements, ...(world.frames ? { frames: world.frames } : {}) }, known, space);
         const wrong = sols.filter(st => !st.every((b, x) => b && sameBody(b, world.start[x])) && !onlyOpen(st));
         if (sols.length && !wrong.length) break;
         if (!sols.length || guard >= 6 * n) return null;
@@ -446,7 +459,8 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     clearReaderCache();
     const axes = makeAxes(rnd, opts.dims ?? 7);
     const start = Array.from({ length: opts.things }, () => makeBody(axes, rnd));
-    const world: World = { axes, start, events: makeEvents(axes, rnd, undefined, start) };
+    const frames = makeFrames(axes, rnd);
+    const world: World = { axes, start, events: makeEvents(axes, rnd, undefined, start), ...(frames ? { frames } : {}) };
     /* Every speaker stands in a thing and faces one of four ways. */
     /* Now and then a mirror twin, or one hanging head down. */
     world.observers = Array.from({ length: opts.speakers }, () => ({
@@ -461,7 +475,7 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
        unsettled speaker reports once in each, so unmasking them needs both. */
     const nested = opts.nested ?? rnd() < 0.75;
     const inner: World | undefined = nested
-        ? (s => ({ axes, start: s, events: makeEvents(axes, rnd, undefined, s) }))(Array.from({ length: opts.things }, () => makeBody(axes, rnd)))
+        ? (s => ({ axes, start: s, events: makeEvents(axes, rnd, undefined, s), ...(frames ? { frames } : {}) }))(Array.from({ length: opts.things }, () => makeBody(axes, rnd)))
         : undefined;
     /* Now and then a card that leaves a length open, where there are enough things to ask what could be. */
     const leaveOpen = opts.things >= 4 && rnd() < 0.7;
@@ -471,6 +485,7 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     const card: Card = {
         axes, things: opts.things, speakers: opts.speakers, statements: shuffle([...outside, ...inside], rnd),
         style: { compact: rnd() < 0.4, wide: rnd() < 0.7 },
+        ...(frames ? { frames } : {}),
     };
     const rec = read(card, FULL);
     if (!rec || rec.types.some((t, i) => t !== types[i])) return null;
@@ -538,7 +553,9 @@ function fairStage(
     return null;
 }
 
-const shortcutReads = (card: Card) => Object.entries(SHORTCUTS).map(([name, r]) => [name, read(card, r)] as const);
+/* Forgetting the kinds is a shortcut only on a card that has them. */
+const shortcutReads = (card: Card) => Object.entries(SHORTCUTS).filter(([name]) => name !== "kinds" || card.frames)
+    .map(([name, r]) => [name, read(card, r)] as const);
 
 /**
  * One item, or null when this attempt's world would not make one; callers retry.

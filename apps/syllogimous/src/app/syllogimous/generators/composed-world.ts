@@ -94,7 +94,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
 
     const question = new Question(type);
     question.bucket = [...names];
-    question.setup = setupLines(item.world.axes, w.colors, w.compact, item.card.statements);
+    question.setup = setupLines(item.world.axes, w.colors, w.compact, item.card.statements, item.card.frames);
     question.premises = premises;
     question.explanation = ticks.explanation;
     question.answerMode = "select";

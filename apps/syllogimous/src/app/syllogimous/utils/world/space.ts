@@ -99,9 +99,11 @@ export interface Reading {
     events: boolean;
     /** Headings honoured; off means "ahead" and "left" are read as north and west whoever says them. */
     perspective: boolean;
+    /** Kinds' reckonings honoured; off means every place is taken in the origin's. */
+    kinds: boolean;
 }
 
-export const FULL: Reading = { liars: true, motion: true, seams: true, sizes: true, events: true, perspective: true };
+export const FULL: Reading = { liars: true, motion: true, seams: true, sizes: true, events: true, perspective: true, kinds: true };
 
 /** The shortcut readings, each with one part of the structure left out. */
 export const SHORTCUTS: Record<string, Reading> = {
@@ -111,7 +113,24 @@ export const SHORTCUTS: Record<string, Reading> = {
     sizes: { ...FULL, sizes: false },
     events: { ...FULL, events: false },
     perspective: { ...FULL, perspective: false },
+    kinds: { ...FULL, kinds: false },
 };
+
+/**
+ * How a thing of the other kind from the origin reckons the places said
+ * relative to it: one line the other way round, or two lines traded. Either
+ * is its own inverse, so the same map turns a gap into its saying and back.
+ * Only straight lines other than time: a ring has no other way round to keep
+ * its seam on, and time is what clocks and rings of sound are read along.
+ */
+export interface Frames { rule: "mirror" | "swap"; axes: number[] }
+
+export function reckon(frames: Frames, d: number[]): number[] {
+    const out = [...d], [a, b] = frames.axes;
+    if (frames.rule === "mirror") out[a] = -d[a];
+    else { out[a] = d[b]; out[b] = d[a]; }
+    return out;
+}
 
 /* ------------------------------------------------------------------ *
  * The seam registry                                                   *

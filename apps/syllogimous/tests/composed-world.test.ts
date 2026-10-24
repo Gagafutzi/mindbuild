@@ -21,11 +21,11 @@ import { Question } from "../src/app/syllogimous/models/question.models";
 import { EnumQuestionType } from "../src/app/syllogimous/constants/question.constants";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../src/app/syllogimous/constants/settings.constants";
 import { LINEAR_SCALES, SPATIAL_SCALES } from "../src/app/syllogimous/utils/linear.utils";
-import { Axis, Body, FULL, SHORTCUTS, copyBody, moveHour, sameBody } from "../src/app/syllogimous/utils/world/space";
+import { Axis, Body, FULL, Frames, SHORTCUTS, copyBody, moveHour, sameBody } from "../src/app/syllogimous/utils/world/space";
 import { TRANSFORMS, TransformSpec, canTransform } from "../src/app/syllogimous/utils/world/transforms";
-import { Fact, IntervalRel, MAX_LEN, POST, Seen, Statement, intervalRel, negate } from "../src/app/syllogimous/utils/world/facts";
+import { Fact, IntervalRel, MAX_LEN, POST, Seen, Statement, intervalRel, negate, otherKind } from "../src/app/syllogimous/utils/world/facts";
 const LONG = MAX_LEN;
-import { Card, OPEN_MAX, Reconstruction, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
+import { Card, OPEN_MAX, Reconstruction, read, settleByClaims, thingAt, worlds } from "../src/app/syllogimous/utils/world/reader";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
 import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
 import { Ask, QUESTIONS, REACH, answerFollows, answerKey } from "../src/app/syllogimous/utils/world/questions";
@@ -67,6 +67,17 @@ function readAxes(setup: string[], dims: number): Axis[] {
         else ax.seam = { type: "plain" };
     }
     return base;
+}
+
+/** How the other kind reckons, from its setup line, where the card has one. */
+function readFrames(setup: string[], axes: Axis[]): Frames | undefined {
+    const line = setup.map(strip).find(l => l.startsWith("A place said relative to a thing of the opposite kind to the origin is in its reckoning: "));
+    if (!line) return undefined;
+    const by = (label: string) => axes.findIndex(a => axisLabel(a) === label);
+    const m = /: (.+) the other way round\.$/.exec(line), s = /: (.+) and (.+) traded\.$/.exec(line);
+    if (m) return { rule: "mirror", axes: [by(m[1])] };
+    if (s) return { rule: "swap", axes: [by(s[1]), by(s[2])] };
+    throw new Error(`unread setup "${line}"`);
 }
 
 /** One clause of a place or a pace on axis `ax`, or null if it is not that axis's. */
@@ -299,7 +310,8 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
         })();
         return [{ speaker, fact: head }, ...linked, ...inside.map(b => ({ speaker, fact: fact(speaker, b), space: 1 }))];
     });
-    const card: Card = { axes, things: things.length, speakers: speakers.length, statements };
+    const frames = readFrames(q.setup, axes);
+    const card: Card = { axes, things: things.length, speakers: speakers.length, statements, ...(frames ? { frames } : {}) };
 
     /* The question. */
     const prompt = q.prompt, options = q.choices;
@@ -435,6 +447,7 @@ test("composed world: read from the text, every shortcut misses every analogy, a
             if (p.kind === "types") return;
             const truth = shipped(q, p);
             for (const [name, reading] of Object.entries(SHORTCUTS)) {
+                if (name === "kinds" && !p.card.frames) continue;
                 const rec = read(p.card, reading);
                 assert((rec ? answered(p, rec) : answerKey(null)) !== truth, `claim ${at}, ${p.kind}: ignoring ${name} still gives ${truth}`);
             }
@@ -570,6 +583,7 @@ test("composed world: every shipped item reads back to its world, and no shortcu
         /* The origin is where places are measured from, never a term of an analogy. */
         if (it.kind.id !== "speakers") assert(![it.ask.x, it.ask.y, it.ask.z, it.ask.w ?? 0, ...(it.ask.options ?? [])].includes(POST), "the origin stands in an analogy");
         for (const [name, r] of Object.entries(SHORTCUTS)) {
+            if (name === "kinds" && !it.card.frames) continue;
             const s = read(it.card, r);
             assert(answerKey(s ? answerFollows(it.kind, it.ask, s) : null) !== answerKey(it.answer), `${it.kind.id}: ignoring ${name} gives the answer`);
         }
@@ -600,8 +614,11 @@ test("composed world: every part of the structure turns up in what ships", () =>
             if (s.fact.kind === "stands" && s.fact.upside) seen.add("head down");
             if (s.fact.kind === "place" && s.fact.bridge) seen.add("an equal gap");
             if (s.fact.kind === "place" && s.fact.local) seen.add("local clocks");
+            if (it.card.frames && s.fact.kind === "place" && s.fact.y !== POST && !s.space
+                && otherKind(it.world.axes, thingAt(it.world, s.fact.y, s.fact.hour))) seen.add("a place in the other kind's reckoning");
         }
         if (it.card.style?.compact) seen.add("compact places");
+        if (it.card.frames) seen.add(`kinds:${it.card.frames.rule}`);
         if (it.card.style?.wide && it.card.statements.some(a => a.fact.kind === "place" && it.card.statements.some(b => b !== a && b.speaker === a.speaker
             && b.fact.kind === "place" && b.fact.hour === (a.fact as { hour: number }).hour && b.fact.x === (a.fact as { y: number }).y))) seen.add("two links in a sentence");
         if (it.ask.h1 !== it.ask.h2) seen.add("two hours");
@@ -615,6 +632,7 @@ test("composed world: every part of the structure turns up in what ships", () =>
                     "fact:sizes", "fact:cmp", "fact:rel", "fact:stands", "fact:view", "knave:size", "knave:event", "knave:rel", "knave:cmp", "knave:view", "knave:type",
             "a heading left to work out", "fact:not", "fact:total", "fact:ranked", "a mirror twin", "head down", "an equal gap",
             "compact places", "two links in a sentence", "local clocks", "fact:signal", "fact:level", "fact:meet", "the light cone in an analogy", "an analogy to build", "an analogy left open",
+            "kinds:mirror", "kinds:swap", "a place in the other kind's reckoning",
         "claim:is", "claim:same", "claim:differ", "two hours", "several axes", "inside the brackets", "an analogy across the brackets",
     ];
     /* And what actually ships: staged items, whose analogies are drawn from the same kinds. */

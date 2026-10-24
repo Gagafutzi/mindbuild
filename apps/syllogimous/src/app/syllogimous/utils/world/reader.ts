@@ -26,9 +26,9 @@
  */
 
 import { Claim, holds as claimHolds } from "../knaves.utils";
-import { Axis, Body, FULL, Reading, copyBody, mod, moveHour } from "./space";
+import { Axis, Body, FULL, Frames, Reading, copyBody, mod, moveHour, reckon } from "./space";
 import { TRANSFORMS, TransformSpec } from "./transforms";
-import { Fact, MAX_LEN, Observer, POST, Statement, TIME, View, holds, negate } from "./facts";
+import { Fact, MAX_LEN, Observer, POST, Statement, TIME, View, holds, negate, otherKind } from "./facts";
 
 export interface WorldEvent { hour: number; t: TransformSpec }
 
@@ -39,6 +39,8 @@ export interface World {
     events: WorldEvent[];
     /** Where each speaker stands and faces, on a card with perspective. */
     observers?: Observer[];
+    /** How the other kind reckons, on a space with kinds. */
+    frames?: Frames;
 }
 
 export const postBody = (axes: Axis[]): Body => ({ pos: axes.map(() => 0), size: axes.map(() => 1), vel: axes.map(() => 0) });
@@ -112,6 +114,8 @@ export interface Card {
     statements: Statement[];
     /** How this card is worded: places compact, and two links to a sentence where they chain. */
     style?: { compact?: boolean; wide?: boolean };
+    /** How a thing of the other kind from the origin reckons places said relative to it. */
+    frames?: Frames;
 }
 
 export interface Reconstruction {
@@ -211,6 +215,7 @@ export function clearReaderCache() { SOLVED.clear(); }
 /** Everything the settled speakers establish, under a reading. */
 function derive(card: Card, types: Array<boolean | undefined>, reading: Reading, space = 0): Derived {
     const axes = card.axes, n = card.things;
+    const frames = reading.kinds ? card.frames : undefined;
     const claimed: Claimed[] = [];
     const here = card.statements.filter(s => (s.space ?? 0) === space);
     for (const s of here) {
@@ -317,6 +322,7 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
             events: () => (horizon === Infinity ? events : null),
             types,
             observer: who => obs[who] ?? null,
+            ...(frames ? { frames } : {}),
         };
     };
     /* A shortcut reader sets aside what its shortcut ignores and reasons on with
@@ -354,14 +360,20 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
         const { x, from, p, sign } = order[k];
         const ref = viewOf(start).at(from, p.hour);
         if (!vel[x] || !ref) { search(k + 1); return; }
+        /* Said relative to a thing of the other kind, the gap is in its
+           reckoning. Its kind is the reference's own where that is placed
+           already, or else the placed end's less the kind the gap says. */
+        const par = axes.findIndex(a => a.kind === "parity");
+        const odd = p.y !== POST && (sign === 1 ? otherKind(axes, ref) : mod(ref.pos[par] - p.delta[par], 2) === 1);
+        const delta = frames && odd ? reckon(frames, p.delta) : p.delta;
         const posTau = axes.map((ax, i) => {
-            const v = ref.pos[i] + sign * p.delta[i];
+            const v = ref.pos[i] + sign * delta[i];
             return ax.kind === "ring" ? mod(v, ax.modulus!) : ax.kind === "parity" ? mod(v, 2) : v;
         });
         /* Read on local clocks, the time gap is the clocks' and not the world's:
            take off the step per step clockwise that the two clocks differ by. */
         if (p.local) {
-            const t = ref.pos[TIME] + sign * p.delta[TIME] - (mod(posTau[0], axes[0].modulus!) - mod(ref.pos[0], axes[0].modulus!));
+            const t = ref.pos[TIME] + sign * delta[TIME] - (mod(posTau[0], axes[0].modulus!) - mod(ref.pos[0], axes[0].modulus!));
             posTau[TIME] = axes[TIME].kind === "ring" ? mod(t, axes[TIME].modulus!) : t;
         }
         for (const size of options[x]) {
@@ -438,7 +450,7 @@ export function read(card: Card, reading: Reading = FULL): Reconstruction | null
     if (reading.liars) for (const s of card.statements) {
         if (s.fact.kind === "type" && claimHolds(s.fact.claim, types as boolean[]) !== types[s.speaker]) return null;
     }
-    const worldOf = (d: Derived, k = 0): World => ({ axes: card.axes, start: d.solutions[k] as Body[], events: d.events });
+    const worldOf = (d: Derived, k = 0): World => ({ axes: card.axes, start: d.solutions[k] as Body[], events: d.events, ...(card.frames ? { frames: card.frames } : {}) });
     const all = ds[0].solutions.map((_, k) => worldOf(ds[0], k));
     return {
         world: all[0], ...(all.length > 1 ? { alternatives: all } : {}), ...(ds[1] ? { inner: worldOf(ds[1]) } : {}),
