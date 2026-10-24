@@ -288,6 +288,12 @@ export const MODE_SCALE: Record<EnumQuestionType, ModeScale> = {
      * design, to be checked by placement.
      */
     [EnumQuestionType.Worldlines]: { weight: 1.9, ceiling: 22 },
+    /*
+     * Seven axes, lengths, motion through seams, events and liars in every item:
+     * heavier per premise than anything else here, Space 7D included. A guess
+     * from the design, to be checked by placement.
+     */
+    [EnumQuestionType.ComposedWorld]: { weight: 3.2, ceiling: 8 },
     [EnumQuestionType.Binary]: { weight: 1.5, ceiling: 20 },
     [EnumQuestionType.Deictic]: { weight: 1.6, ceiling: 20 },
     [EnumQuestionType.AnchorSpace]: { weight: 1.8, ceiling: 20 },

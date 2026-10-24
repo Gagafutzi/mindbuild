@@ -89,6 +89,7 @@ import { createCrossAnalogy } from "../generators/cross-analogy";
 import { createRcc8 } from "../generators/rcc8";
 import { createConcaveRegions } from "../generators/concave-regions";
 import { createWorldlines } from "../generators/worldlines";
+import { createComposedWorld } from "../generators/composed-world";
 import { createAnchorSpace, createAnchorSpaceV2 } from "../generators/anchor";
 import { createArrangement } from "../generators/arrangement";
 import { createBinary } from "../generators/binary";
@@ -567,6 +568,7 @@ export class GameService implements GeneratorContext {
             [EnumQuestionType.Rcc8]: () => createRcc8(this, numOfPremises),
             [EnumQuestionType.ConcaveRegions]: () => createConcaveRegions(this, numOfPremises),
             [EnumQuestionType.Worldlines]: () => createWorldlines(this, numOfPremises),
+            [EnumQuestionType.ComposedWorld]: () => createComposedWorld(this, numOfPremises),
             [EnumQuestionType.Binary]: () => createBinary(this, numOfPremises),
             [EnumQuestionType.Deictic]: () => createDeictic(this, numOfPremises),
             [EnumQuestionType.MutualMoves]: () => createMutualMoves(this, numOfPremises),

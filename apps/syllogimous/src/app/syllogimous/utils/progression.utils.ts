@@ -683,6 +683,13 @@ export const RUNG_LADDERS: Record<string, string[]> = {
      * same one.
      */
     "Worldlines":                ["level", "meet"],
+    /*
+     * No rungs, on purpose: every kind of question, every transformation, seam
+     * and kind of statement is in play from the first item, and an item ships
+     * only when every shortcut fails it. Difficulty is the premise count, which
+     * buys things and speakers.
+     */
+    "Composed World":            [],
     "Binary":                    ["negation", "retired-meta"],
     /*
      * Empty, and for a different reason from the two above.

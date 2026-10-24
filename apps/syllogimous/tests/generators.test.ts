@@ -61,6 +61,7 @@ import { createCrossAnalogy } from "../src/app/syllogimous/generators/cross-anal
 import { createRcc8 } from "../src/app/syllogimous/generators/rcc8";
 import { createConcaveRegions } from "../src/app/syllogimous/generators/concave-regions";
 import { createWorldlines } from "../src/app/syllogimous/generators/worldlines";
+import { createComposedWorld } from "../src/app/syllogimous/generators/composed-world";
 import { createSyllogism } from "../src/app/syllogimous/generators/syllogism";
 import { createInferRelation } from "../src/app/syllogimous/generators/infer-relation";
 import { createOddestRelation } from "../src/app/syllogimous/generators/oddest-relation";
@@ -172,6 +173,7 @@ const GENERATORS: Array<[EnumQuestionType, (ctx: GeneratorContext, n: number) =>
     [EnumQuestionType.Rcc8, createRcc8],
     [EnumQuestionType.ConcaveRegions, createConcaveRegions],
     [EnumQuestionType.Worldlines, createWorldlines],
+    [EnumQuestionType.ComposedWorld, (c, n) => createComposedWorld(c, n)],
     [EnumQuestionType.Deictic, createDeictic],
     [EnumQuestionType.Transformation, createTransformation],
     [EnumQuestionType.AnchorSpace, createAnchorSpace],

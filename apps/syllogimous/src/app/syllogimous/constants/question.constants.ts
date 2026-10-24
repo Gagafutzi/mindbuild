@@ -96,6 +96,7 @@ export enum EnumQuestionType {
     Rcc8 = "Region Connection",
     ConcaveRegions = "Concave Regions",
     Worldlines = "Worldlines",
+    ComposedWorld = "Composed World",
 }
 
 export enum EnumArrangements {

@@ -47,6 +47,7 @@ export class TypeBasedStats {
     [EnumQuestionType.Rcc8] = new TypeBasedStatsInner(EnumQuestionType.Rcc8);
     [EnumQuestionType.ConcaveRegions] = new TypeBasedStatsInner(EnumQuestionType.ConcaveRegions);
     [EnumQuestionType.Worldlines] = new TypeBasedStatsInner(EnumQuestionType.Worldlines);
+    [EnumQuestionType.ComposedWorld] = new TypeBasedStatsInner(EnumQuestionType.ComposedWorld);
     [EnumQuestionType.Binary] = new TypeBasedStatsInner(EnumQuestionType.Binary);
     [EnumQuestionType.Deictic] = new TypeBasedStatsInner(EnumQuestionType.Deictic);
     [EnumQuestionType.Transformation] = new TypeBasedStatsInner(EnumQuestionType.Transformation);
