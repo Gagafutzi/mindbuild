@@ -104,6 +104,18 @@ export interface SeriesClaim {
      * Absent means nothing changes, which is what the other modes want.
      */
     premises?: string[];
+    /**
+     * How *this* claim is answered, where it is not how the item began.
+     *
+     * A staged item asks one thing after another in different ways: who is a
+     * knight, ticked; an analogy, picked; a verdict, true or false. The advance
+     * swaps the control along with the claim, and clears what belonged to the
+     * last one. Absent means the item's own mode, which is every other series.
+     * Never "construct" or "map", whose apparatus the advance cannot swap.
+     */
+    answerMode?: "boolean" | "choice" | "select";
+    /** The options that are true, for a claim answered by selecting. */
+    selectAnswer?: number[];
 }
 
 export interface ConstructClaim {

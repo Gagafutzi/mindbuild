@@ -6,9 +6,9 @@
 import { hi, subj } from "../phrasing";
 import { Axis } from "./space";
 import { POST, POST_NAME, Wording, clause, clock, describeFact, describeStatement, LONG, towards } from "./facts";
-import { Item } from "./build";
-import { Part, relation } from "./questions";
-import { thingAt } from "./reader";
+import { Item, StagedItem } from "./build";
+import { Answer, Ask, Part, relation } from "./questions";
+import { Reconstruction, thingAt } from "./reader";
 
 export interface Rendered {
     setup: string[];
@@ -65,33 +65,39 @@ function partWords(axes: Axis[], i: number, p: Part, colors: string[]): string {
     return hi(`${words[p as string]} (${axisWord(ax)})`, colors[i]);
 }
 
-export function render(item: Item, things: string[], speakers: string[], colors: string[]): Rendered {
-    const axes = item.world.axes, w: Wording = { axes, colors, things, speakers };
-    const name = (x: number) => (x === POST ? POST_NAME : subj(things[x]));
-    const q = item.ask;
-    const on = q.on.map(i => hi(axisWord(axes[i]), colors[i])).join(", ");
-    const out: Rendered = {
-        setup: setupLines(axes, colors),
-        premises: item.card.statements.map(s => describeStatement(w, s)),
-        conclusion: "", choices: [], correctChoice: -1, selectAnswer: [], prompt: "", explanation: [],
-    };
+/** One question, worded: what it asks, its options, and how the answer follows. */
+export interface RenderedAsk {
+    prompt: string;
+    conclusion: string;
+    choices: string[];
+    correctChoice: number;
+    selectAnswer: number[];
+    explanation: string[];
+}
 
-    /* How the answer follows: who was unmasked how, then the relation read at
-       one hour and looked for at the other. */
-    const rec = item.reconstruction;
-    out.explanation.push(...rec.unmasked.map(u => u.by === "claims"
-        ? `${subj(speakers[u.speaker])} is a ${hi(rec.types[u.speaker] ? "knight" : "knave")}, from what the speakers say of each other`
-        : `${subj(speakers[u.speaker])} is a ${hi(rec.types[u.speaker] ? "knight" : "knave")}: "${describeFact(w, u.by)}" is ${rec.types[u.speaker] ? "true" : "false"}`));
+/** How each speaker was unmasked, in the order the reading found them. */
+export function unmaskingLines(rec: Reconstruction, w: Wording): string[] {
+    return rec.unmasked.map(u => u.by === "claims"
+        ? `${subj(w.speakers[u.speaker])} is a ${hi(rec.types[u.speaker] ? "knight" : "knave")}, from what the speakers say of each other`
+        : `${subj(w.speakers[u.speaker])} is a ${hi(rec.types[u.speaker] ? "knight" : "knave")}: "${describeFact(w, u.by)}" is ${rec.types[u.speaker] ? "true" : "false"}`);
+}
+
+/** One question about a reconstruction, with the relations its answer was read off. */
+export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer }, w: Wording): RenderedAsk {
+    const axes = rec.world.axes, { things, speakers, colors } = w, q = stage.ask, answer = stage.answer;
+    const name = (x: number) => (x === POST ? POST_NAME : subj(things[x]));
+    const out: RenderedAsk = { prompt: "", conclusion: "", choices: [], correctChoice: -1, selectAnswer: [], explanation: [] };
 
     if (q.kind === "speakers") {
         const kindOf = (i: number) => (rec.types[i] ? "knight" : "knave");
         out.prompt = `${subj(speakers[q.x])} stands to ${subj(speakers[q.y])} as ${subj(speakers[q.z])} stands to which speaker, in being alike or unalike in what they are?`;
         out.choices = q.options!.map(i => subj(speakers[i]));
-        out.correctChoice = q.options!.indexOf(item.answer as number);
-        out.explanation.push(`${subj(speakers[q.x])} is a ${kindOf(q.x)} and ${subj(speakers[q.y])} a ${kindOf(q.y)}, so ${subj(speakers[q.z])}, a ${kindOf(q.z)}, goes with ${subj(speakers[item.answer as number])}, a ${kindOf(item.answer as number)}`);
+        out.correctChoice = q.options!.indexOf(answer as number);
+        out.explanation.push(`${subj(speakers[q.x])} is a ${kindOf(q.x)} and ${subj(speakers[q.y])} a ${kindOf(q.y)}, so ${subj(speakers[q.z])}, a ${kindOf(q.z)}, goes with ${subj(speakers[answer as number])}, a ${kindOf(answer as number)}`);
         return out;
     }
 
+    const on = q.on.map(i => hi(axisWord(axes[i]), colors[i])).join(", ");
     const at = (x: number, h: number) => thingAt(rec.world, x, h);
     const relText = (a: number, b: number, h: number) =>
         relation(axes, at(a, h), at(b, h), q.on).map((p, k) => partWords(axes, q.on[k], p, colors)).join(", ");
@@ -103,11 +109,11 @@ export function render(item: Item, things: string[], speakers: string[], colors:
     if (q.kind === "which") {
         out.prompt = `${head} which of these at ${clock(q.h2)}?`;
         out.choices = q.options!.map(name);
-        out.correctChoice = q.options!.indexOf(item.answer as number);
+        out.correctChoice = q.options!.indexOf(answer as number);
     } else if (q.kind === "every") {
         out.prompt = `${head} which of these at ${clock(q.h2)}? Select every one that fits, or none.`;
         out.choices = q.options!.map(name);
-        out.selectAnswer = (item.answer as number[]).map(a => q.options!.indexOf(a)).sort((a, b) => a - b);
+        out.selectAnswer = (answer as number[]).map(a => q.options!.indexOf(a)).sort((a, b) => a - b);
     } else {
         out.conclusion = `${head} ${name(q.w!)} at ${clock(q.h2)}`;
     }
@@ -119,4 +125,43 @@ export function render(item: Item, things: string[], speakers: string[], colors:
         + (at(x, h).size.some(s => s > 1) ? ` (${at(x, h).size.map((s, i) => (s > 1 ? hi(`${s} long ${axisWord(axes[i])}`, colors[i]) : "")).filter(Boolean).join(", ")})` : "");
     out.explanation.push(`from ${POST_NAME} at ${clock(q.h1)} — ${[q.x, q.y].filter(x => x !== POST).map(x => where(x, q.h1)).join("; ")}`);
     return out;
+}
+
+export function render(item: Item, things: string[], speakers: string[], colors: string[]): Rendered {
+    const axes = item.world.axes, w: Wording = { axes, colors, things, speakers };
+    const asked = renderAsk(item.reconstruction, item, w);
+    return {
+        setup: setupLines(axes, colors),
+        premises: item.card.statements.map(s => describeStatement(w, s)),
+        conclusion: asked.conclusion, choices: asked.choices, correctChoice: asked.correctChoice,
+        selectAnswer: asked.selectAnswer, prompt: asked.prompt,
+        /* How the answer follows: who was unmasked how, then the relation read
+           at one hour and looked for at the other. */
+        explanation: [...unmaskingLines(item.reconstruction, w), ...asked.explanation],
+    };
+}
+
+export const TYPES_PROMPT_PAIRS = "Who is a knight and who is a knave? Select every one that is true.";
+export const TYPES_PROMPT_NAMES = "Who is a knight? Select every knight; everyone else is a knave.";
+
+/**
+ * The staged item's first stage: who is a knight and who a knave, ticked.
+ *
+ * Two speakers are ticked as "is a knight" or "is a knave" each — four
+ * options, and a selection needs three at least. Three or four are ticked by
+ * name, knights only, since every menu here stops at four.
+ */
+export function renderTypes(item: StagedItem, w: Wording): RenderedAsk {
+    const pairs = w.speakers.length * 2 <= 4;
+    const choices = pairs
+        ? w.speakers.flatMap(s => [`${subj(s)} is a ${hi("knight")}`, `${subj(s)} is a ${hi("knave")}`])
+        : w.speakers.map(s => subj(s));
+    return {
+        prompt: pairs ? TYPES_PROMPT_PAIRS : TYPES_PROMPT_NAMES,
+        conclusion: "", choices, correctChoice: -1,
+        selectAnswer: pairs
+            ? item.types.map((t, i) => 2 * i + (t ? 0 : 1))
+            : item.types.map((t, i) => (t ? i : -1)).filter(i => i >= 0),
+        explanation: unmaskingLines(item.reconstruction, w),
+    };
 }

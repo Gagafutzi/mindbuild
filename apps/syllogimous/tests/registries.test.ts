@@ -611,7 +611,9 @@ test("no item offers more than two options", () => {
                          * claims would be. `guessRateFor` prices it that way,
                          * so nothing has to be told twice here either.
                          */
-                        if (q.answerMode === "select") {
+                        /* A staged item's claims say how each is answered. */
+                        const asked = claim === q ? q.answerMode : ((claim as { answerMode?: string }).answerMode ?? q.answerMode);
+                        if (asked === "select") {
                             assert(offered.length >= 3,
                                 `${type} asks for a selection from ${offered.length} —`
                                 + " a menu that short is a choice wearing a submit button");

@@ -24,10 +24,10 @@ import { ANCHORS, anchorCoordMap } from "../utils/anchor.utils";
 import { scrambleByFactor, scrambleLeading } from "../utils/premise-order.utils";
 import { Finding, findings, sessionWeights } from "../utils/insight.utils";
 import { NUMBER_WORDS } from "../constants/question.constants";
-import { EnumScreens, EnumTiers, ORDERED_QUESTION_TYPES, ORDERED_TIERS, TIER_SCORE_ADJUSTMENTS, TIER_SCORE_RANGES, TIERS_MATRIX } from "../constants/game.constants";
+import { EXPERIMENTAL_ONLY, EnumScreens, EnumTiers, ORDERED_QUESTION_TYPES, ORDERED_TIERS, TIER_SCORE_ADJUSTMENTS, TIER_SCORE_RANGES, TIERS_MATRIX } from "../constants/game.constants";
 import { dialsFor, ladderFor } from "../utils/progression.utils";
 import { composeDelayLine, DELAY_TYPES, DEFAULT_DELAY, DEFAULT_DELAY_ROUNDS } from "../generators/delay-line";
-import { LS_DONT_SHOW, LS_GAME_MODE, LS_SCORE, LS_SERIES_BONUS, LS_SKIP_TUTORIALS, LS_STREAM, LS_STREAM_ANALOGY, LS_STREAM_LENGTH, LS_STREAM_TYPE, LS_STREAM_WINDOW, LS_SYMBOL_RELATIONS, LS_DELAY, LS_DELAY_TYPE, LS_DELAY_DEPTH, LS_DELAY_ROUNDS, LS_RANDOM_LABELS, LS_TIMER, LS_ZEN } from "../constants/local-storage.constants";
+import { LS_DONT_SHOW, LS_GAME_MODE, LS_SCORE, LS_SERIES_BONUS, LS_SKIP_TUTORIALS, LS_STREAM, LS_STREAM_ANALOGY, LS_STREAM_LENGTH, LS_STREAM_TYPE, LS_STREAM_WINDOW, LS_SYMBOL_RELATIONS, LS_DELAY, LS_DELAY_TYPE, LS_WORLD, LS_WORLD_PREMISES, LS_DELAY_DEPTH, LS_DELAY_ROUNDS, LS_RANDOM_LABELS, LS_TIMER, LS_ZEN } from "../constants/local-storage.constants";
 import { explanationsOn, reviewSteps, setExplanationsOn } from "../utils/review.utils";
 // Aliased: the service exposes members of the same names, and a call that
 // could be read as either is worth one line of renaming to avoid.
@@ -90,6 +90,7 @@ import { createRcc8 } from "../generators/rcc8";
 import { createConcaveRegions } from "../generators/concave-regions";
 import { createWorldlines } from "../generators/worldlines";
 import { createComposedWorld } from "../generators/composed-world";
+import { itemCapSeconds } from "../utils/session.utils";
 import { createAnchorSpace, createAnchorSpaceV2 } from "../generators/anchor";
 import { createArrangement } from "../generators/arrangement";
 import { createBinary } from "../generators/binary";
@@ -759,6 +760,10 @@ export class GameService implements GeneratorContext {
          */
         if (this.delayOn) return this.asMinimal(this.createDelayLine());
 
+        /* Composed World is played this way only: a staged item of five to
+           seven conclusions on one card is not an item to draw among others. */
+        if (this.worldOn) return this.asMinimal(createComposedWorld(this, this.worldPremises));
+
         if (this.streamOn) {
             return this.asMinimal(
                 createStream(this, this.streamType, this.streamWindow, this.streamLength,
@@ -788,7 +793,7 @@ export class GameService implements GeneratorContext {
             const groupChoices: Array<() => Question> = isUndefinedGroup ? choices : [];
             for (const [qt, qs] of grouped) {
                 const shouldIncludeQuestion = (basic == undefined) ? true : qs.basic === basic;
-                if (qs.enabled && shouldIncludeQuestion) {
+                if (qs.enabled && shouldIncludeQuestion && !EXPERIMENTAL_ONLY.has(qt)) {
                     const make = this.getCreateFn(qt, qs.clampNumOfPremises(numOfPremises || qs.getNumOfPremises()));
                     for (let i = 0; i < this.copiesFor(qt); i++) groupChoices.push(make);
                 }
@@ -1353,7 +1358,9 @@ export class GameService implements GeneratorContext {
 
         this.progressAndPerformanceService.setDailyProgress(
             today,
-            this.question.answeredAt - this.question.createdAt
+            this.question.answeredAt - this.question.createdAt,
+            // The same cap the day's summary counts by, so the two agree.
+            itemCapSeconds(this.question)
         );
 
         // Compare either side of the write rather than testing ">= 100", which
@@ -1604,6 +1611,34 @@ export class GameService implements GeneratorContext {
     }
 
     /* ---- continuous stream ---- */
+
+    /* ---------------- composed world ---------------- */
+
+    get worldOn(): boolean {
+        try { return localStorage.getItem(LS_WORLD) === "1"; } catch { return false; }
+    }
+
+    setWorldOn(on: boolean) {
+        try {
+            if (on) localStorage.setItem(LS_WORLD, "1");
+            else localStorage.removeItem(LS_WORLD);
+        } catch { /* private mode; the default stands */ }
+    }
+
+    /** The player's choice of size, four to eight; no ladder decides it. */
+    get worldPremises(): number {
+        const { minNumOfPremises: lo, maxNumOfPremises: hi } = QUESTION_TYPE_SETTING_PARAMS[EnumQuestionType.ComposedWorld];
+        try {
+            const n = Number(localStorage.getItem(LS_WORLD_PREMISES));
+            if (n >= lo && n <= hi) return Math.floor(n);
+        } catch { /* private mode */ }
+        return lo;
+    }
+
+    setWorldPremises(n: number) {
+        const { minNumOfPremises: lo, maxNumOfPremises: hi } = QUESTION_TYPE_SETTING_PARAMS[EnumQuestionType.ComposedWorld];
+        try { localStorage.setItem(LS_WORLD_PREMISES, String(Math.min(hi, Math.max(lo, Math.floor(Number(n) || lo))))); } catch { /* private mode */ }
+    }
 
     /* ---------------- delay line ---------------- */
 

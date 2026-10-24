@@ -24,7 +24,9 @@ import { LINEAR_SCALES, SPATIAL_SCALES } from "../src/app/syllogimous/utils/line
 import { Axis, Body, FULL, SHORTCUTS, copyBody, moveHour, sameBody } from "../src/app/syllogimous/utils/world/space";
 import { TRANSFORMS, TransformSpec, canTransform } from "../src/app/syllogimous/utils/world/transforms";
 import { Fact, IntervalRel, LONG, POST, Statement, intervalRel, negate } from "../src/app/syllogimous/utils/world/facts";
-import { Card, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
+import { Card, Reconstruction, read, settleByClaims, worlds } from "../src/app/syllogimous/utils/world/reader";
+import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
+import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
 import { Ask, QUESTIONS, answerKey } from "../src/app/syllogimous/utils/world/questions";
 import { BuildOptions, Item, build, fitting, makeAxes, tryBuild } from "../src/app/syllogimous/utils/world/build";
 
@@ -83,8 +85,14 @@ function readClause(ax: Axis, c: string): number | null {
 
 interface Parsed { card: Card; ask: Ask; kind: string }
 
+/** What the screen shows for the claim that is up. */
+interface Shown { setup: string[]; premises: string[]; prompt: string; choices: string[] }
+const shown = (q: Question): Shown => ({
+    setup: q.setup, premises: q.premises, prompt: strip(q.choicePrompt || (q.conclusion as string)), choices: q.choices.map(strip),
+});
+
 /** A whole card back from its words. `things` and `speakers` are the names, in index order. */
-function parse(q: Question, things: string[], speakers: string[]): Parsed {
+function parse(q: Shown, things: string[], speakers: string[]): Parsed {
     const axes = readAxes(q.setup, q.premises);
     const thing = new Map<string, number>([["the Post", POST], ...things.map((n, i) => [n, i] as [string, number])]);
     const who = new Map(speakers.map((n, i) => [n, i] as [string, number]));
@@ -181,9 +189,22 @@ function parse(q: Question, things: string[], speakers: string[]): Parsed {
     const card: Card = { axes, things: things.length, speakers: speakers.length, statements };
 
     /* The question. */
-    const prompt = strip(q.choicePrompt || (q.conclusion as string));
-    const options = q.choices.map(strip);
+    const prompt = q.prompt, options = q.choices;
     let m: RegExpExecArray | null;
+    if (prompt === TYPES_PROMPT_NAMES) {
+        /* Ticked by name, knights only: coded as the knight option of the pair form. */
+        const coded = options.map(o => { if (!who.has(o)) throw new Error(`unread option "${o}"`); return 2 * who.get(o)!; });
+        return { card, ask: { kind: "types", x: 0, y: 0, z: 0, h1: 0, h2: 0, on: [], options: coded }, kind: "types" };
+    }
+    if (prompt === TYPES_PROMPT_PAIRS) {
+        /* Each option is a speaker and a type, as index 2·speaker + (knave ? 1 : 0). */
+        const coded = options.map(o => {
+            const t = new RegExp(`^${P} is a (knight|knave)$`).exec(o);
+            if (!t) throw new Error(`unread option "${o}"`);
+            return 2 * who.get(t[1])! + (t[2] === "knave" ? 1 : 0);
+        });
+        return { card, ask: { kind: "types", x: 0, y: 0, z: 0, h1: 0, h2: 0, on: [], options: coded }, kind: "types" };
+    }
     if ((m = new RegExp(`^${P} stands to ${P} as ${P} stands to which speaker, in being alike or unalike in what they are\\?$`).exec(prompt))) {
         const ask: Ask = { kind: "speakers", x: who.get(m[1])!, y: who.get(m[2])!, z: who.get(m[3])!, h1: 0, h2: 0, on: [], options: options.map(o => who.get(o)!) };
         return { card, ask, kind: "speakers" };
@@ -202,11 +223,20 @@ function parse(q: Question, things: string[], speakers: string[]): Parsed {
     throw new Error(`unread question "${prompt}"`);
 }
 
-/** The answer the question was shipped with, in the engine's terms. */
-function shipped(q: Question, p: Parsed): unknown {
-    if (p.kind === "judge") return q.isValid;
-    if (p.kind === "every") return q.selectAnswer.map(i => p.ask.options![i]).sort((a, b) => a - b);
-    return p.ask.options![q.correctChoice];
+/** The answer the claim on screen was shipped with, in the engine's terms. */
+function shipped(q: Question, p: Parsed): string {
+    if (p.kind === "types") return answerKey([...q.selectAnswer].map(i => p.ask.options![i]).sort((a, b) => a - b));
+    if (p.kind === "judge") return answerKey(q.isValid);
+    return answerKey(p.ask.options![q.correctChoice]);
+}
+
+/** The reader's own answer to a parsed claim. */
+function answered(p: Parsed, rec: Reconstruction): string {
+    if (p.kind === "types") {
+        const offered = new Set(p.ask.options);
+        return answerKey(rec.types.map((t, i) => 2 * i + (t ? 0 : 1)).filter(k => offered.has(k)).sort((a, b) => a - b));
+    }
+    return answerKey(QUESTIONS[p.kind].answer(p.ask, rec));
 }
 
 function names(q: Question, n: number) {
@@ -214,46 +244,75 @@ function names(q: Question, n: number) {
     return { things: q.bucket.slice(0, things), speakers: q.bucket.slice(things) };
 }
 
+/**
+ * Every claim of an item as the screen shows it, in order, advanced by the
+ * game's own series code — answered right, so the next claim comes up.
+ */
+function walk(q: Question, premises: number, each: (p: Parsed, at: number, first: Parsed) => void): string[] {
+    const { things, speakers } = names(q, premises);
+    const modes: string[] = [];
+    let first: Parsed | null = null;
+    for (;;) {
+        const p = parse(shown(q), things, speakers);
+        first = first ?? p;
+        modes.push(q.answerMode);
+        each(p, q.seriesAt, first);
+        if (!hasNextClaim(q)) break;
+        takeSeriesAnswer(q, q.answerMode === "boolean" ? q.isValid : true);
+    }
+    return modes;
+}
+
 /* ------------------------------------------------------------------ *
  * The writer, read back                                               *
  * ------------------------------------------------------------------ */
 
-test("composed world: the card alone rebuilds the world and answers every kind of question as shipped", () => {
-    let n = 0;
-    for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) for (const kind of fitting(worldSize(premises))) {
-        seeded(1000 + n++, () => {
-            const q = createComposedWorld(ctxHolding([]), premises, kind);
-            const { things, speakers } = names(q, premises);
-            const p = parse(q, things, speakers);
-            equal(p.kind, kind, "the question read back is the kind asked for");
-            const rec = read(p.card, FULL);
-            assert(rec, `the full reading of the card fails:\n${q.premises.map(strip).join("\n")}`);
-            const answer = QUESTIONS[kind].answer(p.ask, rec!);
-            assert(answer !== null, `the card does not settle its question: ${strip(q.choicePrompt || (q.conclusion as string))}`);
-            equal(answerKey(answer), answerKey(shipped(q, p) as never), `${kind}: the card's answer is not the one shipped`);
+test("composed world: in stages — ticks, analogies to finish, then verdicts across what is announced", () => {
+    for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) seeded(1000 + premises, () => {
+        const q = createComposedWorld(ctxHolding([]), premises);
+        const modes = walk(q, premises, () => undefined).join(" ");
+        assert(/^select (choice ){2,3}(boolean ?){2,3}$/.test(modes), `the stages run ${modes}`);
+        assert(q.premises.length > q.series[0].premises!.length, "the last stage announces nothing new");
+    });
+});
+
+test("composed world: the card alone answers every claim of every stage as shipped", () => {
+    for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) for (let r = 0; r < 3; r++) {
+        seeded(1100 + 10 * premises + r, () => {
+            const q = createComposedWorld(ctxHolding([]), premises);
+            walk(q, premises, p => {
+                const rec = read(p.card, FULL);
+                assert(rec, `the full reading of the card fails:\n${q.premises.map(strip).join("\n")}`);
+                equal(answered(p, rec!), shipped(q, p), `${p.kind}: the card's answer is not the one shipped`);
+            });
         });
     }
 });
 
-test("composed world: read from the text, every shortcut misses", () => {
-    for (let s = 0; s < 24; s++) seeded(2000 + s, () => {
-        const kind = KINDS[s % KINDS.length], premises = 8;
-        const q = createComposedWorld(ctxHolding([]), premises, kind);
-        const { things, speakers } = names(q, premises);
-        const p = parse(q, things, speakers);
-        const truth = answerKey(shipped(q, p) as never);
-        for (const [name, reading] of Object.entries(SHORTCUTS)) {
-            const rec = read(p.card, reading);
-            const a = rec ? QUESTIONS[kind].answer(p.ask, rec) : null;
-            assert(answerKey(a) !== truth, `${kind}: ignoring ${name} still gives the answer (${truth})`);
-        }
+test("composed world: read from the text, every shortcut misses every analogy, and ignoring the announcement misses every verdict", () => {
+    for (let s = 0; s < 8; s++) seeded(2000 + s, () => {
+        const premises = 4 + (s % 5);
+        const q = createComposedWorld(ctxHolding([]), premises);
+        walk(q, premises, (p, at, first) => {
+            if (p.kind === "types") return;
+            const truth = shipped(q, p);
+            for (const [name, reading] of Object.entries(SHORTCUTS)) {
+                const rec = read(p.card, reading);
+                assert((rec ? answered(p, rec) : answerKey(null)) !== truth, `claim ${at}, ${p.kind}: ignoring ${name} still gives ${truth}`);
+            }
+            if (p.kind === "judge") {
+                const before = read(first.card, FULL)!;
+                assert(answered(p, before) !== truth, `claim ${at}: the verdict is the same without what was announced`);
+            }
+        });
     });
 });
 
 test("composed world: nothing in an item is left unworded", () => {
     for (let s = 0; s < 16; s++) seeded(3000 + s, () => {
         const q = createComposedWorld(ctxHolding([]), 4 + (s % 5));
-        const text = [...q.setup, ...q.premises, q.conclusion as string, q.choicePrompt ?? "", ...q.choices, ...q.explanation].map(strip).join("\n");
+        const claims = q.series.flatMap(c => [c.text, c.prompt ?? "", ...(c.choices ?? []), ...(c.explanation ?? []), ...(c.premises ?? [])]);
+        const text = [...q.setup, ...q.premises, q.conclusion as string, q.choicePrompt ?? "", ...q.choices, ...q.explanation, ...claims].map(strip).join("\n");
         for (const bad of ["undefined", "NaN", "null", "[object", "-0 "]) assert(!text.includes(bad), `"${bad}" in:\n${text}`);
         equal(new Set(q.bucket).size, q.bucket.length, "every name is distinct");
     });

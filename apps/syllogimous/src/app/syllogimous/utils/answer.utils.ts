@@ -75,6 +75,22 @@ function advanceClaim(q: Question) {
         q.choicePrompt = next.prompt ?? q.choicePrompt;
         q.userChoice = -1;
     }
+    /*
+     * A claim answered another way than the last brings its own control, and
+     * the last one's apparatus goes: options left on screen under a true-or-
+     * false claim would be a second way of answering it, scored by nobody.
+     */
+    if (next.answerMode) {
+        q.answerMode = next.answerMode;
+        if (next.answerMode === "boolean") {
+            q.choices = [];
+            q.correctChoice = -1;
+            q.choicePrompt = "";
+        }
+        q.selectAnswer = next.answerMode === "select" ? [...(next.selectAnswer ?? [])] : [];
+        q.selectAsked = next.answerMode === "select";
+        q.userChoice = -1;
+    }
     // A claim that brought its own derivation is a claim the item's own would
     // have described wrongly.
     if (next.explanation) q.explanation = [...next.explanation];

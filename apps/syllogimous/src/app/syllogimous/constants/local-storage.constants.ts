@@ -181,6 +181,9 @@ export const LS_STREAM_ANALOGY = "SYL_STREAM_ANALOGY";
  * structure intact while another is built on top of it.
  */
 export const LS_DELAY = "SYL_DELAY";
+/** Composed World in place of the draw, and at how many premises. */
+export const LS_WORLD = "SYL_WORLD";
+export const LS_WORLD_PREMISES = "SYL_WORLD_PREMISES";
 export const LS_DELAY_TYPE = "SYL_DELAY_TYPE";
 /** How many screens back each conclusion reaches. */
 export const LS_DELAY_DEPTH = "SYL_DELAY_DEPTH";

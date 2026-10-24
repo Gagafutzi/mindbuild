@@ -9,20 +9,25 @@
  * every speaker, ignoring the motion, the seams, the lengths or the events —
  * answers it wrongly or cannot answer it at all.
  *
+ * Asked in stages, one card and five to seven conclusions: who is a knight
+ * and who a knave, ticked; two or three analogies to finish; then one or two
+ * transformations announced later in the day, and two or three analogies to
+ * judge across them. Played from the Experimental page, unscored, its time
+ * counted towards the daily goal.
+ *
  * The engine is in `utils/world/`, built from registries (seams,
  * transformations, kinds of fact, kinds of question) so that each is extended
- * by adding an entry. This file only words an item and hands it over. No
- * ladder: every kind of question and every variant is in play from the first
- * item.
+ * by adding an entry. This file only words an item and hands it over.
  */
 
 import { EnumQuestionType } from "../constants/question.constants";
-import { Question } from "../models/question.models";
+import { Question, SeriesClaim } from "../models/question.models";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
-import { getRandomSymbols, shuffle } from "../utils/question.utils";
+import { getRandomSymbols } from "../utils/question.utils";
 import { ndAxisColors } from "../utils/ndspace.utils";
-import { Item, build, fitting } from "../utils/world/build";
-import { Rendered, render } from "../utils/world/render";
+import { StagedItem, buildStaged } from "../utils/world/build";
+import { describeStatement, Wording } from "../utils/world/facts";
+import { renderAsk, renderTypes, setupLines } from "../utils/world/render";
 import { GeneratorContext } from "./context";
 
 /**
@@ -46,7 +51,7 @@ export const worldSize = (numOfPremises: number) => LADDER[Math.max(4, Math.min(
 /** Characters of premises a first card may run to; the suite's cap is 650, and names vary. */
 const FLOOR_BUDGET = 600;
 
-export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number, kind?: string): Question {
+export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number): Question {
     ctx.logger.info("createComposedWorld");
     const type = EnumQuestionType.ComposedWorld;
     if (!canGenerateQuestion(type, numOfPremises, ctx.settings)) throw new Error("Cannot generate.");
@@ -58,12 +63,9 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
        as the next. So on the smallest space a long draw is drawn again, and the
        shortest of a few kept. */
     const tries = size.dims <= 3 ? 6 : 1;
-    let best: { item: Item; names: string[]; r: Rendered; length: number } | null = null;
+    let best: { item: StagedItem; names: string[]; premises: string[]; length: number } | null = null;
     for (let t = 0; t < tries && !(best && best.length <= FLOOR_BUDGET); t++) {
-        /* A kind that will not build on this card's size gives way to the
-           others, each tried once, rather than costing the player an error. */
-        let item: Item | null = null;
-        for (const k of kind ? [kind] : shuffle(fitting(size))) if ((item = build({ ...size, kind: k }, 1500))) break;
+        const item = buildStaged(size, 300);
         if (!item) continue;
         /* Distinct, and none that reads as the landmark: a speaker called Post
            says "Post says: … the Post …". Drawn again rather than given up on. */
@@ -74,37 +76,51 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
             names = [];
         }
         if (!names.length) continue;
-        const colors = ndAxisColors(item.world.axes.map(a => ({ scale: a.scale })));
-        const r = render(item, names.slice(0, things), names.slice(things), colors);
-        const length = r.premises.reduce((n, l) => n + l.replace(/<[^>]+>/g, "").length, 0);
-        if (!best || length < best.length) best = { item, names, r, length };
+        const w = wording(item, names, things);
+        const premises = item.card.statements.map(st => describeStatement(w, st));
+        const length = premises.reduce((n, l) => n + l.replace(/<[^>]+>/g, "").length, 0);
+        if (!best || length < best.length) best = { item, names, premises, length };
     }
     if (!best) throw new Error("Cannot generate.");
-    const { item, names, r } = best;
+    const { item, names, premises } = best;
+    const w = wording(item, names, things);
+
+    const ticks = renderTypes(item, w);
+    const finishes = item.analogies.map(a => renderAsk(item.reconstruction, a, w));
+    const verdicts = item.judgements.map(j => renderAsk(item.laterReconstruction, j, w));
+    /* The announcement goes at the end of the card, where the carousel lands
+       when the last stage begins. */
+    const announced = [...premises, ...item.later.map(st => describeStatement(w, st))];
+
+    const series: SeriesClaim[] = [
+        { text: "", isValid: true, answerMode: "select", choices: ticks.choices, selectAnswer: ticks.selectAnswer,
+            prompt: ticks.prompt, explanation: ticks.explanation, premises },
+        ...finishes.map((f): SeriesClaim => ({ text: "", isValid: true, answerMode: "choice", choices: f.choices,
+            correctChoice: f.correctChoice, prompt: f.prompt, explanation: f.explanation })),
+        ...verdicts.map((v, i): SeriesClaim => ({ text: v.conclusion, isValid: item.judgements[i].answer === true,
+            answerMode: "boolean", explanation: v.explanation, ...(i === 0 ? { premises: announced } : {}) })),
+    ];
 
     const question = new Question(type);
     question.bucket = [...names];
-    question.setup = r.setup;
-    question.premises = r.premises;
-    question.explanation = r.explanation;
-    if (item.kind.answerMode === "boolean") {
-        question.conclusion = r.conclusion;
-        question.isValid = item.answer === true;
-    } else if (item.kind.answerMode === "choice") {
-        question.answerMode = "choice";
-        question.choices = r.choices;
-        question.correctChoice = r.correctChoice;
-        question.choicePrompt = r.prompt;
-        question.conclusion = "";
-        question.isValid = true;
-    } else {
-        question.answerMode = "select";
-        question.choices = r.choices;
-        question.selectAnswer = r.selectAnswer;
-        question.selectAsked = true;
-        question.choicePrompt = r.prompt;
-        question.conclusion = "";
-        question.isValid = true;
-    }
+    question.setup = setupLines(item.world.axes, w.colors);
+    question.premises = premises;
+    question.explanation = ticks.explanation;
+    question.answerMode = "select";
+    question.choices = ticks.choices;
+    question.selectAnswer = ticks.selectAnswer;
+    question.selectAsked = true;
+    question.choicePrompt = ticks.prompt;
+    question.conclusion = "";
+    question.isValid = true;
+    question.series = series;
+    /* Experimental: kept out of the ability model, as the stream and the delay
+       line are, but timed and counted towards the daily goal like any item. */
+    question.playgroundMode = true;
     return question;
+}
+
+function wording(item: StagedItem, names: string[], things: number): Wording {
+    const axes = item.world.axes;
+    return { axes, colors: ndAxisColors(axes.map(a => ({ scale: a.scale }))), things: names.slice(0, things), speakers: names.slice(things) };
 }

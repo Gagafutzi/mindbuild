@@ -64,10 +64,10 @@ export class ProgressAndPerformanceService {
      * *counted*, which is the honest split — the raw number is a record, and
      * "time on task" is a claim.
      */
-    setDailyProgress(isoDate: string, ms: number) {
+    setDailyProgress(isoDate: string, ms: number, capSeconds = MAX_ITEM_SECONDS) {
         const dailyProgress = this.getDailyProgress();
         dailyProgress[isoDate] = dailyProgress[isoDate] || 0;
-        dailyProgress[isoDate] += Math.max(0, Math.min(ms, MAX_ITEM_SECONDS * 1000));
+        dailyProgress[isoDate] += Math.max(0, Math.min(ms, capSeconds * 1000));
         localStorage.setItem(LS_DAILY_PROGRESS, JSON.stringify(dailyProgress));
     }
 

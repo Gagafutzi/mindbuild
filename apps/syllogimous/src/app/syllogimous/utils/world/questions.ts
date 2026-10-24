@@ -54,8 +54,8 @@ export interface QuestionKind {
     answerMode: "choice" | "boolean" | "select";
     /** Whether a card with this many things and speakers can ask it at all. */
     fits?(things: number, speakers: number): boolean;
-    /** Parameters for an item on this world, or null if it offers none. */
-    draw(world: World, things: number, speakers: number, types: boolean[], rnd: () => number): Ask | null;
+    /** Parameters for an item on this world, or null if it offers none; hours within `span`. */
+    draw(world: World, things: number, speakers: number, types: boolean[], rnd: () => number, span?: Span): Ask | null;
     answer(q: Ask, rec: Reconstruction): Answer;
 }
 
@@ -88,10 +88,15 @@ function drawPairs(things: number, rnd: () => number) {
     return { x, y, z };
 }
 
-function hours(rnd: () => number) {
-    const h1 = 1 + Math.floor(rnd() * 11);
-    const h2 = rnd() < 0.25 ? h1 : 1 + Math.floor(rnd() * 11);
-    return { h1, h2 };
+/** The hours a question may read its two relations at, inclusive. */
+export interface Span { h1: [number, number]; h2: [number, number] }
+export const ALL_DAY: Span = { h1: [1, 11], h2: [1, 11] };
+
+function hours(rnd: () => number, span: Span) {
+    const within = ([lo, hi]: [number, number]) => lo + Math.floor(rnd() * (hi - lo + 1));
+    const h1 = within(span.h1);
+    const same = h1 >= span.h2[0] && h1 <= span.h2[1] && rnd() < 0.25;
+    return { h1, h2: same ? h1 : within(span.h2) };
 }
 
 export const QUESTIONS: Record<string, QuestionKind> = {
@@ -102,8 +107,8 @@ export const QUESTIONS: Record<string, QuestionKind> = {
     which: {
         id: "which",
         answerMode: "choice",
-        draw(world, things, _s, _t, rnd) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd), on = drawAxes(world.axes, rnd);
+        draw(world, things, _s, _t, rnd, span = ALL_DAY) {
+            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(world.axes, rnd);
             const rel = relation(world.axes, thingAt(world, x, h1), thingAt(world, y, h1), on);
             const pool = everyone(things).filter(w => w !== z);
             const fit = matches(world, things, z, h2, on, rel, pool);
@@ -121,8 +126,8 @@ export const QUESTIONS: Record<string, QuestionKind> = {
     judge: {
         id: "judge",
         answerMode: "boolean",
-        draw(world, things, _s, _t, rnd) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd), on = drawAxes(world.axes, rnd);
+        draw(world, things, _s, _t, rnd, span = ALL_DAY) {
+            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(world.axes, rnd);
             const w = pick(everyone(things).filter(t => t !== z), rnd);
             return { kind: "judge", x, y, z, w, h1, h2, on };
         },
@@ -137,8 +142,8 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         answerMode: "select",
         /* Three to choose among at least: two would be a choice with a submit button. */
         fits: things => things >= 3,
-        draw(world, things, _s, _t, rnd) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd), on = drawAxes(world.axes, rnd).slice(0, 2);
+        draw(world, things, _s, _t, rnd, span = ALL_DAY) {
+            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(world.axes, rnd).slice(0, 2);
             return { kind: "every", x, y, z, h1, h2, on, options: everyone(things).filter(w => w !== z) };
         },
         answer(q, rec) {

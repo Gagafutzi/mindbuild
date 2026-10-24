@@ -154,12 +154,19 @@ function tallyModes(items: AnsweredItem[]): ModeTally[] {
  */
 export const MAX_ITEM_SECONDS = 300;
 
+/**
+ * The cap for one item: five minutes a conclusion. An item that asks seven
+ * conclusions on one card is seven questions' worth of time on task, and capped
+ * like one it counted a long staged item as a short one.
+ */
+export const itemCapSeconds = (q: { series?: unknown[] }) => MAX_ITEM_SECONDS * Math.max(1, q.series?.length ?? 0);
+
 function timeOnTask(items: AnsweredItem[]): number {
     let total = 0;
     for (const q of items) {
         if (!q.createdAt || !q.answeredAt) continue;
         const seconds = (q.answeredAt - q.createdAt) / 1000;
-        if (seconds > 0) total += Math.min(seconds, MAX_ITEM_SECONDS);
+        if (seconds > 0) total += Math.min(seconds, itemCapSeconds(q));
     }
     return Math.round(total);
 }

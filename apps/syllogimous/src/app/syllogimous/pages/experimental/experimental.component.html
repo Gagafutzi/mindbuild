@@ -2,6 +2,31 @@
 
     <h2 class="mb-1">Experimental</h2>
 
+    <app-collapsible heading="Composed World">
+        <div class="d-grid" style="gap: 0.75rem;">
+            <label class="flag">
+                <input type="checkbox" class="form-check-input"
+                       [checked]="worldOn" (change)="setWorldOn($any($event.target).checked)">
+                <span>Composed World
+                    <small class="d-block text-muted">
+                        One card in stages: who is a knight and who a knave, two or three
+                        analogies to finish, then transformations announced and two or three
+                        analogies to judge. Unscored; its time counts towards the daily goal.
+                    </small>
+                </span>
+            </label>
+
+            <div class="d-grid" style="gap: 0.35rem;" [class.is-idle]="!worldOn">
+                <label for="world-premises" class="text-muted small">Size</label>
+                <select id="world-premises" class="form-select form-select-sm"
+                        [disabled]="!worldOn" [value]="worldPremises"
+                        (change)="setWorldPremises($any($event.target).value)">
+                    <option *ngFor="let n of worldSizes" [value]="n.premises">{{ n.label }}</option>
+                </select>
+            </div>
+        </div>
+    </app-collapsible>
+
 
     <app-collapsible heading="Delay line">
         <div class="d-grid" style="gap: 0.75rem;">

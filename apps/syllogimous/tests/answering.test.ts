@@ -134,6 +134,15 @@ function faultsIn(q: Question): string[] {
      */
     if (q.series.length === 1) out.push("a series of one claim");
     for (const [i, claim] of q.series.entries()) {
+        /* A staged item says how each claim is answered; the rest are answered
+           the item's way. Either way, by a control the advance can swap. */
+        const mode = claim.answerMode ?? q.answerMode;
+        if (mode === "select") {
+            if ((claim.choices?.length ?? 0) < 3) out.push(`select: claim ${i} offers ${claim.choices?.length ?? 0}`);
+            if (!claim.selectAnswer || claim.selectAnswer.some(k => k < 0 || k >= claim.choices!.length)) out.push(`select: claim ${i} has no answer among its options`);
+            if (claim.isValid !== true) out.push(`select: claim ${i} is scored as false`);
+            continue;
+        }
         if (mode === "construct" || mode === "map") {
             out.push(`${mode}: a series the card cannot advance`);
             break;

@@ -292,6 +292,10 @@ export class GameComponent {
          * back by hand, past premises that had not changed.
          */
         this.claimSub = this.game.claimChanged.subscribe(() => {
+            // The last claim's ticks and cursor are an answer to a question no
+            // longer on screen.
+            this.selectPicks = [];
+            this.choiceFocus = -1;
             this.showClaimSite();
             // Answering a conclusion buys seconds, so the bar has further to
             // fall than it did a moment ago and its sweep has to be re-armed.
@@ -554,7 +558,7 @@ export class GameComponent {
 
         const at = this.game.question.seriesFocusPremise;
         const target = at >= 0 ? "premise-" + at
-            : this.game.question.answerMode === "choice" ? "choices"
+            : this.game.question.answerMode === "choice" || this.game.question.answerMode === "select" ? "choices"
             : "conclusion-0";
 
         if (!this.slideOrder.includes(target)) return;

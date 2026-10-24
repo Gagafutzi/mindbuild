@@ -5,6 +5,8 @@ import { EnumScreens } from "../../constants/game.constants";
 import { EnumQuestionType } from "../../constants/question.constants";
 import { STREAM_TYPES } from "../../generators/stream";
 import { DELAY_TYPES } from "../../generators/delay-line";
+import { worldSize } from "../../generators/composed-world";
+import { QUESTION_TYPE_SETTING_PARAMS } from "../../constants/settings.constants";
 
 /**
  * The two modes that replace the draw rather than joining it.
@@ -37,10 +39,32 @@ export class ExperimentalComponent {
 
     setStreamOn(value: boolean) {
         this.game.setStreamOn(value);
-        // One draw at a time: both of these replace it, so turning one on has
-        // to turn the other off or the second would silently never run.
-        if (value) this.game.setDelayOn(false);
+        // One draw at a time: each of these replaces it, so turning one on has
+        // to turn the others off or the rest would silently never run.
+        if (value) { this.game.setDelayOn(false); this.game.setWorldOn(false); }
     }
+
+    /* ---- composed world ---- */
+
+    get worldOn() { return this.game.worldOn; }
+
+    setWorldOn(value: boolean) {
+        this.game.setWorldOn(value);
+        if (value) { this.game.setStreamOn(false); this.game.setDelayOn(false); }
+    }
+
+    get worldPremises() { return this.game.worldPremises; }
+
+    setWorldPremises(value: string) { this.game.setWorldPremises(Number(value)); }
+
+    /** Every size, chosen outright: what each one puts on the card. */
+    worldSizes = (() => {
+        const { minNumOfPremises: lo, maxNumOfPremises: hi } = QUESTION_TYPE_SETTING_PARAMS[EnumQuestionType.ComposedWorld];
+        return Array.from({ length: hi - lo + 1 }, (_, i) => {
+            const s = worldSize(lo + i);
+            return { premises: lo + i, label: `${s.dims} axes, ${s.things} things, ${s.speakers} speakers` };
+        });
+    })();
 
     get streamType() { return this.game.streamType; }
 
@@ -66,7 +90,7 @@ export class ExperimentalComponent {
 
     setDelayOn(value: boolean) {
         this.game.setDelayOn(value);
-        if (value) this.game.setStreamOn(false);
+        if (value) { this.game.setStreamOn(false); this.game.setWorldOn(false); }
     }
 
     get delayType() { return this.game.delayType; }

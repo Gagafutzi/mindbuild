@@ -521,8 +521,9 @@ export const QUESTION_TYPE_SETTING_PARAMS: Record<EnumQuestionType, ISettingPara
     /* Premises buy things and speakers (see `worldSize`), not statements: the card
        carries a statement for every place, pace, length, event and claim, which is
        far more than the count. Four is three things and three speakers. */
+    /* Off: played from the Experimental page, never in the draw. */
     [EnumQuestionType.ComposedWorld]: {
-        enabled: true,
+        enabled: false,
         minNumOfPremises: 4,
         maxNumOfPremises: 8,
         basic: false,

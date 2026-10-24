@@ -1,5 +1,5 @@
 import { Component } from "@angular/core";
-import { ORDERED_QUESTION_TYPES } from "../../constants/game.constants";
+import { EXPERIMENTAL_ONLY, ORDERED_QUESTION_TYPES } from "../../constants/game.constants";
 import { EnumQuestionType } from "../../constants/question.constants";
 import { QUESTION_TYPE_SETTING_PARAMS } from "../../constants/settings.constants";
 import { ModeOverride, SettingsOverrideService } from "../../services/settings-override.service";
@@ -24,7 +24,9 @@ interface Row {
     styleUrls: ["./advanced-options.component.css"],
 })
 export class AdvancedOptionsComponent {
-    rows: Row[] = ORDERED_QUESTION_TYPES.map(type => {
+    /* The experimental-only modes have their own page; switching one on here
+       would put it in a draw it is never drawn from. */
+    rows: Row[] = ORDERED_QUESTION_TYPES.filter(type => !EXPERIMENTAL_ONLY.has(type)).map(type => {
         const p = QUESTION_TYPE_SETTING_PARAMS[type];
         return {
             type,
