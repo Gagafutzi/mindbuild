@@ -44,6 +44,10 @@ export interface BuildOptions {
     dims?: number;
     /** Whether the card has a second space in brackets; drawn when unset. */
     nested?: boolean;
+    /** Whether the card leaves a length open, to ask what could be; drawn when unset. */
+    open?: boolean;
+    /** Whether the other kind has a reckoning of its own, on a space with kinds; drawn when unset. */
+    kinds?: boolean;
     /** Ask this kind only; otherwise every kind that fits the card, evenly. */
     kind?: string;
     rnd?: () => number;
@@ -142,8 +146,8 @@ function makeEvents(axes: Axis[], rnd: () => number, within = [2, 3, 4, 5, 6], s
  * other way round or two lines traded — the same in both spaces, which are
  * the same kind of space.
  */
-function makeFrames(axes: Axis[], rnd: () => number): Frames | undefined {
-    if (!axes.some(a => a.kind === "parity") || rnd() >= 0.5) return undefined;
+function makeFrames(axes: Axis[], rnd: () => number, want?: boolean): Frames | undefined {
+    if (!axes.some(a => a.kind === "parity") || !(want ?? rnd() < 0.5)) return undefined;
     const straight = [1, 2, 4, 5].filter(i => axes[i]?.kind === "line");
     return rnd() < 0.5 ? { rule: "mirror", axes: [pick(straight, rnd)] } : { rule: "swap", axes: shuffle(straight, rnd).slice(0, 2).sort((a, b) => a - b) };
 }
@@ -384,7 +388,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         }
         /* Or the hour two first meet, sharing ground — searched over the pairs,
            since most pairs never do. A knave names an hour they do not. */
-        if (roll > 0.82 && roll <= 0.92) {
+        if (roll > 0.75 && roll <= 0.92) {
             const at = (k: number, h: number) => thingAt(world, k, h);
             const meeting = ids.flatMap(p => ids.filter(q => q > p).map(q => [p, q, firstMeet(axes, at, p, q, LAST_HOUR)] as const))
                 .filter(([, , h]) => typeof h === "number" && h >= 1);
@@ -459,7 +463,7 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     clearReaderCache();
     const axes = makeAxes(rnd, opts.dims ?? 7);
     const start = Array.from({ length: opts.things }, () => makeBody(axes, rnd));
-    const frames = makeFrames(axes, rnd);
+    const frames = makeFrames(axes, rnd, opts.kinds);
     const world: World = { axes, start, events: makeEvents(axes, rnd, undefined, start), ...(frames ? { frames } : {}) };
     /* Every speaker stands in a thing and faces one of four ways. */
     /* Now and then a mirror twin, or one hanging head down. */
@@ -478,7 +482,7 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
         ? (s => ({ axes, start: s, events: makeEvents(axes, rnd, undefined, s), ...(frames ? { frames } : {}) }))(Array.from({ length: opts.things }, () => makeBody(axes, rnd)))
         : undefined;
     /* Now and then a card that leaves a length open, where there are enough things to ask what could be. */
-    const leaveOpen = opts.things >= 4 && rnd() < 0.7;
+    const leaveOpen = opts.things >= 4 && (opts.open ?? rnd() < 0.7);
     const outside = makeCard(world, types, firsts, rnd, 0, nested ? 1 : 2, leaveOpen);
     const inside = inner ? makeCard(inner, types, firsts, rnd, 1, 1) : [];
     if (!outside || !inside) return null;
@@ -601,6 +605,12 @@ export interface StagedItem {
     laterReconstruction: Reconstruction;
     analogies: Stage[];
     judgements: Stage[];
+    /**
+     * Last, one analogy to build across what was announced: a verdict can be
+     * guessed half the time, a point on every dimension cannot, and it is
+     * built in the world the announcement changed.
+     */
+    closing: Stage;
 }
 
 export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
@@ -615,7 +625,8 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
     const finishing = ["which", "which", "build", ...(QUESTIONS.speakers.fits!(opts.things, opts.speakers) ? ["speakers"] : [])];
     const reads = shortcutReads(card);
     const analogies: Stage[] = [];
-    /* A card left open asks what could be, first. */
+    /* A card left open asks what could be, first; one meant to be open that came out settled is drawn again. */
+    if (opts.open && !rec.alternatives) return null;
     if (rec.alternatives) {
         const could = fairStage(QUESTIONS.could, base, rec, reads, rnd, early);
         if (!could) return null;
@@ -658,12 +669,28 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
             judgements.push(stage);
         }
         if (judgements.length < 2) continue;
-        return { world: whole, card, later, types, reconstruction: rec, laterReconstruction: rec2, analogies, judgements };
+        const closing = fairStage(QUESTIONS.build, base, rec2, reads2, rnd, across, undefined, [...analogies, ...judgements].map(j => j.ask));
+        if (!closing) continue;
+        return { world: whole, card, later, types, reconstruction: rec, laterReconstruction: rec2, analogies, judgements, closing };
     }
     return null;
 }
 
+/**
+ * What a card is made of is drawn once, outside the retries, as `build` draws
+ * its kind: drawn afresh on each attempt, the parts that build easily shipped
+ * far more than their share — a card left open in one item in five where it
+ * was meant for most, kinds on a quarter of the cards meant to have them on
+ * half.
+ */
 export function buildStaged(opts: BuildOptions, attempts = 400): StagedItem | null {
+    const rnd = opts.rnd ?? Math.random;
+    opts = {
+        ...opts,
+        nested: opts.nested ?? rnd() < 0.75,
+        open: opts.open ?? (opts.things >= 4 && rnd() < 0.6),
+        kinds: opts.kinds ?? rnd() < 0.5,
+    };
     for (let i = 0; i < attempts; i++) {
         const item = tryBuildStaged(opts);
         if (item) return item;

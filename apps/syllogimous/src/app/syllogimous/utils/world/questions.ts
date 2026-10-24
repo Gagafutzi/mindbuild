@@ -276,7 +276,8 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         fits: (_things, speakers) => speakers >= 3,
         draw(_spaces, _things, speakers, types, rnd) {
             const ids = Array.from({ length: speakers }, (_, i) => i);
-            const x = pick(ids, rnd), y = pick(ids.filter(i => i !== x), rnd), z = pick(ids, rnd);
+            /* A third speaker of their own: "x is to y as x is to ?" only asks who is x's kind. */
+            const x = pick(ids, rnd), y = pick(ids.filter(i => i !== x), rnd), z = pick(ids.filter(i => i !== x && i !== y), rnd);
             const pool = ids.filter(i => i !== z);
             const fit = pool.filter(w => (types[z] === types[w]) === (types[x] === types[y]));
             const miss = pool.filter(w => !fit.includes(w));

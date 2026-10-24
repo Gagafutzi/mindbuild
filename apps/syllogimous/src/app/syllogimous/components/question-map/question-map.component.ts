@@ -1,6 +1,7 @@
 import { Component, Input } from "@angular/core";
 import { dimClass, dimSlot } from "../../utils/phrasing";
 import { Question } from "../../models/question.models";
+import { EnumQuestionType } from "../../constants/question.constants";
 import {
     CoordMap, QuestionMap, buildQuestionMap, coordMapFromTuples,
 } from "../../utils/map.utils";
@@ -107,7 +108,9 @@ export class QuestionMapComponent {
 
         if (q.buckets?.length) {
             this.groups = q.buckets.map(g => [...g]);
-        } else if (q.bucket?.length) {
+        } else if (q.bucket?.length && q.type !== EnumQuestionType.ComposedWorld) {
+            /* Composed World's bucket is only its names, in no order: drawn as a
+               chain it read as an ordering the card never states. */
             this.chain = [...q.bucket];
         }
     }

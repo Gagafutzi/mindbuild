@@ -28,7 +28,7 @@ import { EXPERIMENTAL_ONLY, EnumScreens, EnumTiers, ORDERED_QUESTION_TYPES, ORDE
 import { dialsFor, ladderFor } from "../utils/progression.utils";
 import { composeDelayLine, DELAY_TYPES, DEFAULT_DELAY, DEFAULT_DELAY_ROUNDS } from "../generators/delay-line";
 import { LS_DONT_SHOW, LS_GAME_MODE, LS_SCORE, LS_SERIES_BONUS, LS_SKIP_TUTORIALS, LS_STREAM, LS_STREAM_ANALOGY, LS_STREAM_LENGTH, LS_STREAM_TYPE, LS_STREAM_WINDOW, LS_SYMBOL_RELATIONS, LS_DELAY, LS_DELAY_TYPE, LS_WORLD, LS_WORLD_PREMISES, LS_DELAY_DEPTH, LS_DELAY_ROUNDS, LS_RANDOM_LABELS, LS_TIMER, LS_ZEN } from "../constants/local-storage.constants";
-import { explanationsOn, reviewSteps, setExplanationsOn } from "../utils/review.utils";
+import { explanationsOn, missedReview, reviewSteps, setExplanationsOn } from "../utils/review.utils";
 // Aliased: the service exposes members of the same names, and a call that
 // could be read as either is worth one line of renaming to avoid.
 import {
@@ -1889,8 +1889,12 @@ export class GameService implements GeneratorContext {
          * of moving on — unless the player has said not to, on Display & timer,
          * in which case a wrong answer flows on like every other.
          */
-        const derivation = reviewSteps(kind, this.question.explanation,
-            this.explanationsShown && !this.zenMode);
+        const shown = this.explanationsShown && !this.zenMode;
+        /* A series whose claims explain themselves stops for every one missed, not only the last. */
+        const own = missedReview(this.question, kind === "timeout");
+        const derivation = own
+            ? reviewSteps(own.steps.length ? "wrong" : "correct", own.steps, shown)
+            : reviewSteps(kind, this.question.explanation, shown);
 
         // Long enough to register, short enough not to feel like a screen.
         /*
@@ -1902,8 +1906,8 @@ export class GameService implements GeneratorContext {
          * wrong is a confident answer to a question nobody asked, so it says
          * which one it is answering.
          */
-        this.reviewNote = this.question.series.length > 1
-            ? "This explains the first conclusion of the item."
+        this.reviewNote = own ? own.note
+            : this.question.series.length > 1 ? "This explains the first conclusion of the item."
             : "";
 
         setTimeout(() => {

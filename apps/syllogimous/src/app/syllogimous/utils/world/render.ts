@@ -188,7 +188,8 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
         const where = (x: number, h: number, s?: number) => `${name(x)} at ${clock(h)}: ${thingAt(spaceOf(rec, s), x, h).pos.map((v, i) => clause(w, i, v)).join(", ")}`;
         out.explanation.push(
             `from ${POST_NAME}, ${where(q.x, q.h1, q.s1)}; ${where(q.y, q.h1, q.s1)}`,
-            `so ${hi("P")} is where ${name(q.z)} would be moved by how ${name(q.y)} lies from ${name(q.x)}: ${d.map((v, i) => clause(w, i, v)).join(", ")} relative to ${name(q.w!)}`,
+            /* The list is where P ends up from the fourth thing, not the pair's relation: said so, or it read as the latter. */
+            `so ${hi("P")} is ${name(q.z)} moved the way ${name(q.y)} lies from ${name(q.x)}, which puts ${hi("P")} ${d.map((v, i) => clause(w, i, v)).join(", ")} relative to ${name(q.w!)}`,
             `${where(q.z, q.h2, q.s2)}; ${where(q.w!, q.h2, q.s2)}`);
         return out;
     }

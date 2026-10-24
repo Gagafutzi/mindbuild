@@ -27,6 +27,7 @@ import { Fact, IntervalRel, MAX_LEN, POST, Seen, Statement, intervalRel, negate,
 const LONG = MAX_LEN;
 import { Card, OPEN_MAX, Reconstruction, read, settleByClaims, thingAt, worlds } from "../src/app/syllogimous/utils/world/reader";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
+import { missedReview } from "../src/app/syllogimous/utils/review.utils";
 import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
 import { Ask, QUESTIONS, REACH, answerFollows, answerKey } from "../src/app/syllogimous/utils/world/questions";
 import { BuildOptions, Item, build, buildStaged, fitting, makeAxes, tryBuild } from "../src/app/syllogimous/utils/world/build";
@@ -415,12 +416,13 @@ function walk(q: Question, premises: number, each: (p: Parsed, at: number, first
  * The writer, read back                                               *
  * ------------------------------------------------------------------ */
 
-test("composed world: in stages — ticks, analogies to finish, then verdicts across what is announced", () => {
+test("composed world: in stages — ticks, analogies to finish, verdicts across what is announced, then one to build across it", () => {
     for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) seeded(1000 + premises, () => {
         const q = createComposedWorld(ctxHolding([]), premises);
         const modes = walk(q, premises, () => undefined).join(" ");
         /* A card left open asks what could be — a second select — before the analogies to finish. */
-        const finish = /^select ((?:select )?(?:(?:choice|construct) )+)(boolean ?){2,3}$/.exec(modes);
+        /* And one built last, across the announcement. */
+        const finish = /^select ((?:select )?(?:(?:choice|construct) )+)(?:boolean ){2,3}construct$/.exec(modes);
         assert(!!finish && [2, 3].includes(finish[1].trim().split(" ").length), `the stages run ${modes}`);
         assert(q.premises.length > q.series[0].premises!.length, "the last stage announces nothing new");
     });
@@ -451,7 +453,8 @@ test("composed world: read from the text, every shortcut misses every analogy, a
                 const rec = read(p.card, reading);
                 assert((rec ? answered(p, rec) : answerKey(null)) !== truth, `claim ${at}, ${p.kind}: ignoring ${name} still gives ${truth}`);
             }
-            if (p.kind === "judge") {
+            /* The verdicts and the closing build are both across the announcement. */
+            if (p.kind === "judge" || (p.kind === "build" && at === q.series.length - 1)) {
                 const before = read(first.card, FULL)!;
                 assert(answered(p, before) !== truth, `claim ${at}: the verdict is the same without what was announced`);
             }
@@ -639,7 +642,7 @@ test("composed world: every part of the structure turns up in what ships", () =>
     seeded(8100, () => {
         for (let k = 0; k < 8; k++) {
             const st = buildStaged({ dims: 7, things: 4, speakers: 4 }, 300);
-            if (st) for (const stage of [...st.analogies, ...st.judgements]) {
+            if (st) for (const stage of [...st.analogies, ...st.judgements, st.closing]) {
                 if (stage.ask.on.includes(REACH)) seen.add("the light cone in an analogy");
                 if (stage.kind.id === "build") seen.add("an analogy to build");
                 if (stage.kind.id === "could") seen.add("an analogy left open");
@@ -767,4 +770,51 @@ test("composed world: premises buy axes, things and speakers, and every kind is 
         assert(it.world.events.length >= 1, "the floor has a transformation");
         assert(it.types.some(t => !t), "the floor has a knave");
     }
+});
+
+test("composed world: a speakers analogy names three speakers, so it asks more than who is x's kind", () => {
+    seeded(9300, () => {
+        for (let i = 0; i < 400; i++) {
+            const n = 3 + (i % 3), types = Array.from({ length: n }, () => Math.random() < 0.5);
+            const q = QUESTIONS.speakers.draw({} as never, 4, n, types, Math.random);
+            if (q) assert(q.z !== q.x && q.z !== q.y, `x ${q.x}, y ${q.y}, z ${q.z}: the third term repeats one of the pair`);
+        }
+    });
+});
+
+test("composed world: a conclusion missed at any stage is explained, under its own number", () => {
+    for (let s = 0; s < 6; s++) seeded(9400 + s, () => {
+        const q = createComposedWorld(ctxHolding([]), 4 + (s % 5));
+        const n = q.series.length, miss = s % n;
+        const shownAt: string[][] = [];
+        for (let k = 0; k < n; k++) {
+            shownAt.push([...q.explanation]);
+            const right = q.answerMode === "boolean" ? q.isValid : true;
+            if (k < n - 1) takeSeriesAnswer(q, k === miss ? !right : right);
+            else q.seriesAnswers[k] = k !== miss;
+        }
+        const review = missedReview(q)!;
+        assert(!!review, "a staged card's claims each explain themselves");
+        equal(review.steps[0], `<strong>Conclusion ${miss + 1} of ${n}:</strong> ${shownAt[miss][0]}`, "the review heads the conclusion that was missed");
+        equal(review.steps.slice(1), shownAt[miss].slice(1), "the review carries that conclusion's own derivation");
+        q.seriesAnswers = q.series.map(() => true);
+        equal(missedReview(q)!.steps.length, 0, "nothing missed, nothing to stop for");
+    });
+    equal(missedReview({ series: [{ explanation: ["a"] }, {}], seriesAnswers: [false, true], seriesAt: 1 }), null,
+        "claims that lean on the item's one derivation keep the review they had");
+});
+
+test("composed world: open cards and kinds ship their share, not what survives the retries", () => {
+    seeded(9500, () => {
+        let could = 0, kinds = 0;
+        const n = 16;
+        for (let i = 0; i < n; i++) {
+            const it = buildStaged(worldSize(8), 300)!;
+            if (it.analogies.some(a => a.kind.id === "could")) could++;
+            if (it.card.frames) kinds++;
+        }
+        /* Drawn once an item: 0.6 and 0.5 of sixteen. Drawn on every attempt they came to a fifth and a quarter. */
+        assert(could >= 6, `only ${could} of ${n} cards asked what could be`);
+        assert(kinds >= 5, `only ${kinds} of ${n} cards had kinds`);
+    });
 });

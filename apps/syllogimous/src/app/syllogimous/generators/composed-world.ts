@@ -9,10 +9,10 @@
  * every speaker, ignoring the motion, the seams, the lengths or the events —
  * answers it wrongly or cannot answer it at all.
  *
- * Asked in stages, one card and five to seven conclusions: who is a knight
+ * Asked in stages, one card and six to eight conclusions: who is a knight
  * and who a knave, ticked; two or three analogies to finish; then one or two
- * transformations announced later in the day, and two or three analogies to
- * judge across them. Played from the Experimental page, unscored, its time
+ * transformations announced later in the day, two or three analogies to
+ * judge across them, and one to build across them. Played from the Experimental page, unscored, its time
  * counted towards the daily goal.
  *
  * The engine is in `utils/world/`, built from registries (seams,
@@ -76,6 +76,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     const ticks = renderTypes(item, w);
     const finishes = item.analogies.map(a => renderAsk(item.reconstruction, a, w));
     const verdicts = item.judgements.map(j => renderAsk(item.laterReconstruction, j, w));
+    const closing = renderAsk(item.laterReconstruction, item.closing, w);
     /* The announcement goes at the end of the card, where the carousel lands
        when the last stage begins. */
     const announced = [...premises, ...item.later.map(st => describeStatement(w, st))];
@@ -90,6 +91,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
             : { text: "", isValid: true, answerMode: "choice", choices: f.choices, correctChoice: f.correctChoice, prompt: f.prompt, explanation: f.explanation }),
         ...verdicts.map((v, i): SeriesClaim => ({ text: v.conclusion, isValid: item.judgements[i].answer === true,
             answerMode: "boolean", explanation: v.explanation, ...(i === 0 ? { premises: announced } : {}) })),
+        { text: "", isValid: true, answerMode: "construct", construct: closing.construct!, prompt: closing.prompt, explanation: closing.explanation },
     ];
 
     const question = new Question(type);

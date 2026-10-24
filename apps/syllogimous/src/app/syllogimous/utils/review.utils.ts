@@ -59,3 +59,33 @@ export function reviewSteps(
     if (kind === "correct" || !shown) return [];
     return explanation ?? [];
 }
+
+/**
+ * The review for a series whose every claim explains itself: each conclusion
+ * missed, under its own heading, with its own derivation — or null where the
+ * claims lean on the item's one derivation, which keeps the review it had.
+ *
+ * The overlay used to open only when the last conclusion was wrong, and then
+ * with whichever derivation was on the question last. On a staged card that
+ * asks who the knights are, then analogies, then verdicts, a slip on the first
+ * stage was never explained at all, and the note said it explained the first
+ * conclusion while it showed the last one's.
+ *
+ * A timeout counts the conclusion that was on screen as missed.
+ */
+export function missedReview(
+    q: { series: Array<{ explanation?: string[] }>; seriesAnswers: Array<boolean | undefined>; seriesAt: number },
+    timedOut = false,
+): { steps: string[]; note: string } | null {
+    const n = q.series.length;
+    if (n < 2 || !q.series.every(c => c.explanation?.length)) return null;
+    const missed = q.series.map((_, k) => k).filter(k => q.seriesAnswers[k] === false || (timedOut && k === q.seriesAt && q.seriesAnswers[k] === undefined));
+    return {
+        /* The heading leads the conclusion's first step rather than taking a number of its own. */
+        steps: missed.flatMap(k => {
+            const [first, ...rest] = q.series[k].explanation!;
+            return [`<strong>Conclusion ${k + 1} of ${n}:</strong> ${first}`, ...rest];
+        }),
+        note: missed.length ? `Every conclusion missed, each with how it follows.` : "",
+    };
+}
