@@ -5,7 +5,7 @@
 
 import { hi, subj } from "../phrasing";
 import { Axis, Frames } from "./space";
-import { Fact, POST, POST_NAME, Statement, View, Wording, clause, clock, describeFact, describeStatement, holds, placeClauses, towards } from "./facts";
+import { Fact, POST, POST_NAME, Statement, View, Wording, clause, clock, describeFact, describeStatement, holds, placeClauses, ringWay, towards } from "./facts";
 import { Item, StagedItem } from "./build";
 import { ConstructClaim } from "../../models/question.models";
 import { Answer, Ask, Part, QUESTIONS, REACH, openLength, relation } from "./questions";
@@ -35,32 +35,32 @@ const axisWord = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
  * scrolled past on every item after.
  */
 export function setupLines(axes: Axis[], colors: string[] = [], compact = false, statements: Statement[] = [], frames?: Frames): string[] {
-    const out: string[] = compact ? ["A place leaves out every dimension it is level on."] : [];
+    const out: string[] = compact ? ["Places leave out what they are level on."] : [];
     if (frames) {
         const k = axes.findIndex(a => a.kind === "parity"), line = (i: number) => hi(axisWord(axes[i]), colors[i]);
-        const how = frames.rule === "mirror" ? `${line(frames.axes[0])} the other way round` : `${line(frames.axes[0])} and ${line(frames.axes[1])} traded`;
-        out.push(`A place said relative to a thing of the ${hi("opposite kind", colors[k])} to ${POST_NAME} is in its reckoning: ${how}.`);
+        const how = frames.rule === "mirror" ? `${line(frames.axes[0])} reversed` : `${line(frames.axes[0])} and ${line(frames.axes[1])} swapped`;
+        out.push(`From a thing of the ${hi("opposite kind", colors[k])}, places are in its reckoning: ${how}.`);
     }
     /* The rule a card leans on, on the cards that lean on it. */
     if (statements.some(st => st.fact.kind === "place" && st.fact.local)) {
-        out.push(`Local clocks read one step ${hi("later", colors[3])} per step ${hi("clockwise", colors[0])} from ${POST_NAME}.`);
+        out.push(`Local clocks run 1 ${hi("later", colors[3])} per step ${hi("clockwise", colors[0])}.`);
     }
     if (statements.some(st => st.fact.kind === "signal")) {
-        out.push(`A ring spreads one step ${hi("later", colors[3])} for every step it travels round ${hi("east–west", colors[0])}, along ${hi("north–south", colors[1])} and ${hi("up–down", colors[2])}.`);
+        out.push(`A ring spreads 1 step per step ${hi("later", colors[3])}.`);
     }
     axes.forEach((a, i) => {
         if (a.kind !== "ring") return;
-        const cyc = a.scale.cyclic!, seam = a.seam!;
+        const seam = a.seam!;
         /* Lower case inside the marked span: minimal mode converts what is marked,
            and a capitalised "East" was left in words over premises using marks. */
-        let line = `Along ${hi(axisWord(a), colors[i])}, a ring of ${a.modulus} steps counted ${hi(cyc.direction[0], colors[i])} from ${POST_NAME}`;
+        let line = `${hi(axisWord(a), colors[i])}: a ring of ${a.modulus}, counted ${hi(ringWay(a, false), colors[i])}`;
         if (seam.type === "twist") {
-            line += `; crossing back round mirrors ${hi(axisWord(axes[seam.target]), colors[seam.target])} through ${POST_NAME}, pace included`;
+            line += `; crossing round mirrors ${hi(axisWord(axes[seam.target]), colors[seam.target])}, pace too`;
         }
         if (seam.type === "portal") {
             const t = axes[seam.target].scale.direction, c = colors[seam.target];
-            line += `; crossing back round ${hi(cyc.direction[0], colors[i])} carries a thing ${hi(`${seam.shift} ${t[0]}`, c)}`
-                + ` (${hi(`${seam.shift} ${t[1]}`, c)} the other way)`;
+            line += `; crossing round ${hi(ringWay(a, false), colors[i])} moves a thing ${hi(`${seam.shift} ${t[0]}`, c)}`
+                + ` (back: ${hi(`${seam.shift} ${t[1]}`, c)})`;
         }
         out.push(line + ".");
     });
@@ -68,16 +68,16 @@ export function setupLines(axes: Axis[], colors: string[] = [], compact = false,
 }
 
 function partWords(axes: Axis[], i: number, p: Part, colors: string[]): string {
-    if (i === REACH) return hi(p === "reaches" ? "reached by a ring from it" : "out of a ring's reach", colors[3]);
+    if (i === REACH) return hi(p === "reaches" ? "in its ring's reach" : "beyond its ring", colors[3]);
     const ax = axes[i];
     if (ax.kind === "ring") {
-        const n = p as number, cyc = ax.scale.cyclic!;
-        return hi(n === 0 ? ax.scale.tie : `${n} ${n === 1 ? cyc.step : cyc.step + "s"} ${cyc.direction[0]}`, colors[i]);
+        const n = p as number;
+        return hi(n === 0 ? ax.scale.tie : `${n} ${ringWay(ax, false)}`, colors[i]);
     }
     if (ax.kind === "parity") return hi(p === "same" ? ax.scale.parity!.same : ax.scale.parity!.opposite, colors[i]);
     const words: Record<string, string> = {
-        before: `wholly ${towards(ax, 1)}`, after: `wholly ${towards(ax, 0)}`, overlaps: "partly overlapping",
-        within: "within", spans: "taking in all of", identical: "the same stretch",
+        before: `wholly ${towards(ax, 1)}`, after: `wholly ${towards(ax, 0)}`, overlaps: "overlapping",
+        within: "within", spans: "spanning", identical: "matching",
     };
     return hi(`${words[p as string]} (${axisWord(ax)})`, colors[i]);
 }
@@ -98,7 +98,7 @@ export interface RenderedAsk {
 export function unmaskingLines(rec: Reconstruction, w: Wording): string[] {
     return rec.unmasked.flatMap(u => u.by === "claims" ? []
         : [`${subj(w.speakers[u.speaker])} is a ${hi(rec.types[u.speaker] ? "knight" : "knave")}: "${describeFact(w, u.by)}"`
-            + `${u.space === 1 ? " inside the brackets" : ""} is ${rec.types[u.speaker] ? "true" : "false"}`]);
+            + `${u.space === 1 ? " inside" : ""} is ${rec.types[u.speaker] ? "true" : "false"}`]);
 }
 
 /**
@@ -108,7 +108,7 @@ export function unmaskingLines(rec: Reconstruction, w: Wording): string[] {
 function guessLines(item: StagedItem, w: Wording): string[] {
     const firsts = item.types.map((_, i) => i).filter(i => i !== item.asking.who);
     const kind = (t: boolean) => hi(t ? "knight" : "knave");
-    const guessWords = (t: boolean[]) => firsts.map(i => `${subj(w.speakers[i])} a ${kind(t[i])}`).join(" and ");
+    const guessWords = (t: boolean[]) => firsts.map(i => `${subj(w.speakers[i])} ${kind(t[i])}`).join(", ");
     const said = (s: Statement) => `${subj(w.speakers[s.speaker])}'s "${describeFact(w, s.fact)}"`;
     const words = item.words.filter(s => s !== item.asking.answer);
     const out: string[] = [];
@@ -118,23 +118,23 @@ function guessLines(item: StagedItem, w: Wording): string[] {
         if (t.every((v, i) => v === item.types[i])) continue;
         const b = wordBreach(item.card.axes, item.card.things, words, t);
         if (!b) continue;
-        const why = b.kind === "clash" ? `${said(b.a)} and ${said(b.b)} could not both be true`
-            : b.kind === "false" ? `${said(b.s)} would be false, from a knight`
-            : `${said(b.s)} would be true, from a knave`
-                + (b.still.length ? `: with no knight saying ${b.still.map(x => subj(w.things[x])).join(" or ")} moves, ${b.still.length > 1 ? "they stay" : "it stays"} still` : "")
-                + (b.none ? ": nothing happens that no knight says does" : "");
-        out.push(`Were ${guessWords(t)}, ${why}`);
+        const why = b.kind === "clash" ? `${said(b.a)} and ${said(b.b)} clash`
+            : b.kind === "false" ? `${said(b.s)} is false from a knight`
+            : `${said(b.s)} is true from a knave`
+                + (b.still.length ? ` (no knight moves ${b.still.map(x => subj(w.things[x])).join(" or ")})` : "")
+                + (b.none ? " (no knight says it happens)" : "");
+        out.push(`If ${guessWords(t)}: ${why}`);
     }
-    return [...out, `Only ${guessWords(item.types)} leaves every word as its speaker's kind needs it`];
+    return [...out, `Only ${guessWords(item.types)} fits every word`];
 }
 
 /** A question about the world, as put to a speaker. */
-export const questionWords = (w: Wording, f: Fact | null) => (f ? `Is it so that ${describeFact(w, f)}?` : "Are you a knight?");
+export const questionWords = (w: Wording, f: Fact | null) => (f ? `${describeFact(w, f)}?` : "Are you a knight?");
 
 /** The asked speaker's answer, as the card shows it. */
 export function answerLine(item: StagedItem, w: Wording): string {
     const a = item.asking.answer.fact, asked = a.kind === "not" ? a.f : a;
-    return `Asked whether ${describeFact(w, asked)}, ${subj(w.speakers[item.asking.who])} answers ${hi(a.kind === "not" ? "no" : "yes")}`;
+    return `Asked "${describeFact(w, asked)}?", ${subj(w.speakers[item.asking.who])} says ${hi(a.kind === "not" ? "no" : "yes")}`;
 }
 
 /**
@@ -146,13 +146,13 @@ export function renderQuestion(item: StagedItem, w: Wording): RenderedAsk {
     const who = subj(w.speakers[item.asking.who]), opts = item.asking.options;
     const so = (f: Fact) => holds(f, worldView(item.reconstruction)) === true;
     return {
-        prompt: `${who} has said nothing yet. Which of these questions, put to ${who}, would tell you whether ${who} is a knight or a knave? Select every one that would.`,
+        prompt: `${who} is silent. Which questions would tell what ${who} is? Select all that would.`,
         conclusion: "", correctChoice: -1,
         choices: opts.map(o => questionWords(w, o.fact)),
         selectAnswer: opts.map((o, i) => (o.tells ? i : -1)).filter(i => i >= 0),
-        explanation: opts.map(o => !o.fact ? `"Are you a knight?": a knight and a knave both answer yes`
-            : o.tells ? `Whether ${describeFact(w, o.fact)}: the words already settle it — it is ${so(o.fact) ? "so" : "not so"} — so a knight answers ${so(o.fact) ? "yes" : "no"} and a knave ${so(o.fact) ? "no" : "yes"}`
-            : `Whether ${describeFact(w, o.fact)}: nothing said yet settles it, so either answer could come from either`),
+        explanation: opts.map(o => !o.fact ? `"Are you a knight?": both kinds say yes`
+            : o.tells ? `"${describeFact(w, o.fact)}?": the words say ${so(o.fact) ? "yes" : "no"}, so a knight says ${so(o.fact) ? "yes" : "no"}, a knave ${so(o.fact) ? "no" : "yes"}`
+            : `"${describeFact(w, o.fact)}?": nothing settles it yet, so either answer fits either kind`),
     };
 }
 
@@ -166,7 +166,7 @@ function worldView(rec: Reconstruction): View {
 
 /** Where a relation is read, on a nested card; nothing on a flat one. */
 const sideWords = (rec: Reconstruction, s: number | undefined, again = false) =>
-    !rec.inner ? "" : s === 1 ? (again ? " inside them" : " inside the brackets") : (again ? " outside them" : " outside the brackets");
+    !rec.inner ? "" : s === 1 ? " inside" : " outside";
 
 /**
  * The premises as printed. On a nested card every statement about the space
@@ -200,7 +200,7 @@ export function renderPremises(statements: Statement[], w: Wording, wide = false
     return outer.map(o => {
         const tail = linked.get(o);
         const line = tail && tail.fact.kind === "place"
-            ? `${describeStatement(w, o)}, which is ${placeClauses(w, tail.fact)} relative to ${tail.fact.y === POST ? POST_NAME : subj(w.things[tail.fact.y])}`
+            ? `${describeStatement(w, o)}, which is ${placeClauses(w, tail.fact)} from ${tail.fact.y === POST ? POST_NAME : subj(w.things[tail.fact.y])}`
             : describeStatement(w, o);
         const on = riders.get(o);
         return on ? `${line} ${hi(`(where ${on.map(st => describeFact(w, st.fact)).join("; and ")})`)}` : line;
@@ -215,14 +215,14 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
 
     if (q.kind === "speakers") {
         const kindOf = (i: number) => (rec.types[i] ? "knight" : "knave");
-        out.prompt = `${subj(speakers[q.x])} stands to ${subj(speakers[q.y])} as ${subj(speakers[q.z])} stands to which speaker, in being alike or unalike in what they are?`;
+        out.prompt = `In kind, ${subj(speakers[q.x])} stands to ${subj(speakers[q.y])} as ${subj(speakers[q.z])} to which speaker?`;
         out.choices = q.options!.map(i => subj(speakers[i]));
         out.correctChoice = q.options!.indexOf(answer as number);
         out.explanation.push(`${subj(speakers[q.x])} is a ${kindOf(q.x)} and ${subj(speakers[q.y])} a ${kindOf(q.y)}, so ${subj(speakers[q.z])}, a ${kindOf(q.z)}, goes with ${subj(speakers[answer as number])}, a ${kindOf(answer as number)}`);
         return out;
     }
 
-    const on = q.on.map(i => (i === REACH ? hi("whether a ring reaches", colors[3]) : hi(axisWord(axes[i]), colors[i]))).join(", ");
+    const on = q.on.map(i => (i === REACH ? hi("ring reach", colors[3]) : hi(axisWord(axes[i]), colors[i]))).join(", ");
     const at = (x: number, h: number, s?: number) => thingAt(spaceOf(rec, s), x, h);
     const relText = (a: number, b: number, h: number, s?: number) =>
         relation(axes, at(a, h, s), at(b, h, s), q.on).map((p, k) => partWords(axes, q.on[k], p, colors)).join(", ");
@@ -231,13 +231,13 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
        labels, and "is to" is in the relation table, so it was printed as a
        label nothing on the card decoded. The analogy's frame is the question's
        own wording, not a relation of the space. */
-    const head = `At ${clock(q.h1)}${side1}, ${name(q.x)} stands to ${name(q.y)} on ${on} as ${name(q.z)} stands to`;
+    const head = `At ${clock(q.h1)}${side1}, ${name(q.x)} stands to ${name(q.y)} on ${on} as ${name(q.z)} to`;
     if (q.kind === "build") {
         /* Where the missing term is, from the fourth thing: a direction and a
            distance a dimension, judged round a ring the way any dial is. */
         const d = answer as number[];
-        out.prompt = `At ${clock(q.h1)}${side1}, ${name(q.x)} stands to ${name(q.y)} as ${name(q.z)} stands to a point ${hi("P")} at ${clock(q.h2)}${side2}`
-            + ` — where is ${hi("P")}, relative to ${name(q.w!)}?`;
+        out.prompt = `At ${clock(q.h1)}${side1}, ${name(q.x)} stands to ${name(q.y)} as ${name(q.z)} to ${hi("P")} at ${clock(q.h2)}${side2}.`
+            + ` Where is ${hi("P")} from ${name(q.w!)}?`;
         out.construct = [{ a: hi("P"), b: name(q.w!), slots: axes.map((ax, i) => {
             const s = ax.scale, colorClass = colors[i];
             if (ax.kind === "parity") return { label: s.name, colorClass, directions: [s.parity!.sameRelation, s.parity!.oppositeRelation], answerDirection: d[i] === 0 ? 0 : 1, answerMagnitude: 0, asksDistance: false };
@@ -252,22 +252,22 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
         out.explanation.push(
             `from ${POST_NAME}, ${where(q.x, q.h1, q.s1)}; ${where(q.y, q.h1, q.s1)}`,
             /* The list is where P ends up from the fourth thing, not the pair's relation: said so, or it read as the latter. */
-            `so ${hi("P")} is ${name(q.z)} moved the way ${name(q.y)} lies from ${name(q.x)}, which puts ${hi("P")} ${d.map((v, i) => clause(w, i, v)).join(", ")} relative to ${name(q.w!)}`,
+            `so ${hi("P")} is ${name(q.z)} moved as ${name(q.y)} lies from ${name(q.x)}: ${d.map((v, i) => clause(w, i, v)).join(", ")} from ${name(q.w!)}`,
             `${where(q.z, q.h2, q.s2)}; ${where(q.w!, q.h2, q.s2)}`);
         return out;
     }
     if (q.kind === "which") {
-        out.prompt = `${head} which of these at ${clock(q.h2)}${side2}?`;
+        out.prompt = `${head} which at ${clock(q.h2)}${side2}?`;
         out.choices = q.options!.map(name);
         out.correctChoice = q.options!.indexOf(answer as number);
     } else if (q.kind === "could") {
-        out.prompt = `${head} which of these at ${clock(q.h2)}${side2}? The card leaves something open: select every one that could.`;
+        out.prompt = `${head} which at ${clock(q.h2)}${side2}? Something is open: select all that could.`;
         out.choices = q.options!.map(name);
         out.selectAnswer = (answer as number[]).map(a => q.options!.indexOf(a)).sort((a, b) => a - b);
         /* What is open, and what fits in each world it leaves. */
         const open = openLength(rec);
         if (open) {
-            out.explanation.push(`nothing settles ${name(open.thing)}'s length along ${hi(axisWord(axes[open.axis]), colors[open.axis])}: it could be ${open.values.length > 2 ? `${open.values.slice(0, -1).join(", ")} or ${open.values[open.values.length - 1]}` : open.values.join(" or ")}`);
+            out.explanation.push(`nothing settles ${name(open.thing)}'s length in ${hi(axisWord(axes[open.axis]), colors[open.axis])}: it could be ${open.values.length > 2 ? `${open.values.slice(0, -1).join(", ")} or ${open.values[open.values.length - 1]}` : open.values.join(" or ")}`);
             for (const world of rec.alternatives!) {
                 const r = { ...rec, world };
                 const fits = q.options!.filter(o => QUESTIONS.judge.answer({ ...q, kind: "judge", w: o }, r) === true);
@@ -275,15 +275,17 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
             }
         }
     } else if (q.kind === "every") {
-        out.prompt = `${head} which of these at ${clock(q.h2)}${side2}? Select every one that fits, or none.`;
+        out.prompt = `${head} which at ${clock(q.h2)}${side2}? Select all that fit, or none.`;
         out.choices = q.options!.map(name);
         out.selectAnswer = (answer as number[]).map(a => q.options!.indexOf(a)).sort((a, b) => a - b);
     } else {
-        out.conclusion = `${head} ${name(q.w!)} at ${clock(q.h2)}${side2}`;
+        /* "as Z stands to W", not "as Z to W": a bare "to" between two names is
+           how the mapping modes word their own rule, and minimal mode reads it so. */
+        out.conclusion = `${head.replace(/ to$/, " stands to")} ${name(q.w!)} at ${clock(q.h2)}${side2}`;
     }
-    out.explanation.push(`at ${clock(q.h1)}${sideWords(rec, q.s1)}, ${name(q.x)} is ${relText(q.x, q.y, q.h1, q.s1)} relative to ${name(q.y)}`);
+    out.explanation.push(`at ${clock(q.h1)}${sideWords(rec, q.s1)}, ${name(q.x)} is ${relText(q.x, q.y, q.h1, q.s1)} from ${name(q.y)}`);
     const among = q.kind === "judge" ? [q.w!] : q.options!;
-    for (const o of among) out.explanation.push(`at ${clock(q.h2)}${sideWords(rec, q.s2)}, ${name(q.z)} is ${relText(q.z, o, q.h2, q.s2)} relative to ${name(o)}`);
+    for (const o of among) out.explanation.push(`at ${clock(q.h2)}${sideWords(rec, q.s2)}, ${name(q.z)} is ${relText(q.z, o, q.h2, q.s2)} from ${name(o)}`);
     /* Places at the first hour, the bodies the first relation was read off. */
     const where = (x: number, h: number, s?: number) => `${name(x)}: ${at(x, h, s).pos.map((v, i) => clause(w, i, v)).join(", ")}`
         + (at(x, h, s).size.some(l => l > 1) ? ` (${at(x, h, s).size.map((l, i) => (l > 1 ? hi(`${l} long ${axisWord(axes[i])}`, colors[i]) : "")).filter(Boolean).join(", ")})` : "");
@@ -305,8 +307,8 @@ export function render(item: Item, things: string[], speakers: string[], colors:
     };
 }
 
-export const TYPES_PROMPT_PAIRS = "Who is a knight and who is a knave? Select every one that is true.";
-export const TYPES_PROMPT_NAMES = "Who is a knight? Select every knight; everyone else is a knave.";
+export const TYPES_PROMPT_PAIRS = "Who is a knight, who a knave? Select every true one.";
+export const TYPES_PROMPT_NAMES = "Select every knight; the rest are knaves.";
 
 /**
  * The staged item's first stage: who is a knight and who a knave, ticked.
@@ -334,7 +336,7 @@ export function renderTypes(item: StagedItem, w: Wording): RenderedAsk {
 /** Why the answer settles the asked speaker. */
 function asked(item: StagedItem, w: Wording): string {
     const t = item.types[item.asking.who];
-    return `which is ${t ? "true" : "false"}, so ${subj(w.speakers[item.asking.who])} is a ${hi(t ? "knight" : "knave")}`;
+    return `${t ? "true" : "false"}, so ${subj(w.speakers[item.asking.who])} is a ${hi(t ? "knight" : "knave")}`;
 }
 
 /** "So Ash and Cog are knights, and Bee is a knave." */

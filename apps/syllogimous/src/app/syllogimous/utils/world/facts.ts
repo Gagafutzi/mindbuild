@@ -389,12 +389,16 @@ export function placeClauses(w: Wording, f: Extract<Fact, { kind: "place" }>): s
         if (f.local && i === TIME) return `${clause(w, i, d, f.round)} ${hi("by local clocks", w.colors[i])}`;
         return w.compact && d === 0 ? "" : clause(w, i, d, f.round);
     }).filter(Boolean);
-    return parts.length ? parts.join(", ") : "level on every dimension";
+    return parts.length ? parts.join(", ") : "level everywhere";
 }
 
 /** Where places are measured from: a point, not a thing, and named as one. */
 export const POST_NAME = "the origin";
-export const clock = (h: number) => `${h} o'clock`;
+/* "at 7", not "at 7 o'clock": every hour on a card is one of the day's. */
+export const clock = (h: number) => `${h}`;
+
+/* Round a ring, the steps go without saying, and so does "in the cycle". */
+export const ringWay = (a: Axis, back: boolean) => a.scale.cyclic!.direction[back ? 1 : 0].replace(/ in the cycle$/, "");
 
 const nameOf = (w: Wording, x: number) => x === POST ? POST_NAME : subj(w.things[x]);
 const axisName = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
@@ -406,7 +410,7 @@ export function clause(w: Wording, i: number, d: number, round = false): string 
     /* The other way round a ring, where asked: as far as is left of the ring. */
     const back = round && ax.kind === "ring" && d !== 0, n = back ? ax.modulus! - d : d;
     if (ax.kind === "parity") text = d % 2 === 0 ? s.parity!.same : s.parity!.opposite;
-    else if (ax.kind === "ring") text = d === 0 ? s.tie : `${n} ${n === 1 ? s.cyclic!.step : s.cyclic!.step + "s"} ${s.cyclic!.direction[back ? 1 : 0]}`;
+    else if (ax.kind === "ring") text = d === 0 ? s.tie : `${n} ${ringWay(ax, back)}`;
     else text = d === 0 ? s.tie : `${Math.abs(d)} ${s.direction[d > 0 ? 0 : 1]}`;
     return hi(text, w.colors[i]);
 }
@@ -416,7 +420,7 @@ function paceWords(w: Wording, vel: number[]): string {
         if (v === 0) return null;
         const ax = w.axes[i];
         const n = Math.abs(v);
-        if (ax.kind === "ring") return hi(`${n} ${n === 1 ? ax.scale.cyclic!.step : ax.scale.cyclic!.step + "s"} ${ax.scale.cyclic!.direction[v > 0 ? 0 : 1]}`, w.colors[i]);
+        if (ax.kind === "ring") return hi(`${n} ${ringWay(ax, v < 0)}`, w.colors[i]);
         return hi(`${Math.abs(v)} ${ax.scale.direction[v > 0 ? 0 : 1]}`, w.colors[i]);
     }).filter(Boolean);
     return parts.join(", ");
@@ -426,12 +430,12 @@ function paceWords(w: Wording, vel: number[]): string {
 export const towards = (a: Axis, side: 0 | 1) => [a.scale.direction[side], a.scale.link].filter(Boolean).join(" ");
 
 const REL_WORDS: Record<IntervalRel, (w: Wording, i: number) => string> = {
-    before: (w, i) => `lies wholly ${towards(w.axes[i], 1)}`,
-    after: (w, i) => `lies wholly ${towards(w.axes[i], 0)}`,
-    overlaps: () => "partly overlaps",
-    within: () => "lies within",
-    spans: () => "takes in all of",
-    identical: () => "covers the same stretch as",
+    before: (w, i) => `is wholly ${towards(w.axes[i], 1)}`,
+    after: (w, i) => `is wholly ${towards(w.axes[i], 0)}`,
+    overlaps: () => "overlaps",
+    within: () => "is within",
+    spans: () => "spans",
+    identical: () => "matches",
 };
 
 /** The wording of a transformation, for an event statement. */
@@ -443,26 +447,26 @@ export function describeTransform(w: Wording, t: TransformSpec): string {
         case "rotate": {
             const [a, b] = t.axes;
             const to = k === 1 ? ax(b).direction[0] : ax(b).direction[1];
-            return `everything turns a quarter about ${POST_NAME}, ${col(a, ax(a).direction[0])} round to ${col(b, to)}`;
+            return `all turns a quarter, ${col(a, ax(a).direction[0])} round to ${col(b, to)}`;
         }
         case "mirror":
-            return `everything is ${own("cs-mirror")} ${col(t.axes[0], axisName(w.axes[t.axes[0]]))} through ${POST_NAME}`;
+            return `all is ${own("cs-mirror")} ${col(t.axes[0], axisName(w.axes[t.axes[0]]))}`;
         case "swap":
-            return `${col(t.axes[0], axisName(w.axes[t.axes[0]]))} and ${col(t.axes[1], axisName(w.axes[t.axes[1]]))} swap through ${POST_NAME},`
-                + ` ${col(t.axes[0], ax(t.axes[0]).direction[0])} becoming ${col(t.axes[1], ax(t.axes[1]).direction[0])}`;
+            return `${col(t.axes[0], axisName(w.axes[t.axes[0]]))} and ${col(t.axes[1], axisName(w.axes[t.axes[1]]))} swap,`
+                + ` ${col(t.axes[0], ax(t.axes[0]).direction[0])} becomes ${col(t.axes[1], ax(t.axes[1]).direction[0])}`;
         case "shear": {
             const [a, b] = t.axes;
-            return `everything slides 1 ${col(a, ax(a).direction[k > 0 ? 0 : 1])} per step its low end lies ${col(b, towards(w.axes[b], 0))} ${POST_NAME}`
+            return `all slides 1 ${col(a, ax(a).direction[k > 0 ? 0 : 1])} per step ${col(b, ax(b).direction[0])}`
                 + `, 1 ${col(a, ax(a).direction[k > 0 ? 1 : 0])} per step ${col(b, ax(b).direction[1])}`;
         }
         case "translate":
-            return `everything shifts ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
+            return `all shifts ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
         case "stretch":
-            return `every ${col(t.axes[0], axisName(w.axes[t.axes[0]]))} distance from ${POST_NAME} doubles`;
+            return `${col(t.axes[0], axisName(w.axes[t.axes[0]]))} distances double`;
         case "jump":
-            return `${nameOf(w, t.who!)} alone jumps ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
+            return `${nameOf(w, t.who!)} jumps ${Math.abs(k)} ${col(t.axes[0], ax(t.axes[0]).direction[k > 0 ? 0 : 1])}`;
         case "turn":
-            return `${nameOf(w, t.who!)} alone turns back, every pace it has reversed`;
+            return `${nameOf(w, t.who!)} turns back`;
     }
     return t.id;
 }
@@ -471,15 +475,15 @@ export function describeTransform(w: Wording, t: TransformSpec): string {
 export function describeFact(w: Wording, f: Fact): string {
     switch (f.kind) {
         case "place":
-            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} is ${placeClauses(w, f)} relative to ${nameOf(w, f.y)}`;
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} is ${placeClauses(w, f)} from ${nameOf(w, f.y)}`;
         case "pace": {
             const k = f.every ?? 1, p = paceWords(w, f.vel.map(v => k * v));
-            return p ? `every ${k === 1 ? "hour" : `${k} hours`}, ${nameOf(w, f.x)} moves ${p}` : `${nameOf(w, f.x)} never moves`;
+            return p ? `${nameOf(w, f.x)} moves ${p} ${k === 1 ? "hourly" : `every ${k} hours`}` : `${nameOf(w, f.x)} never moves`;
         }
         case "pacelike":
-            return `${nameOf(w, f.x)} moves exactly as ${nameOf(w, f.y)} does${f.sign === 1 ? "" : ", but the other way"}`;
+            return f.sign === 1 ? `${nameOf(w, f.x)} moves as ${nameOf(w, f.y)} does` : `${nameOf(w, f.x)} moves opposite to ${nameOf(w, f.y)}`;
         case "size":
-            return `${nameOf(w, f.x)} is ${lengthWords(f.len)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
+            return `${nameOf(w, f.x)} is ${lengthWords(f.len)} in ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
         case "sizes": {
             /* Several lines in one sentence, longest first and equal lengths
                together: "3 long along north–south and time, and a point along
@@ -488,17 +492,17 @@ export function describeFact(w: Wording, f: Fact): string {
             const lens = [...new Set(f.lens.map(([, l]) => l))].sort((p, q) => q - p);
             const parts = lens.map((l, i) => {
                 const on = and(f.lens.filter(([, m]) => m === l).map(([a]) => hi(axisName(w.axes[a]), w.colors[a])));
-                return `${i === 0 ? lengthWords(l) : l === 1 ? "a point" : String(l)} along ${on}`;
+                return `${i === 0 ? lengthWords(l) : l === 1 ? "a point" : String(l)} in ${on}`;
             });
-            return `${nameOf(w, f.x)} is ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}` : parts[0]}`;
+            return `${nameOf(w, f.x)} is ${parts.join(", ")}`;
         }
         case "cmp": {
             const words = { longer: "is longer than", shorter: "is shorter than", same: "is as long as" }[f.cmp];
-            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${words} ${nameOf(w, f.y)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${words} ${nameOf(w, f.y)} in ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
         }
         case "rel": {
             /* "Wholly north of" names its axis already; the others need telling which. */
-            const along = f.rel === "before" || f.rel === "after" ? "" : ` along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
+            const along = f.rel === "before" || f.rel === "after" ? "" : ` in ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
             return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${REL_WORDS[f.rel](w, f.axis)} ${nameOf(w, f.y)}${along}`;
         }
         case "event":
@@ -506,28 +510,26 @@ export function describeFact(w: Wording, f: Fact): string {
         case "type":
             return describeClaim(f.claim, w.speakers);
         case "stands":
-            return `${subj(w.speakers[f.who])} stands in ${nameOf(w, f.host)}${standsTail(f)}`;
+            return `${subj(w.speakers[f.who])} is in ${nameOf(w, f.host)}${standsTail(f)}`;
         case "not":
             return negatedWords(w, f.f);
         case "analog":
             return `at ${clock(f.h1)}, ${nameOf(w, f.x)} stands to ${nameOf(w, f.y)} on ${f.on.map(i => hi(axisName(w.axes[i]), w.colors[i])).join(", ")}`
                 + ` as ${nameOf(w, f.z)} stands to ${nameOf(w, f.w)} at ${clock(f.h2)}`;
         case "total":
-            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} is ${f.steps} ${f.steps === 1 ? "step" : "steps"} in all from ${nameOf(w, f.y)}`;
-        case "signal": {
-            const when = f.mode === "at" ? "just as" : "only after";
-            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} stands ${when} a ring from ${nameOf(w, f.y)} would reach it`;
-        }
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} and ${nameOf(w, f.y)} are ${f.steps} ${f.steps === 1 ? "step" : "steps"} apart`;
+        case "signal":
+            return `at ${clock(f.hour)}, a ring from ${nameOf(w, f.y)} ${f.mode === "at" ? "just reaches" : "has passed"} ${nameOf(w, f.x)}`;
         case "level":
-            return `${nameOf(w, f.x)} first draws level with ${nameOf(w, f.y)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])} at ${clock(f.hour)}`;
+            return `${nameOf(w, f.x)} first levels with ${nameOf(w, f.y)} in ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])} at ${clock(f.hour)}`;
         case "meet":
             return `${nameOf(w, f.x)} and ${nameOf(w, f.y)} first meet at ${clock(f.hour)}`;
         case "ranked": {
             const [a, b] = f.by.map(i => w.axes[i]);
             const run = (ax: Axis, i: number) => ax.kind === "ring"
-                ? `fewest to most steps ${hi(ax.scale.cyclic!.direction[0], w.colors[i])} from ${POST_NAME}`
-                : `furthest ${hi(ax.scale.direction[1], w.colors[i])} to furthest ${hi(ax.scale.direction[0], w.colors[i])}`;
-            return `at ${clock(f.hour)}, from ${run(a, f.by[0])}, ties by ${hi(axisName(b), w.colors[f.by[1]])}: ${f.order.map(k => nameOf(w, k)).join(", ")}`;
+                ? `fewest to most ${hi(ringWay(ax, false), w.colors[i])}`
+                : `least to most ${hi(ax.scale.direction[0], w.colors[i])}`;
+            return `at ${clock(f.hour)}, ${run(a, f.by[0])}, ties by ${hi(axisName(b), w.colors[f.by[1]])}: ${f.order.map(k => nameOf(w, k)).join(", ")}`;
         }
         case "view":
             return `at ${clock(f.hour)}, ${seenWords(w, f.seen, nameOf(w, f.x), subj(w.speakers[f.who]))}`;
@@ -540,18 +542,18 @@ export function describeFact(w: Wording, f: Fact): string {
  * third party would put it, "of Willow" for "of me".
  */
 function seenWords(w: Wording, s: Seen, target: string, viewer: string, self = true): string {
-    const me = self ? "me" : viewer, my = self ? "my" : `${viewer}'s`;
     const parts: string[] = [];
-    parts.push(s.ahead === 0 ? "level ahead and behind" : `${Math.abs(s.ahead)} ${s.ahead > 0 ? "ahead of" : "behind"} ${me}`);
-    parts.push(s.left === 0 ? `level to ${my} left and right` : `${Math.abs(s.left)} to ${my} ${s.left > 0 ? "left" : "right"}`);
+    parts.push(s.ahead === 0 ? "level ahead" : `${Math.abs(s.ahead)} ${s.ahead > 0 ? "ahead" : "behind"}`);
+    parts.push(s.left === 0 ? "level sideways" : `${Math.abs(s.left)} ${s.left > 0 ? "left" : "right"}`);
     w.axes.forEach((ax, i) => {
         if (PLANE.includes(i)) return;
         const c = w.colors[i];
         if (ax.kind === "parity") parts.push(hi(s.rest[i] === 0 ? ax.scale.parity!.same : ax.scale.parity!.opposite, c));
-        else if (s.rest[i] === 0) parts.push(`level along ${hi(axisName(ax), c)}`);
+        else if (s.rest[i] === 0) parts.push(`level in ${hi(axisName(ax), c)}`);
         else parts.push(clause(w, i, s.rest[i]));
     });
-    return `${target}'s nearest edges are ${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+    /* Its nearest edges, from where the speaker stands. */
+    return `${self ? "I see" : `${viewer} sees`} ${target}: ${parts.join(", ")}`;
 }
 
 /** What a speaker says of speakers, with "I" for themselves, named second. */
@@ -587,21 +589,20 @@ function negatedWords(w: Wording, f: Fact): string {
     switch (f.kind) {
         case "rel": {
             const words: Record<IntervalRel, string> = {
-                before: `does not lie wholly ${towards(w.axes[f.axis], 1)}`, after: `does not lie wholly ${towards(w.axes[f.axis], 0)}`,
-                overlaps: "does not partly overlap", within: "does not lie within", spans: "does not take in all of",
-                identical: "does not cover the same stretch as",
+                before: `is not wholly ${towards(w.axes[f.axis], 1)}`, after: `is not wholly ${towards(w.axes[f.axis], 0)}`,
+                overlaps: "does not overlap", within: "is not within", spans: "does not span", identical: "does not match",
             };
-            const tail = f.rel === "before" || f.rel === "after" ? "" : ` along ${along(f.axis)}`;
+            const tail = f.rel === "before" || f.rel === "after" ? "" : ` in ${along(f.axis)}`;
             return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${words[f.rel]} ${nameOf(w, f.y)}${tail}`;
         }
         case "cmp": {
             const words = { longer: "is not longer than", shorter: "is not shorter than", same: "is not as long as" }[f.cmp];
-            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${words} ${nameOf(w, f.y)} along ${along(f.axis)}`;
+            return `at ${clock(f.hour)}, ${nameOf(w, f.x)} ${words} ${nameOf(w, f.y)} in ${along(f.axis)}`;
         }
         case "size":
-            return `${nameOf(w, f.x)} is not ${lengthWords(f.len)} along ${along(f.axis)}`;
+            return `${nameOf(w, f.x)} is not ${lengthWords(f.len)} in ${along(f.axis)}`;
         default:
-            return `it is not so that ${describeFact(w, f)}`;
+            return `not so: ${describeFact(w, f)}`;
     }
 }
 
@@ -610,7 +611,7 @@ export function describeStatement(w: Wording, s: Statement): string {
     const f = s.fact;
     const body = f.kind === "type" ? describeClaimBy(w, s.speaker, f.claim)
         : f.kind === "stands" && f.who === s.speaker
-            ? `I stand in ${nameOf(w, f.host)}${standsTail(f)}`
+            ? `I am in ${nameOf(w, f.host)}${standsTail(f)}`
             : describeFact(w, f);
-    return `${subj(w.speakers[s.speaker])} says: ${body}`;
+    return `${subj(w.speakers[s.speaker])}: ${body}`;
 }
