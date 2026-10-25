@@ -10,7 +10,7 @@ import { Item, StagedItem } from "./build";
 import { ConstructClaim } from "../../models/question.models";
 import { Answer, Ask, Part, QUESTIONS, REACH, openLength, relation } from "./questions";
 import { Reconstruction, spaceOf, thingAt } from "./reader";
-import { wordBreach } from "./words";
+import { Breach, wordBreach } from "./words";
 
 export interface Rendered {
     setup: string[];
@@ -67,19 +67,23 @@ export function setupLines(axes: Axis[], colors: string[] = [], compact = false,
     return out;
 }
 
-function partWords(axes: Axis[], i: number, p: Part, colors: string[]): string {
-    if (i === REACH) return hi(p === "reaches" ? "in its ring's reach" : "beyond its ring", colors[3]);
+/**
+ * One part of a relation, said of the other thing: "4 clockwise from Feed",
+ * "wholly below Feed", "within Feed in quantity". Each part names the other
+ * thing in its own way: as "(up–down) from Feed" for all of them it read
+ * "wholly north of (north–south) from Knot".
+ */
+function partWords(axes: Axis[], i: number, p: Part, colors: string[], ref: string): string {
+    if (i === REACH) return hi(p === "reaches" ? "in its ring's reach" : "beyond its ring", colors[3]) + ` from ${ref}`;
     const ax = axes[i];
     if (ax.kind === "ring") {
         const n = p as number;
-        return hi(n === 0 ? ax.scale.tie : `${n} ${ringWay(ax, false)}`, colors[i]);
+        return n === 0 ? `${hi(ax.scale.tie, colors[i])} as ${ref}` : `${hi(`${n} ${ringWay(ax, false)}`, colors[i])} from ${ref}`;
     }
-    if (ax.kind === "parity") return hi(p === "same" ? ax.scale.parity!.same : ax.scale.parity!.opposite, colors[i]);
-    const words: Record<string, string> = {
-        before: `wholly ${towards(ax, 1)}`, after: `wholly ${towards(ax, 0)}`, overlaps: "overlapping",
-        within: "within", spans: "spanning", identical: "matching",
-    };
-    return hi(`${words[p as string]} (${axisWord(ax)})`, colors[i]);
+    if (ax.kind === "parity") return p === "same" ? `${hi(ax.scale.parity!.same, colors[i])} as ${ref}` : `${hi(ax.scale.parity!.opposite, colors[i])} from ${ref}`;
+    const along = ` in ${hi(axisWord(ax), colors[i])}`;
+    if (p === "before" || p === "after") return `${hi(`wholly ${towards(ax, p === "before" ? 1 : 0)}`, colors[i])} ${ref}`;
+    return `${hi(({ overlaps: "overlapping", within: "within", spans: "spanning", identical: "matching" } as Record<string, string>)[p as string], colors[i])} ${ref}${along}`;
 }
 
 /** One question, worded: what it asks, its options, and how the answer follows. */
@@ -101,34 +105,71 @@ export function unmaskingLines(rec: Reconstruction, w: Wording): string[] {
             + `${u.space === 1 ? " inside" : ""} is ${rec.types[u.speaker] ? "true" : "false"}`]);
 }
 
+/** A clash among a few speakers' words, and the kinds it rules out for them. */
+export interface Clash { breach: Breach; kinds: Map<number, boolean> }
+
 /**
- * How the words and the answer settle the speakers: every wrong guess at what
- * they are with the word it cannot survive, the readings the words leave open
- * for the question to settle, and how the answer settles them.
+ * The fewest clashes that rule out every guess in `bad`. A clash involves a
+ * speaker or two, so it rules out every guess that has them so, whatever it
+ * makes of the rest: listed guess by guess, one clash came round four times
+ * and the explanation ran to twenty lines.
+ */
+export function guessCover(item: StagedItem, words: Statement[], bad: boolean[][]): Clash[] {
+    const matches = (c: Clash, t: boolean[]) => [...c.kinds].every(([i, k]) => t[i] === k);
+    const key = (c: Clash) => [...c.kinds].sort((p, q) => p[0] - q[0]).join(";");
+    const found: Clash[] = [];
+    for (const t of bad) {
+        const breach = wordBreach(item.card.axes, item.card.things, words, t);
+        if (!breach) continue;
+        const c: Clash = { breach, kinds: new Map(breach.parts.map(p => [p.s.speaker, t[p.s.speaker]] as [number, boolean])) };
+        if (!found.some(f => key(f) === key(c))) found.push(c);
+    }
+    const out: Clash[] = [];
+    let left = bad.filter(t => found.some(c => matches(c, t)));
+    while (left.length) {
+        /* The clash ruling out most of what is left, the one naming fewer speakers on a tie. */
+        const best = found.map(c => [c, left.filter(t => matches(c, t)).length] as const)
+            .sort((p, q) => q[1] - p[1] || p[0].kinds.size - q[0].kinds.size)[0][0];
+        out.push(best);
+        left = left.filter(t => !matches(best, t));
+    }
+    return out;
+}
+
+/**
+ * How the words and the answer settle the speakers: what the words rule out,
+ * each clash once, the readings they leave open for the question to settle,
+ * and how the answer settles them.
  */
 function guessLines(item: StagedItem, w: Wording): string[] {
     const all = item.types.map((_, i) => i), answer = item.asking.answer;
     const kind = (t: boolean) => hi(t ? "knight" : "knave");
-    const guessWords = (t: boolean[]) => all.map(i => `${subj(w.speakers[i])} ${kind(t[i])}`).join(", ");
-    const said = (s: Statement) => `${subj(w.speakers[s.speaker])}'s "${describeFact(w, s.fact)}"`;
-    /* The words this guess needs true (a knight's) and false (a knave's), which nothing can make so together. */
-    const why = (b: NonNullable<ReturnType<typeof wordBreach>>, t: boolean[]) =>
-        `${b.parts.map(p => `${said(p.s)} ${t[p.s.speaker] ? "true" : "false"}`).join(" and ")} can't ${b.parts.length > 2 ? "all" : "both"} be`;
+    const name = (i: number) => subj(w.speakers[i]);
+    const guessWords = (t: boolean[]) => all.map(i => `${name(i)} ${kind(t[i])}`).join(", ");
+    const said = (s: Statement) => `${name(s.speaker)}'s "${describeFact(w, s.fact)}"`;
+    /* "Ham isn't a knave", "Bee and Cog aren't both knights", "Bee isn't a knight with Cog a knave". */
+    const ruled = (c: Clash) => {
+        const ks = [...c.kinds];
+        if (ks.length === 1) return `${name(ks[0][0])} isn't a ${kind(ks[0][1])}`;
+        if (ks.every(([, k]) => k === ks[0][1])) return `${ks.map(([i]) => name(i)).join(" and ")} aren't ${ks.length > 2 ? "all" : "both"} ${kind(ks[0][1])}s`;
+        const [[i, k], ...rest] = ks;
+        return `${name(i)} isn't a ${kind(k)} with ${rest.map(([j, l]) => `${name(j)} a ${kind(l)}`).join(" and ")}`;
+    };
+    /* The words a knight's would make true and a knave's false, which nothing can make so together. */
+    const why = (c: Clash) => {
+        const ps = c.breach.parts, same = ps.every(p => c.kinds.get(p.s.speaker) === c.kinds.get(ps[0].s.speaker));
+        const each = ps.map(p => `${said(p.s)}${same ? "" : ` ${c.kinds.get(p.s.speaker) ? "true" : "false"}`}`).join(" and ");
+        const all2 = ps.length > 2 ? "all" : "both";
+        return `${ruled(c)}: ${each} can't ${all2} be${same ? ` ${c.kinds.get(ps[0].s.speaker) ? "true" : "false"}` : ""}`;
+    };
     const words = item.words.filter(s => s !== answer);
-    const out: string[] = [], open: boolean[][] = [];
-    for (let m = 0; m < 1 << all.length; m++) {
-        const t = all.map(i => (m & (1 << i)) !== 0);
-        if (t.every((v, i) => v === item.types[i])) continue;
-        const b = wordBreach(item.card.axes, item.card.things, words, t);
-        if (b) out.push(`If ${guessWords(t)}: ${why(b, t)}`);
-        else open.push(t);
-    }
+    const guesses = Array.from({ length: 1 << all.length }, (_, m) => all.map(i => (m & (1 << i)) !== 0))
+        .filter(t => !t.every((v, i) => v === item.types[i]));
+    const open = guesses.filter(t => !wordBreach(item.card.axes, item.card.things, words, t));
+    const out = guessCover(item, words, guesses.filter(t => !open.includes(t))).map(why);
     out.push(`The words leave ${[item.types, ...open].map(guessWords).join("; or ")}`);
     out.push(answerLine(item, w));
-    for (const t of open) {
-        const b = wordBreach(item.card.axes, item.card.things, item.words, t);
-        if (b) out.push(`If ${guessWords(t)}: ${why(b, t)}`);
-    }
+    out.push(...guessCover(item, item.words, open).map(why));
     return out;
 }
 
@@ -168,7 +209,7 @@ export function renderQuestion(item: StagedItem, w: Wording): RenderedAsk {
 }
 
 /** Where a relation is read, on a nested card; nothing on a flat one. */
-const sideWords = (rec: Reconstruction, s: number | undefined, again = false) =>
+const sideWords = (rec: Reconstruction, s: number | undefined) =>
     !rec.inner ? "" : s === 1 ? " inside" : " outside";
 
 /**
@@ -178,6 +219,8 @@ const sideWords = (rec: Reconstruction, s: number | undefined, again = false) =>
  * up–down (where Cog lies within Bee along up–down)". The words collide; the
  * brackets say which space each part is about.
  */
+const bare = (f: Fact): Fact => (f.kind === "not" ? bare(f.f) : f);
+
 export function renderPremises(statements: Statement[], w: Wording, wide = false): string[] {
     const inner = statements.filter(st => st.space === 1);
     /* Two links in one sentence, where a speaker's two places chain at one hour:
@@ -195,8 +238,12 @@ export function renderPremises(statements: Statement[], w: Wording, wide = false
     const riders = new Map<Statement, Statement[]>();
     for (const st of inner) {
         const hosts = outer.filter(o => o.speaker === st.speaker && !tails.has(o));
-        /* The fewest riders first, so the brackets spread over the speaker's lines. */
-        const host = hosts.sort((a, b) => (riders.get(a)?.length ?? 0) - (riders.get(b)?.length ?? 0))[0];
+        /* The fewest riders first, so the brackets spread over the speaker's lines;
+           and not on a line of the same kind about the same thing, where
+           "Knot is a point (where Knot is not a point)" read as a slip. */
+        const alike = (o: Statement) => +(bare(o.fact).kind === bare(st.fact).kind && "x" in bare(o.fact) && "x" in bare(st.fact)
+            && (bare(o.fact) as { x: number }).x === (bare(st.fact) as { x: number }).x);
+        const host = hosts.sort((a, b) => alike(a) - alike(b) || (riders.get(a)?.length ?? 0) - (riders.get(b)?.length ?? 0))[0];
         if (!host) return [];
         riders.set(host, [...(riders.get(host) ?? []), st]);
     }
@@ -227,9 +274,14 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
 
     const on = q.on.map(i => (i === REACH ? hi("ring reach", colors[3]) : hi(axisWord(axes[i]), colors[i]))).join(", ");
     const at = (x: number, h: number, s?: number) => thingAt(spaceOf(rec, s), x, h);
-    const relText = (a: number, b: number, h: number, s?: number) =>
-        relation(axes, at(a, h, s), at(b, h, s), q.on).map((p, k) => partWords(axes, q.on[k], p, colors)).join(", ");
-    const side1 = sideWords(rec, q.s1), side2 = q.s2 === q.s1 ? "" : sideWords(rec, q.s2, true);
+    /* The other thing named once, then "it": "4 clockwise from Feed and wholly below it". */
+    const relText = (a: number, b: number, h: number, s?: number) => {
+        const parts = relation(axes, at(a, h, s), at(b, h, s), q.on).map((p, k) => partWords(axes, q.on[k], p, colors, k === 0 ? name(b) : "it"));
+        return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+    };
+    /* Both sides said: "as Broth to which at 5?" after "At 5 inside" left the
+       reader to guess that the second was inside too. */
+    const side1 = sideWords(rec, q.s1), side2 = sideWords(rec, q.s2);
     /* "Stands to", not "is to": the prompt is not read for the key under fresh
        labels, and "is to" is in the relation table, so it was printed as a
        label nothing on the card decoded. The analogy's frame is the question's
@@ -286,9 +338,9 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
            how the mapping modes word their own rule, and minimal mode reads it so. */
         out.conclusion = `${head.replace(/ to$/, " stands to")} ${name(q.w!)} at ${clock(q.h2)}${side2}`;
     }
-    out.explanation.push(`at ${clock(q.h1)}${sideWords(rec, q.s1)}, ${name(q.x)} is ${relText(q.x, q.y, q.h1, q.s1)} from ${name(q.y)}`);
+    out.explanation.push(`at ${clock(q.h1)}${sideWords(rec, q.s1)}, ${name(q.x)} is ${relText(q.x, q.y, q.h1, q.s1)}`);
     const among = q.kind === "judge" ? [q.w!] : q.options!;
-    for (const o of among) out.explanation.push(`at ${clock(q.h2)}${sideWords(rec, q.s2)}, ${name(q.z)} is ${relText(q.z, o, q.h2, q.s2)} from ${name(o)}`);
+    for (const o of among) out.explanation.push(`at ${clock(q.h2)}${sideWords(rec, q.s2)}, ${name(q.z)} is ${relText(q.z, o, q.h2, q.s2)}`);
     /* Places at the first hour, the bodies the first relation was read off. */
     const where = (x: number, h: number, s?: number) => `${name(x)}: ${at(x, h, s).pos.map((v, i) => clause(w, i, v)).join(", ")}`
         + (at(x, h, s).size.some(l => l > 1) ? ` (${at(x, h, s).size.map((l, i) => (l > 1 ? hi(`${l} long ${axisWord(axes[i])}`, colors[i]) : "")).filter(Boolean).join(", ")})` : "");

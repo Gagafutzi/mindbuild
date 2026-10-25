@@ -29,7 +29,7 @@ import { Card, OPEN_MAX, Reconstruction, read, settleTypes, thingAt, worlds } fr
 import { selfContradicts, wordBreach, wordIn } from "../src/app/syllogimous/utils/world/words";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
 import { missedReview } from "../src/app/syllogimous/utils/review.utils";
-import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
+import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS, guessCover } from "../src/app/syllogimous/utils/world/render";
 import { Ask, QUESTIONS, REACH, answerFollows, answerKey } from "../src/app/syllogimous/utils/world/questions";
 import { BuildOptions, Item, build, buildStaged, fitting, makeAxes, tryBuild } from "../src/app/syllogimous/utils/world/build";
 
@@ -776,6 +776,60 @@ test("composed world: past the first stage nobody is named as saying a thing, si
         for (let k = 0; k < 30; k++) {
             const st = buildStaged(worldSize(4 + (k % 5)), 300)!;
             for (const s of st.later) assert(st.types[s.speaker], `a knave announces ${JSON.stringify(s.fact)}`);
+        }
+    });
+});
+
+test("composed world: read as a player would — verdicts both ways, each clash once, every relation in words", () => {
+    /* From reading items through: three verdicts in four came out true, the
+       kinds were explained guess by guess in up to twenty lines, a relation
+       read "wholly north of (north–south) from Knot", and "as Broth to which
+       at 5?" left the side to guess. */
+    seeded(9760, () => {
+        for (let k = 0; k < 12; k++) {
+            const n = 4 + k % 5, st = buildStaged(worldSize(n), 300)!;
+            const verdicts = st.judgements.map(j => j.answer);
+            assert(verdicts.includes(true) && verdicts.includes(false), `the verdicts are all ${verdicts[0]}`);
+            /* The clashes the explanation gives rule out every guess the words rule out, each once. */
+            const words = st.words.filter(s => s !== st.asking.answer), axes = st.card.axes;
+            const guesses = Array.from({ length: 1 << st.types.length }, (_, m) => st.types.map((_, i) => (m & (1 << i)) !== 0));
+            const bad = guesses.filter(t => wordBreach(axes, st.card.things, words, t));
+            const cover = guessCover(st, words, bad);
+            for (const t of bad) assert(cover.some(c => [...c.kinds].every(([i, kd]) => t[i] === kd)), "a guess the words rule out goes unexplained");
+            assert(cover.length < bad.length || bad.length <= 2, `${cover.length} clashes for ${bad.length} guesses: one a guess`);
+        }
+        for (let k = 0; k < 8; k++) {
+            const q = createComposedWorld(ctxHolding([]), 4 + k % 5);
+            const why = q.series.flatMap(c => c.explanation ?? []).map(strip);
+            for (const line of why) assert(!/\) from |\b(?:of|than) \(/.test(line), `a relation not in words: ${line}`);
+            /* On a nested card each hour of an analogy says its side. */
+            for (const c of q.series.slice(2)) {
+                const text = strip(c.prompt || String(c.text));
+                if (/ (?:inside|outside)\b/.test(text)) assert(/^At \d+ (?:inside|outside),.* at \d+ (?:inside|outside)\b/.test(text), `a side left to guess: ${text}`);
+            }
+        }
+    });
+});
+
+test("composed world: every word of the first stage does work — none is implied by the rest or inert", () => {
+    /* "Not so: Chest moves opposite to Hammer" beside Chest's pace, with
+       nothing pinning Hammer's, could clash with nothing: it only made the card
+       longer. Without any word that ships, some guess at the kinds stands or
+       falls otherwise — on the words alone, or with an answer to a question offered. */
+    seeded(9770, () => {
+        for (let k = 0; k < 16; k++) {
+            const st = buildStaged(worldSize(4 + (k % 5)), 300)!;
+            const axes = st.card.axes, n = st.card.things, who = st.asking.who;
+            const words = st.words.filter(s => s !== st.asking.answer);
+            const guesses = Array.from({ length: 1 << st.types.length }, (_, m) => st.types.map((_, i) => (m & (1 << i)) !== 0));
+            const asks: Statement[][] = [[], ...st.asking.options.flatMap(o => (o.fact ? [o.fact, { kind: "not", f: o.fact } as Fact] : []))
+                .map(fact => [{ speaker: who, fact }])];
+            const sign = (ws: Statement[]) => asks.map(a => guesses.map(t => +!!wordBreach(axes, n, [...ws, ...a], t)).join("")).join("|");
+            for (const w of words) {
+                const rest = words.filter(o => o !== w);
+                if (w.speaker === who && !rest.some(o => o.speaker === who)) continue;
+                assert(sign(rest) !== sign(words), `a word that changes nothing: ${JSON.stringify(w)}`);
+            }
         }
     });
 });

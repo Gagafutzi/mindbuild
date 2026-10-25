@@ -530,10 +530,10 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const at = (k: number, h: number) => (k === POST ? thingAt(world, POST, h) : truly(k, h));
         const wrongHour = (h: number) => pick(Array.from({ length: LAST_HOUR }, (_, k) => k + 1).filter(k => k !== h), rnd);
         const rels = ["before", "after", "overlaps", "within", "spans", "identical"] as const;
-        const forms: Array<() => Fact | null> = [
+        const forms: Record<string, () => Fact | null> = {
             /* Where time is a line, whether a ring from one reaches the other by
                its time: just as it arrives, or only after. */
-            () => {
+            signal: () => {
                 if (axes[TIME]?.kind !== "line") return null;
                 const ring = (p: number, q: number) => {
                     const bp = thingAt(world, p, hour), bq = thingAt(world, q, hour);
@@ -547,7 +547,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
                 return { kind: "signal", hour, x: p, y: q, mode: types[i] ? truth : truth === "at" ? "after" : "at" };
             },
             /* The hour one first draws level with another along a line. */
-            () => {
+            level: () => {
                 const level = pairs.map(([p, q, b]) => [p, q, b, firstLevel(at, p, q, b, LAST_HOUR)] as const)
                     .filter(([, , , h]) => typeof h === "number" && h >= 1);
                 if (!level.length) return null;
@@ -556,7 +556,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
             },
             /* The hour two first meet, sharing ground — most pairs never do. A
                knave names an hour they do not. */
-            () => {
+            meet: () => {
                 if (leaveOpen) return null;
                 const meeting = ids.flatMap(p => ids.filter(q => q > p).map(q => [p, q, firstMeet(axes, at, p, q, LAST_HOUR)] as const))
                     .filter(([, , h]) => typeof h === "number" && h >= 1);
@@ -565,12 +565,12 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
                 return { kind: "meet", x: p, y: q, hour: types[i] ? first! : wrongHour(first!) };
             },
             /* Steps in all — false from a knave by a little. */
-            () => {
+            total: () => {
                 const steps = stepsBetween(axes, bx, by);
                 return { kind: "total", hour, x, y, steps: types[i] ? steps : Math.max(0, steps + pick([-2, -1, 1, 2], rnd)) };
             },
             /* A ranked list; a knave's has two neighbours the wrong way round. */
-            () => {
+            ranked: () => {
                 if (n < 3) return null;
                 const by2 = pick(lineAxes(axes).filter(b => b !== a), rnd) ?? a;
                 const order = rankBy(axes, world.start.map((_, k) => thingAt(world, k, hour)), ids, [a, by2]);
@@ -580,19 +580,22 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
                 return { kind: "ranked", hour, by: [a, by2], order: said };
             },
             /* A denial is checkable too: a knight denies a way they do not lie, a knave the way they do. */
-            () => {
+            notRel: () => {
                 if (leaveOpen) return null;
                 const truth = intervalRel(bx, by, a);
                 return { kind: "not", f: { kind: "rel", hour, x, y, axis: a, rel: types[i] ? pick(rels.filter(q => q !== truth), rnd) : truth } };
             },
-            () => {
+            rel: () => {
                 if (leaveOpen) return null;
                 const truth = intervalRel(bx, by, a);
                 return { kind: "rel", hour, x, y, axis: a, rel: types[i] ? truth : pick(rels.filter(q => q !== truth), rnd) };
             },
-        ];
-        /* Tried in a shuffled order, so each form that fits is equally likely. */
-        const order = forms.map(f => [f, rnd()] as const).sort((p, q) => p[1] - q[1]).map(([f]) => f);
+        };
+        /* Tried in a shuffled order, so each form that fits is equally likely —
+           but a ring's reach and a meeting first, the two a card can seldom say
+           at all: drawn evenly with the rest, each shipped on one card in thirty. */
+        const rare = ["signal", "meet"];
+        const order = [...shuffle(rare, rnd), ...shuffle(Object.keys(forms).filter(k => !rare.includes(k)), rnd)].map(k => forms[k]);
         for (const form of order) {
             const fact = form();
             if (fact) { say(i, fact); break; }
@@ -714,6 +717,29 @@ function makeAsking(world: World, types: boolean[], who: number, words: Statemen
     return { who, options, answer: pick(answers, rnd) };
 }
 
+/**
+ * The first stage's words less every one that changes nothing: a word goes
+ * when, without it, each guess at the kinds stands or falls as it did — on
+ * the words alone, and with either answer to each question offered. "Not so:
+ * Chest moves opposite to Hammer" beside Chest's pace and nothing pinning
+ * Hammer's could never clash with anything, and only made the card longer.
+ * The asked speaker keeps a word, so their kind stays tied to the others'.
+ */
+export function pruneWords(axes: Axis[], n: number, words: Statement[], speakers: number, asking: Pick<Asking, "who" | "options">, rnd: () => number): Statement[] {
+    const guesses = Array.from({ length: 1 << speakers }, (_, m) => Array.from({ length: speakers }, (_, i) => (m & (1 << i)) !== 0));
+    const asks: Statement[][] = [[], ...asking.options.flatMap(o => (o.fact ? [o.fact, { kind: "not", f: o.fact } as Fact] : []))
+        .map(fact => [{ speaker: asking.who, fact }])];
+    const sign = (ws: Statement[]) => asks.map(a => guesses.map(t => (wordBreach(axes, n, [...ws, ...a], t) ? 1 : 0)).join("")).join("|");
+    const whole = sign(words);
+    let kept = words;
+    for (const w of shuffle(words, rnd)) {
+        const rest = kept.filter(k => k !== w);
+        if (w.speaker === asking.who && !rest.some(k => k.speaker === asking.who)) continue;
+        if (sign(rest) === whole) kept = rest;
+    }
+    return kept;
+}
+
 function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     clearReaderCache();
     const axes = makeAxes(rnd, opts.dims ?? 7);
@@ -745,10 +771,11 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     /* The words first: they cost little, and a world they will not go on is
        given up before its premises, which cost far more, are made. */
     /* The first stage: the words that tell the speakers apart, and nothing else. */
-    const extra = puzzleWords(world, types, types.map((_, i) => i), rnd, asked);
-    if (!extra) return null;
-    const asking = makeAsking(world, types, asked, extra, rnd);
+    const drafted = puzzleWords(world, types, types.map((_, i) => i), rnd, asked);
+    if (!drafted) return null;
+    const asking = makeAsking(world, types, asked, drafted, rnd);
     if (!asking) return null;
+    const extra = pruneWords(world.axes, world.start.length, drafted, types.length, asking, rnd);
     const outside = makeCard(world, types, firsts, rnd, 0, leaveOpen);
     const inside = inner ? makeCard(inner, types, firsts, rnd, 1) : [];
     if (!outside || !inside) return null;
@@ -946,13 +973,18 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
         if (!rec2 || !sameWorld(rec2.world, whole)) continue;
         const across: Span = { h1: [1, LAST_HOUR], h2: [Math.min(...added.map(e => e.hour)), LAST_HOUR] };
         const reads2 = [...shortcutReads(card2, types), ["announced", rec] as const];
-        const judgements: Stage[] = [];
+        let judgements: Stage[] = [];
+        /* One verdict false and one true, a third either way. Drawn either way
+           each, three in four shipped true: a false verdict is fair far less
+           often (every shortcut has to make the analogy hold), and a draw that
+           found none cut the list short on the true ones before it. */
         for (let k = 0, want = int(rnd, 2, 3); k < want; k++) {
-            const stage = fairStage(QUESTIONS.judge, base, rec2, reads2, rnd, across, rnd() < 0.5, judgements.map(j => j.ask));
+            const stage = fairStage(QUESTIONS.judge, base, rec2, reads2, rnd, across, k < 2 ? k === 1 : rnd() < 0.5, judgements.map(j => j.ask));
             if (!stage) break;
             judgements.push(stage);
         }
         if (judgements.length < 2) continue;
+        judgements = shuffle(judgements, rnd);
         const closing = fairStage(QUESTIONS.build, base, rec2, reads2, rnd, across, undefined, [...analogies, ...judgements].map(j => j.ask));
         if (!closing) continue;
         return { world: whole, card, plain, words, asking, later, types, reconstruction: rec, laterReconstruction: rec2, analogies, judgements, closing };
