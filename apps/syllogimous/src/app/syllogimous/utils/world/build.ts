@@ -318,9 +318,17 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     /* Paces and events from the speakers who tell each other apart, since the
        first stage shows them; the rest of the world from any knight, the
        one who was asked included. */
-    const knights = firsts.filter(i => types[i]), anyKnight = types.map((t, i) => (t ? i : -1)).filter(i => i >= 0);
-    if (!knights.length) return null;
+    /* Every knight gives part of the world, whoever has said least so far
+       taking the next: with one voice for all of it, nothing on the card is
+       said from anywhere but one place. */
+    const anyKnight = types.map((t, i) => (t ? i : -1)).filter(i => i >= 0);
+    if (!anyKnight.length) return null;
     const statements: Statement[] = [];
+    const share = () => {
+        const said = (k: number) => statements.filter(st => st.speaker === k).length;
+        const least = Math.min(...anyKnight.map(said));
+        return pick(anyKnight.filter(k => said(k) === least), rnd);
+    };
     /* Never the same sentence twice from one speaker: it adds nothing, and reads as a slip. */
     const say = (speaker: number, fact: Fact) => {
         if (statements.some(st => st.speaker === speaker && JSON.stringify(st.fact) === JSON.stringify(fact))) return;
@@ -335,7 +343,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     for (const x of order) {
         const y = rnd() < 0.3 ? POST : pick(placed, rnd);
         const chained = placedBy.get(y) && rnd() < 0.5 ? placedBy.get(y)! : null;
-        const hour = chained ? chained.hour : int(rnd, 1, FIRST_HOURS), speaker = chained ? chained.speaker : pick(anyKnight, rnd);
+        const hour = chained ? chained.hour : int(rnd, 1, FIRST_HOURS), speaker = chained ? chained.speaker : share();
         placedBy.set(x, { hour, speaker });
         let delta = displacement(axes, thingAt(world, x, hour), thingAt(world, y, hour));
         /* Relative to a thing of the other kind, said as it reckons. */
@@ -352,7 +360,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         placed.push(x);
     }
     /* Paces, for whatever moves. */
-    for (let x = 0; x < n; x++) if (world.start[x].vel.some(v => v !== 0)) say(pick(knights, rnd), { kind: "pace", x, vel: [...world.start[x].vel] });
+    for (let x = 0; x < n; x++) if (world.start[x].vel.some(v => v !== 0)) say(share(), { kind: "pace", x, vel: [...world.start[x].vel] });
 
     /* Where everyone stands, outside the brackets, from a knight: the thing
        they stand in, and, on the smaller cards or half the time, which way they
@@ -362,7 +370,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     const obs = space === 0 ? world.observers : undefined;
     if (obs) obs.forEach((o, who) => {
         const faced = axes.length <= 4 || !firsts.includes(who) || rnd() < 0.5;
-        say(pick(anyKnight, rnd), { kind: "stands", who, host: o.host, ...(faced ? { facing: o.facing } : {}),
+        say(share(), { kind: "stands", who, host: o.host, ...(faced ? { facing: o.facing } : {}),
             ...(o.twin ? { twin: true } : {}), ...(o.upside ? { upside: true } : {}) });
     });
 
@@ -372,7 +380,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
        (An unsettled speaker's word on either would also leave every report
        that was to unmask them unreadable; allowed to anyone, nine cards in
        ten deadlocked.) */
-    for (const e of world.events) say(pick(knights, rnd), { kind: "event", hour: e.hour, t: e.t });
+    for (const e of world.events) say(share(), { kind: "event", hour: e.hour, t: e.t });
     /* Lengths. Some are stated: a knight gives several of a thing's lengths in
        one sentence, leaving the rest out. The rest are told other ways, one
        statement at a time, while the card still allows a wrong set of lengths
@@ -392,9 +400,20 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const lines = lineAxes(axes), open = x === openThing || rnd() < 0.8 ? pick(lines, rnd) : -1;
         if (x === openThing) openLine = open;
         const told = lines.filter(a => a !== open);
-        if (told.length) say(pick(anyKnight, rnd), { kind: "sizes", x, lens: told.map(a => [a, world.start[x].size[a]] as [number, number]) });
+        if (told.length) say(share(), { kind: "sizes", x, lens: told.map(a => [a, world.start[x].size[a]] as [number, number]) });
     }
     /* A reading that differs from the world only in that one length is not wrong. */
+    /* Every knight says what they see from where they stand, outside the
+       brackets: the reasoning from someone's place and heading is the point of
+       having speakers stand anywhere, and one voice gave it one viewpoint. Of
+       something they do not stand in, and not the thing whose length is left
+       open, which a view would settle. */
+    if (obs) for (const k of anyKnight) {
+        const seeable = ids.filter(x => x !== obs[k].host && x !== openThing);
+        if (!seeable.length) continue;
+        const x = pick(seeable, rnd), hour = int(rnd, 1, FIRST_HOURS);
+        say(k, { kind: "view", hour, who: k, x, seen: seenFrom(axes, thingAt(world, obs[k].host, hour), thingAt(world, x, hour), obs[k]) });
+    }
     const onlyOpen = (st: Array<Body | null>) => openThing >= 0 && st.every((b, x) => b && (x === openThing
         ? sameBody({ ...b, size: b.size.map((l, a) => (a === openLine ? world.start[x].size[a] : l)) }, world.start[x])
         : sameBody(b, world.start[x])));
@@ -424,7 +443,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
             if (!m.has(key)) m.set(key, st[k] ? bodyAt(axes, st[k]!, world.events, h, undefined, k) : null);
             return m.get(key)!;
         };
-        const s = pick(anyKnight, rnd);
+        const s = share();
         let best: Fact | null = null, bestKills = 0;
         for (let g = 0; g < 96; g++) {
             const x = int(rnd, 0, n - 1), y = pick(ids.filter(k => k !== x), rnd);
@@ -487,7 +506,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     /* On a card meant to leave a length open, only in a form no length bears
        on — a ring's reach, steps apart, a ranked list, drawing level — since
        the others would as often as not settle it. */
-    const reporters = space === 0 ? [pick(anyKnight, rnd)] : [];
+    const reporters = space === 0 ? [share()] : [];
     const startOf = (k: number) => (k === POST ? { vel: axes.map(() => 0), size: axes.map(() => 1) } : world.start[k]);
     const telling = (x: number, y: number, a: number) =>
         startOf(x).vel[a] !== startOf(y).vel[a] && (startOf(x).size[a] > 1 || startOf(y).size[a] > 1);
@@ -503,84 +522,80 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
             && st.fact.x === x && st.fact.y === y && st.fact.axis === a));
         const good = fresh.filter(([x, y, a]) => telling(x, y, a));
         const [x, y, a] = pick(good.length && rnd() < 0.85 ? good : fresh, rnd);
-        /* Or, a third of the time, what they see from where they stand. One
-           report a card, so each form gets its share of them. */
-        if (obs && obs[i].host !== x && !leaveOpen && rnd() < 0.3) {
-            const truth = seenFrom(axes, thingAt(world, obs[i].host, hour), thingAt(world, x, hour), obs[i]);
-            const seen = types[i] ? truth : skew(truth, axes, rnd);
-            say(i, { kind: "view", hour, who: i, x, seen });
-            continue;
-        }
-        /* Or steps in all, or a ranked list — false from a knave by a little. */
-        const roll = rnd(), bx = thingAt(world, x, hour), by = thingAt(world, y, hour);
-        /* Or, where time is a line, whether a ring from one would reach the
-           other in time: just as it arrives, or only after. */
-        if (roll < 0.5 && axes[TIME]?.kind === "line") {
-            /* Of the pairs, one a knight could say it of: a ring from the second
-               reaches the first by its time, just then or before. */
-            const ring = (p: number, q: number) => {
-                const bp = thingAt(world, p, hour), bq = thingAt(world, q, hour);
-                const late = bp.pos[TIME] - bq.pos[TIME], far = spaceSteps(axes, bp, bq);
-                return late === far ? "at" : late > far ? "after" : null;
-            };
-            const pairsOf = ids.flatMap(p => ids.filter(q => q !== p).map(q => [p, q] as [number, number]));
-            const sayable = pairsOf.filter(([p, q]) => ring(p, q) !== null);
-            if (sayable.length) {
-                const [p, q] = pick(sayable, rnd), truth = ring(p, q)!;
-                say(i, { kind: "signal", hour, x: p, y: q, mode: types[i] ? truth : truth === "at" ? "after" : "at" });
-                continue;
-            }
-        }
-        /* Or the hour one first draws level with another along a line, searched over the pairs. */
-        if (roll > 0.82) {
-            const at = (k: number, h: number) => (k === POST ? thingAt(world, POST, h) : truly(k, h));
-            const level = pairs.map(([p, q, b]) => [p, q, b, firstLevel(at, p, q, b, LAST_HOUR)] as const).filter(([, , , h]) => typeof h === "number" && h >= 1);
-            if (level.length) {
-                const [p, q, b, first] = pick(level, rnd);
-                const hourSaid = types[i] ? first! : pick(Array.from({ length: LAST_HOUR }, (_, k) => k + 1).filter(h => h !== first), rnd);
-                say(i, { kind: "level", x: p, y: q, axis: b, hour: hourSaid });
-                continue;
-            }
-        }
-        /* Or the hour two first meet, sharing ground — searched over the pairs,
-           since most pairs never do. A knave names an hour they do not. */
-        if (roll > 0.62 && roll <= 0.82 && !leaveOpen) {
-            const at = (k: number, h: number) => (k === POST ? thingAt(world, POST, h) : truly(k, h));
-            const meeting = ids.flatMap(p => ids.filter(q => q > p).map(q => [p, q, firstMeet(axes, at, p, q, LAST_HOUR)] as const))
-                .filter(([, , h]) => typeof h === "number" && h >= 1);
-            if (meeting.length) {
-                const [p, q, first] = pick(meeting, rnd);
-                const hourSaid = types[i] ? first! : pick(Array.from({ length: LAST_HOUR }, (_, k) => k + 1).filter(h => h !== first), rnd);
-                say(i, { kind: "meet", x: p, y: q, hour: hourSaid });
-                continue;
-            }
-        }
-        if (roll < 0.2 || leaveOpen) {
-            const steps = stepsBetween(axes, bx, by);
-            say(i, { kind: "total", hour, x, y, steps: types[i] ? steps : Math.max(0, steps + pick([-2, -1, 1, 2], rnd)) });
-            continue;
-        }
-        if (roll < 0.35 && n >= 3) {
-            const by2 = pick(lineAxes(axes).filter(b => b !== a), rnd) ?? a;
-            const truly = rankBy(axes, world.start.map((_, k) => thingAt(world, k, hour)), ids, [a, by2]);
-            if (truly) {
-                /* A knave's list has two neighbours the wrong way round. */
-                const said = [...truly];
-                if (!types[i]) { const j = int(rnd, 0, said.length - 2); [said[j], said[j + 1]] = [said[j + 1], said[j]]; }
-                say(i, { kind: "ranked", hour, by: [a, by2], order: said });
-                continue;
-            }
-        }
-        const truth = intervalRel(bx, by, a);
+        /* Every knight already says what they see (above), so the report is in
+           another form — drawn evenly among those the card allows. Stacked dice
+           starved whichever form came last each time another was added. */
+        const bx = thingAt(world, x, hour), by = thingAt(world, y, hour);
+        const at = (k: number, h: number) => (k === POST ? thingAt(world, POST, h) : truly(k, h));
+        const wrongHour = (h: number) => pick(Array.from({ length: LAST_HOUR }, (_, k) => k + 1).filter(k => k !== h), rnd);
         const rels = ["before", "after", "overlaps", "within", "spans", "identical"] as const;
-        /* A denial is checkable too: a knight denies a way they do not lie, a knave the way they do. */
-        if (roll < 0.5) {
-            const rel = types[i] ? pick(rels.filter(q => q !== truth), rnd) : truth;
-            say(i, { kind: "not", f: { kind: "rel", hour, x, y, axis: a, rel } });
-            continue;
+        const forms: Array<() => Fact | null> = [
+            /* Where time is a line, whether a ring from one reaches the other by
+               its time: just as it arrives, or only after. */
+            () => {
+                if (axes[TIME]?.kind !== "line") return null;
+                const ring = (p: number, q: number) => {
+                    const bp = thingAt(world, p, hour), bq = thingAt(world, q, hour);
+                    const late = bp.pos[TIME] - bq.pos[TIME], far = spaceSteps(axes, bp, bq);
+                    return late === far ? "at" : late > far ? "after" : null;
+                };
+                const sayable = ids.flatMap(p => ids.filter(q => q !== p).map(q => [p, q] as [number, number]))
+                    .filter(([p, q]) => ring(p, q) !== null);
+                if (!sayable.length) return null;
+                const [p, q] = pick(sayable, rnd), truth = ring(p, q)!;
+                return { kind: "signal", hour, x: p, y: q, mode: types[i] ? truth : truth === "at" ? "after" : "at" };
+            },
+            /* The hour one first draws level with another along a line. */
+            () => {
+                const level = pairs.map(([p, q, b]) => [p, q, b, firstLevel(at, p, q, b, LAST_HOUR)] as const)
+                    .filter(([, , , h]) => typeof h === "number" && h >= 1);
+                if (!level.length) return null;
+                const [p, q, b, first] = pick(level, rnd);
+                return { kind: "level", x: p, y: q, axis: b, hour: types[i] ? first! : wrongHour(first!) };
+            },
+            /* The hour two first meet, sharing ground — most pairs never do. A
+               knave names an hour they do not. */
+            () => {
+                if (leaveOpen) return null;
+                const meeting = ids.flatMap(p => ids.filter(q => q > p).map(q => [p, q, firstMeet(axes, at, p, q, LAST_HOUR)] as const))
+                    .filter(([, , h]) => typeof h === "number" && h >= 1);
+                if (!meeting.length) return null;
+                const [p, q, first] = pick(meeting, rnd);
+                return { kind: "meet", x: p, y: q, hour: types[i] ? first! : wrongHour(first!) };
+            },
+            /* Steps in all — false from a knave by a little. */
+            () => {
+                const steps = stepsBetween(axes, bx, by);
+                return { kind: "total", hour, x, y, steps: types[i] ? steps : Math.max(0, steps + pick([-2, -1, 1, 2], rnd)) };
+            },
+            /* A ranked list; a knave's has two neighbours the wrong way round. */
+            () => {
+                if (n < 3) return null;
+                const by2 = pick(lineAxes(axes).filter(b => b !== a), rnd) ?? a;
+                const order = rankBy(axes, world.start.map((_, k) => thingAt(world, k, hour)), ids, [a, by2]);
+                if (!order) return null;
+                const said = [...order];
+                if (!types[i]) { const j = int(rnd, 0, said.length - 2); [said[j], said[j + 1]] = [said[j + 1], said[j]]; }
+                return { kind: "ranked", hour, by: [a, by2], order: said };
+            },
+            /* A denial is checkable too: a knight denies a way they do not lie, a knave the way they do. */
+            () => {
+                if (leaveOpen) return null;
+                const truth = intervalRel(bx, by, a);
+                return { kind: "not", f: { kind: "rel", hour, x, y, axis: a, rel: types[i] ? pick(rels.filter(q => q !== truth), rnd) : truth } };
+            },
+            () => {
+                if (leaveOpen) return null;
+                const truth = intervalRel(bx, by, a);
+                return { kind: "rel", hour, x, y, axis: a, rel: types[i] ? truth : pick(rels.filter(q => q !== truth), rnd) };
+            },
+        ];
+        /* Tried in a shuffled order, so each form that fits is equally likely. */
+        const order = forms.map(f => [f, rnd()] as const).sort((p, q) => p[1] - q[1]).map(([f]) => f);
+        for (const form of order) {
+            const fact = form();
+            if (fact) { say(i, fact); break; }
         }
-        const rel = types[i] ? truth : pick(rels.filter(q => q !== truth), rnd);
-        say(i, { kind: "rel", hour, x, y, axis: a, rel });
     }
     return statements;
 }
@@ -593,16 +608,6 @@ const sameWorld = (a: World, b: World) =>
     a.start.length === b.start.length && a.start.every((x, i) => sameBody(x, b.start[i]))
     && a.events.length === b.events.length
     && a.events.every(e => b.events.some(f => f.hour === e.hour && canonicalT(f.t) === canonicalT(e.t)));
-
-/** A view wrong by one step on one dimension: what a knave says they see. */
-function skew(s: Seen, axes: Axis[], rnd: () => number): Seen {
-    const out: Seen = { ahead: s.ahead, left: s.left, rest: [...s.rest] };
-    const dims = ["ahead", "left", ...axes.map((a, i) => (PLANE.includes(i) || a.kind === "parity" ? -1 : i)).filter(i => i >= 0)];
-    const d = pick(dims, rnd), by = rnd() < 0.5 ? 1 : -1;
-    if (d === "ahead") out.ahead += by; else if (d === "left") out.left += by;
-    else { const i = d as number; out.rest[i] = axes[i].kind === "ring" ? mod(out.rest[i] + by, axes[i].modulus!) : out.rest[i] + by; }
-    return out;
-}
 
 /**
  * The question put to the one speaker the first stage leaves unsaid: yes-or-no
@@ -726,6 +731,8 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     const asked = int(rnd, 0, opts.speakers - 1);
     const firsts = Array.from({ length: opts.speakers }, (_, i) => i).filter(i => i !== asked);
     if (!firsts.some(i => types[i])) types[pick(firsts, rnd)] = true;
+    /* Two knights at least, so the world has two voices once the knaves' words go. */
+    while (opts.speakers > 2 && types.filter(Boolean).length < 2) types[pick(types.map((t, i) => (t ? -1 : i)).filter(i => i >= 0), rnd)] = true;
     /* Nested on most cards: a second space in brackets, the same things in
        the same kind of space, arranged, sized, moving and turned apart. */
     const nested = opts.nested ?? rnd() < 0.75;
@@ -752,7 +759,7 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     };
     /* Everything said, each sentence once: a word of the first stage may be a knight's word on the world too. */
     const once = (st: Statement) => !plain.statements.some(o => o.speaker === st.speaker && JSON.stringify(o.fact) === JSON.stringify(st.fact) && !o.space);
-    const card: Card = { ...plain, statements: [...plain.statements, ...extra.filter(once), asking.answer] };
+    const card: Card = { ...plain, statements: [...plain.statements, ...[...extra, asking.answer].filter(once)] };
     /* The words alone settle everyone, the answer included. */
     const settled = settleTypes({ ...plain, statements: words });
     if (types.some((t, i) => settled.get(i) !== t)) return null;

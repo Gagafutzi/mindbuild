@@ -835,7 +835,8 @@ test("composed world: most cards read back, so items cost few attempts", () => {
 });
 
 test("composed world: premises buy axes, things and speakers, and every kind is asked by the top", () => {
-    equal(worldSize(RANGE.minNumOfPremises), { dims: 3, things: 3, speakers: 2 });
+    /* Three speakers at the floor: two knights to give the world from two places, and someone to ask. */
+    equal(worldSize(RANGE.minNumOfPremises), { dims: 3, things: 3, speakers: 3 });
     equal(worldSize(RANGE.maxNumOfPremises), { dims: 7, things: 5, speakers: 4 });
     for (let n = RANGE.minNumOfPremises; n < RANGE.maxNumOfPremises; n++) {
         const a = worldSize(n), b = worldSize(n + 1);
@@ -894,6 +895,24 @@ test("composed world: open cards and kinds ship their share, not what survives t
         /* Drawn once an item: 0.6 and 0.5 of sixteen. Drawn on every attempt they came to a fifth and a quarter. */
         assert(could >= 6, `only ${could} of ${n} cards asked what could be`);
         assert(kinds >= 5, `only ${kinds} of ${n} cards had kinds`);
+    });
+});
+
+test("composed world: the world is given by every knight, each from where they stand", () => {
+    /* One knight gave the whole world on most cards, so nothing was said from
+       anywhere but one place, and seeing from a speaker's place and heading
+       was one speaker's puzzle. */
+    seeded(9700, () => {
+        for (let k = 0; k < 10; k++) {
+            const st = buildStaged(worldSize(4 + (k % 5)), 300)!;
+            const knights = st.types.map((t, i) => (t ? i : -1)).filter(i => i >= 0);
+            assert(knights.length >= 2, "fewer than two knights to give the world");
+            for (const i of knights) {
+                const own = st.plain.statements.filter(s => s.speaker === i && !s.space);
+                assert(own.some(s => s.fact.kind === "view"), "a knight says nothing from where they stand");
+                assert(own.length >= 3, `a knight gives only ${own.length} of the world's premises`);
+            }
+        }
     });
 });
 

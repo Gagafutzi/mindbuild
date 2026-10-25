@@ -42,7 +42,7 @@ import { GeneratorContext } from "./context";
  * term with two to choose between, and the origin is no thing.
  */
 const LADDER: Record<number, { dims: number; things: number; speakers: number }> = {
-    4: { dims: 3, things: 3, speakers: 2 },
+    4: { dims: 3, things: 3, speakers: 3 },
     5: { dims: 4, things: 3, speakers: 3 },
     6: { dims: 5, things: 4, speakers: 3 },
     7: { dims: 6, things: 4, speakers: 4 },
