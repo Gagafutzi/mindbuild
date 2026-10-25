@@ -97,8 +97,8 @@ function readClause(ax: Axis, c: string): number | null {
     return m ? (m[2] === s.direction[0] ? +m[1] : -m[1]) : null;
 }
 
-/* The question stage parses to the facts it would ask about, null for "Are you a knight?". */
-interface Parsed { card: Card; ask: Ask; kind: string; questions?: Array<Fact | null>; asked?: number }
+/* The question stage parses to the facts it would ask about. */
+interface Parsed { card: Card; ask: Ask; kind: string; questions?: Fact[]; asked?: number }
 
 /** What the screen shows for the claim that is up. */
 interface Shown { setup: string[]; premises: string[]; prompt: string; choices: string[]; dims: number }
@@ -339,7 +339,6 @@ function parse(q: Shown, things: string[], speakers: string[], voice = -1): Pars
     if ((m = new RegExp(`^Which questions to ${P} would tell what ${P} is\\? Select all that would\\.$`).exec(prompt))) {
         const asked = who.get(m[1])!;
         const questions = options.map(o => {
-            if (o === "Are you a knight?") return null;
             const f = /^(.+)\?$/.exec(o);
             if (!f) throw new Error(`unread question "${o}"`);
             return fact(asked, f[1]);
@@ -436,7 +435,6 @@ function telling(p: Parsed): string {
     const open = Array.from({ length: 1 << speakers }, (_, m) => Array.from({ length: speakers }, (_, i) => (m & (1 << i)) !== 0))
         .filter(t => !wordBreach(axes, things, statements, t));
     return answerKey(p.questions!.map((f, i) => {
-        if (!f) return -1;
         const tells = [f, { kind: "not", f } as Fact].every(a =>
             new Set(open.filter(t => !wordBreach(axes, things, [...statements, { speaker: asked, fact: a }], t)).map(t => t[asked])).size <= 1);
         return tells ? i : -1;
@@ -822,7 +820,7 @@ test("composed world: every word of the first stage does work — none is implie
             const axes = st.card.axes, n = st.card.things, who = st.asking.who;
             const words = st.words.filter(s => s !== st.asking.answer);
             const guesses = Array.from({ length: 1 << st.types.length }, (_, m) => st.types.map((_, i) => (m & (1 << i)) !== 0));
-            const asks: Statement[][] = [[], ...st.asking.options.flatMap(o => (o.fact ? [o.fact, { kind: "not", f: o.fact } as Fact] : []))
+            const asks: Statement[][] = [[], ...st.asking.options.flatMap(o => [o.fact, { kind: "not", f: o.fact } as Fact])
                 .map(fact => [{ speaker: who, fact }])];
             const sign = (ws: Statement[]) => asks.map(a => guesses.map(t => +!!wordBreach(axes, n, [...ws, ...a], t)).join("")).join("|");
             for (const w of words) {
@@ -905,6 +903,8 @@ test("composed world: nobody claims a kind, and a speaker on themselves says I",
         for (let k = 0; k < 6; k++) {
             const q = createComposedWorld(ctxHolding([]), 4 + k % 5);
             const { speakers } = names(q, 4 + k % 5);
+            /* Nor is a speaker asked it: both kinds say yes, so it was a free wrong answer. */
+            assert(!q.series[0].choices!.map(strip).some(c => /knight|knave/.test(c)), `a question about a kind: ${q.series[0].choices!.map(strip).join(" | ")}`);
             for (const line of q.series.flatMap(c => c.premises ?? []).map(strip)) for (const sp of speakers) {
                 assert(!new RegExp(`^${sp}: ${sp} is in`).test(line), `a speaker names themselves: ${line}`);
             }

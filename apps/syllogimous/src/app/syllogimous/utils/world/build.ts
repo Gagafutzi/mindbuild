@@ -621,8 +621,9 @@ const sameWorld = (a: World, b: World) =>
  */
 export interface Asking {
     who: number;
-    /** A fact to ask whether it is so, or null for "Are you a knight?", which both answer yes. */
-    options: Array<{ fact: Fact | null; tells: boolean }>;
+    /** A fact to ask whether it is so. Never "Are you a knight?": both kinds say yes, so it
+       was a free wrong answer every player saw through, and only took a slot. */
+    options: Array<{ fact: Fact; tells: boolean }>;
     /** The speaker's answer to a question that tells: the fact, or the fact denied. */
     answer: Statement;
 }
@@ -661,7 +662,7 @@ function makeAsking(world: World, types: boolean[], who: number, words: Statemen
         const kinds = new Set(standing.filter(t => !wordBreach(axes, n, [...words, { speaker: who, fact: a }], t)).map(t => t[who]));
         return kinds.size <= 1;
     });
-    const tells: Fact[] = [], blind: Array<Fact | null> = [null];
+    const tells: Fact[] = [], blind: Fact[] = [];
     /* The topics the words speak of: only there can a question be settled — and
        best those spoken of by someone every open reading has the same kind,
        whose word pins the same thing in all of them. */
@@ -700,7 +701,7 @@ function makeAsking(world: World, types: boolean[], who: number, words: Statemen
         if (settles(f)) { if (tells.length < 3) tells.push(f); }
         else if (blind.length < 4) blind.push(f);
     }
-    if (!tells.length || blind.length < 2) return null;
+    if (!tells.length || !blind.length) return null;
     /* Four questions, one to three that tell. */
     const k = int(rnd, 1, Math.min(3, tells.length, 3));
     const options = shuffle([...tells.slice(0, k).map(fact => ({ fact, tells: true })),
@@ -710,8 +711,8 @@ function makeAsking(world: World, types: boolean[], who: number, words: Statemen
     const view = { axes, at: (x: number, h: number) => thingAt(world, x, h), start: (x: number) => (x === POST ? thingAt(world, POST, 0) : world.start[x]),
         observer: () => null, eventsKnownThrough: () => true, events: () => world.events, types };
     const answers = options.filter(o => o.tells).map(o => {
-        const truth = holds(o.fact!, view);
-        return truth === null ? null : { speaker: who, fact: truth === types[who] ? o.fact! : { kind: "not", f: o.fact! } as Fact };
+        const truth = holds(o.fact, view);
+        return truth === null ? null : { speaker: who, fact: truth === types[who] ? o.fact : { kind: "not", f: o.fact } as Fact };
     }).filter((a): a is Statement => !!a && !selfContradicts(axes, [...words, a], who));
     if (!answers.length) return null;
     return { who, options, answer: pick(answers, rnd) };
@@ -727,7 +728,7 @@ function makeAsking(world: World, types: boolean[], who: number, words: Statemen
  */
 export function pruneWords(axes: Axis[], n: number, words: Statement[], speakers: number, asking: Pick<Asking, "who" | "options">, rnd: () => number): Statement[] {
     const guesses = Array.from({ length: 1 << speakers }, (_, m) => Array.from({ length: speakers }, (_, i) => (m & (1 << i)) !== 0));
-    const asks: Statement[][] = [[], ...asking.options.flatMap(o => (o.fact ? [o.fact, { kind: "not", f: o.fact } as Fact] : []))
+    const asks: Statement[][] = [[], ...asking.options.flatMap(o => [o.fact, { kind: "not", f: o.fact } as Fact])
         .map(fact => [{ speaker: asking.who, fact }])];
     const sign = (ws: Statement[]) => asks.map(a => guesses.map(t => (wordBreach(axes, n, [...ws, ...a], t) ? 1 : 0)).join("")).join("|");
     const whole = sign(words);

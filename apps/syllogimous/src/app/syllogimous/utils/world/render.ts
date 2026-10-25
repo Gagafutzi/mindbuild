@@ -174,7 +174,7 @@ function guessLines(item: StagedItem, w: Wording): string[] {
 }
 
 /** A question about the world, as put to a speaker. */
-export const questionWords = (w: Wording, f: Fact | null) => (f ? `${describeFact(w, f)}?` : "Are you a knight?");
+export const questionWords = (w: Wording, f: Fact) => `${describeFact(w, f)}?`;
 
 /** The asked speaker's answer, as the card shows it. */
 export function answerLine(item: StagedItem, w: Wording): string {
@@ -185,7 +185,7 @@ export function answerLine(item: StagedItem, w: Wording): string {
 /**
  * The question stage: which questions, put to the speaker the words leave
  * unsaid, would tell what they are. Those whose answer the words already
- * settle; not one they leave open, and never "Are you a knight?".
+ * settle; not one they leave open.
  */
 export function renderQuestion(item: StagedItem, w: Wording): RenderedAsk {
     const who = subj(w.speakers[item.asking.who]), opts = item.asking.options, q = item.asking.who;
@@ -202,8 +202,7 @@ export function renderQuestion(item: StagedItem, w: Wording): RenderedAsk {
         conclusion: "", correctChoice: -1,
         choices: opts.map(o => questionWords(w, o.fact)),
         selectAnswer: opts.map((o, i) => (o.tells ? i : -1)).filter(i => i >= 0),
-        explanation: opts.map(o => !o.fact ? `"Are you a knight?": both kinds say yes`
-            : o.tells ? `"${describeFact(w, o.fact)}?": as the words leave things, a knight says ${says(o.fact, true)}, a knave ${says(o.fact, false)}`
+        explanation: opts.map(o => o.tells ? `"${describeFact(w, o.fact)}?": as the words leave things, a knight says ${says(o.fact, true)}, a knave ${says(o.fact, false)}`
             : `"${describeFact(w, o.fact)}?": nothing settles it yet, so either answer fits either kind`),
     };
 }
