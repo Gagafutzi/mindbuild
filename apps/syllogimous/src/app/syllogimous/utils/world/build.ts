@@ -22,7 +22,7 @@ import { Axis, Body, FULL, Frames, SHORTCUTS, Seam, mod, reckon, sameBody } from
 import { TRANSFORMS, TransformSpec, canTransform, canonicalT } from "./transforms";
 import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, TIME, compareLengths, displacement, firstLevel, firstMeet, holds, intervalRel, localTime, otherKind, rankBy, seenFrom, spaceSteps, stepsBetween } from "./facts";
 import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleTypes, thingAt, worlds } from "./reader";
-import { wordBreach } from "./words";
+import { selfContradicts, wordBreach } from "./words";
 import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerFollows, answerKey } from "./questions";
 
 export interface Item {
@@ -167,9 +167,9 @@ function makeFrames(axes: Axis[], rnd: () => number, want?: boolean): Frames | u
  * opposite to another thing's; a quarter turn from its other side; a place the
  * other way round the ring, by local clocks, or with one gap given by another
  * — or says a still thing never moves. A knave says a pace, a stillness, a
- * likeness, a turn or a place that is not so, and may contradict themselves
- * doing it. Each is the one, of a few dozen drawn, that rules out the most
- * guesses.
+ * likeness, a turn or a place that is not so, though never two that
+ * contradict each other: that would give them away at a glance. Each is the
+ * one, of a few dozen drawn, that rules out the most guesses.
  *
  * In place of the claims about each other ("Bee and I are the same kind"),
  * which settled a card without a word about the world: two knights show
@@ -186,6 +186,8 @@ function puzzleWords(world: World, types: boolean[], firsts: number[], said0: St
     }).filter(t => !t.every((v, i) => v === types[i]));
     const out: Statement[] = [];
     const standing = (extra: Statement[]) => guesses.filter(t => !wordBreach(axes, n, [...said0, ...out, ...extra], t));
+    /* Nobody contradicts themselves: a knave who did would be found out at a glance. */
+    const owns = (extra: Statement[]) => extra.some(st => selfContradicts(axes, [...said0, ...out, ...extra], st.speaker));
     const key = (f: Fact) => (f.kind === "event" ? `e${f.hour}|${canonicalT(f.t)}` : JSON.stringify(f));
     const said = (f: Fact) => [...said0, ...out].some(o => key(o.fact) === key(f) && JSON.stringify(o.fact) === JSON.stringify(f));
     const free = axes.map((ax, i) => (ax.kind === "parity" ? -1 : i)).filter(i => i >= 0);
@@ -248,7 +250,7 @@ function puzzleWords(world: World, types: boolean[], firsts: number[], said0: St
                 const second = again ? [] : [pick(firsts.filter(k => k !== s), rnd)].filter(k => k !== undefined);
                 if (!again && !second.length) continue;
                 const both = [s, ...second].map(k => ({ speaker: k, fact: placeWord(px, h, types[k]) }));
-                if (both.some(b => said(b.fact)) || (both.length > 1 && JSON.stringify(both[0].fact) === JSON.stringify(both[1].fact))) continue;
+                if (both.some(b => said(b.fact)) || (both.length > 1 && JSON.stringify(both[0].fact) === JSON.stringify(both[1].fact)) || owns(both)) continue;
                 const kills = left.length - standing(both).length, score = kills ? kills + (used.has(family) ? 0 : 0.6) : 0;
                 if (score > bestKills) { best = both; bestKills = score; bestFamily = family; }
                 continue;
@@ -262,6 +264,7 @@ function puzzleWords(world: World, types: boolean[], firsts: number[], said0: St
             }
             if (!fact || said(fact)) continue;
             const st: Statement = { speaker: s, fact };
+            if (owns([st])) continue;
             const kills = left.length - standing([st]).length, score = kills ? kills + (used.has(family) ? 0 : 0.6) : 0;
             if (score > bestKills) { best = [st]; bestKills = score; bestFamily = family; }
         }

@@ -26,7 +26,7 @@ import { TRANSFORMS, TransformSpec, canTransform } from "../src/app/syllogimous/
 import { Fact, IntervalRel, MAX_LEN, POST, Seen, Statement, intervalRel, negate, otherKind } from "../src/app/syllogimous/utils/world/facts";
 const LONG = MAX_LEN;
 import { Card, OPEN_MAX, Reconstruction, read, settleTypes, thingAt, worlds } from "../src/app/syllogimous/utils/world/reader";
-import { wordBreach } from "../src/app/syllogimous/utils/world/words";
+import { selfContradicts, wordBreach } from "../src/app/syllogimous/utils/world/words";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
 import { missedReview } from "../src/app/syllogimous/utils/review.utils";
 import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
@@ -893,5 +893,28 @@ test("composed world: open cards and kinds ship their share, not what survives t
         /* Drawn once an item: 0.6 and 0.5 of sixteen. Drawn on every attempt they came to a fifth and a quarter. */
         assert(could >= 6, `only ${could} of ${n} cards asked what could be`);
         assert(kinds >= 5, `only ${kinds} of ${n} cards had kinds`);
+    });
+});
+
+test("composed world: nobody contradicts themselves, so no knave is found out at a glance", () => {
+    /* A knave saying a thing never moves and, two lines on, that it moves
+       every hour gave themselves away without a thought about the world. */
+    const axes = makeAxes(() => 0.1, 3), still = [0, 0, 0];
+    const say = (fact: Fact): Statement => ({ speaker: 0, fact });
+    assert(selfContradicts(axes, [say({ kind: "pace", x: 0, vel: still }), say({ kind: "pace", x: 0, vel: [0, 1, 0], every: 2 })], 0), "never moves, and moves");
+    assert(selfContradicts(axes, [say({ kind: "pace", x: 0, vel: [1, 0, 0] }), say({ kind: "pace", x: 1, vel: still }),
+        say({ kind: "pacelike", x: 0, y: 1, sign: 1 })], 0), "moves exactly as a thing that never moves");
+    assert(selfContradicts(axes, [say({ kind: "place", hour: 2, x: 0, y: POST, delta: [1, 0, 0] }), say({ kind: "place", hour: 2, x: 0, y: POST, delta: [2, 0, 0] })], 0), "two places at one hour");
+    assert(!selfContradicts(axes, [say({ kind: "place", hour: 2, x: 0, y: POST, delta: [4, 0, 0] }), say({ kind: "place", hour: 2, x: 0, y: POST, delta: [4, 0, 0], round: true })], 0),
+        "four steps clockwise and one anticlockwise are one place");
+    assert(!selfContradicts(axes, [say({ kind: "pace", x: 0, vel: [0, 1, 0] }), { speaker: 1, fact: { kind: "pace", x: 0, vel: still } }], 0), "two speakers may disagree");
+    seeded(9600, () => {
+        for (let k = 0; k < 12; k++) {
+            const st = buildStaged(worldSize(4 + (k % 5)), 300)!;
+            for (let i = 0; i < st.types.length; i++) {
+                assert(!selfContradicts(st.card.axes, st.words, i), `a speaker contradicts themselves: ${JSON.stringify(st.words.filter(s => s.speaker === i).map(s => s.fact))}`);
+                assert(!selfContradicts(st.card.axes, st.card.statements, i), "a speaker contradicts themselves across the stages");
+            }
+        }
     });
 });

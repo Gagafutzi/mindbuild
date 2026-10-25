@@ -24,7 +24,7 @@
 
 import { Axis, mod } from "./space";
 import { Fact, POST, Statement, TIME } from "./facts";
-import { canonicalT } from "./transforms";
+import { TRANSFORMS, canonicalT } from "./transforms";
 
 export type Word = Extract<Fact, { kind: "pace" } | { kind: "pacelike" } | { kind: "event" } | { kind: "place" }>;
 const EAST = 0;
@@ -106,4 +106,52 @@ export function wordBreach(axes: Axis[], things: number, statements: Statement[]
         }
     }
     return null;
+}
+
+/**
+ * Whether one speaker's own words contradict each other on their face: two
+ * paces for one thing, a thing that never moves and moves, two things alike
+ * whose paces the speaker gives differently, two places for one thing at one
+ * hour, a turn and its opposite on one hour, or a word and its own denial.
+ *
+ * A knave who does that is found out at a glance, without a thought about the
+ * world — the puzzle is meant to be in how speakers' words bear on each other.
+ * Judged on the speaker's words alone: what nobody gives a pace to is not taken
+ * to stand still here, since that rule is about knights, not about one voice.
+ */
+export function selfContradicts(axes: Axis[], words: Statement[], speaker: number): boolean {
+    for (const space of [0, 1]) {
+        const own = words.filter(s => s.speaker === speaker && (s.space ?? 0) === space && wordIn(s.fact)).map(s => wordIn(s.fact)!);
+        /* A word and its own denial. */
+        const keys = own.map(o => JSON.stringify(o.f));
+        if (own.some((o, i) => own.some((p, j) => j !== i && keys[i] === keys[j] && o.denied !== p.denied))) return true;
+        const asserted = own.filter(o => !o.denied).map(o => o.f);
+        const pace = new Map<number, number[]>();
+        for (const f of asserted) {
+            if (f.kind !== "pace") continue;
+            const had = pace.get(f.x);
+            if (had && !sameVec(had, f.vel)) return true;
+            pace.set(f.x, f.vel);
+        }
+        for (const f of asserted) {
+            if (f.kind !== "pacelike") continue;
+            const a = pace.get(f.x), b = pace.get(f.y);
+            if (a && b && !sameVec(a, b.map(v => f.sign * v))) return true;
+        }
+        const placed = new Map<string, number[]>();
+        for (const f of asserted) {
+            if (f.kind !== "place") continue;
+            const key = `${f.x}@${f.hour}`, d = fromOrigin(axes, f), had = placed.get(key);
+            if (had && !sameVec(had, d)) return true;
+            placed.set(key, d);
+        }
+        /* A turn one way and the other on the same hour. */
+        const turns = asserted.filter(f => f.kind === "event") as Array<Extract<Fact, { kind: "event" }>>;
+        for (const a of turns) for (const b of turns) {
+            if (a === b || a.hour !== b.hour || a.t.id !== b.t.id) continue;
+            const opposite = TRANSFORMS[a.t.id].opposite?.(a.t);
+            if (opposite && canonicalT(opposite) === canonicalT(b.t)) return true;
+        }
+    }
+    return false;
 }
