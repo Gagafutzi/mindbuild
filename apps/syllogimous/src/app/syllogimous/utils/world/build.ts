@@ -329,9 +329,11 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const least = Math.min(...anyKnight.map(said));
         return pick(anyKnight.filter(k => said(k) === least), rnd);
     };
-    /* Never the same sentence twice from one speaker: it adds nothing, and reads as a slip. */
+    /* Never the same sentence twice: it adds nothing, and reads as a slip —
+       whoever says it, since past the first stage nobody is named and two
+       knights saying one thing would print one line twice. */
     const say = (speaker: number, fact: Fact) => {
-        if (statements.some(st => st.speaker === speaker && JSON.stringify(st.fact) === JSON.stringify(fact))) return;
+        if (statements.some(st => JSON.stringify(st.fact) === JSON.stringify(fact))) return;
         statements.push({ speaker, fact, ...(space ? { space } : {}) });
     };
 
@@ -494,8 +496,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
             best = denied ? { kind: "not", f: plain } : plain;
         }
         if (!best) return null;
-        /* Never the same sentence twice: it adds nothing, and reads as a slip. */
-        if (!statements.some(st => st.speaker === s && JSON.stringify(st.fact) === JSON.stringify(best))) say(s, best);
+        say(s, best);
     }
     /* And outside the brackets one report more from a knight, in one of the
        forms nothing above needs — what they see, steps in all, a ranked list,
@@ -929,19 +930,16 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
         analogies.push(stage);
     }
 
-    /* Stage 3: transformations announced, by settled speakers — a knave's the
-       other way round where there is one — and analogies judged across them. */
+    /* Stage 3: transformations announced, by knights — the knaves are gone by
+       then, and nobody is named, so a knave's turn the other way round would
+       read as the world's — and analogies judged across them. */
     const knights = firsts.filter(i => types[i]);
     /* A few draws of what to announce before the world is given up: whether a
        verdict turns on the new transformation depends on which one it is. */
     for (let tries = 0; tries < 6; tries++) {
         const added = makeEvents(world.axes, rnd, LATER_HOURS, world.start);
         if (!added.length) continue;
-        const later: Statement[] = added.map(e => {
-            const opp = TRANSFORMS[e.t.id].opposite?.(e.t);
-            const s = opp && rnd() < 0.6 ? pick(firsts, rnd) : pick(knights, rnd);
-            return { speaker: s, fact: { kind: "event", hour: e.hour, t: types[s] ? e.t : opp! } };
-        });
+        const later: Statement[] = added.map(e => ({ speaker: pick(knights, rnd), fact: { kind: "event", hour: e.hour, t: e.t } }));
         const whole: World = { ...world, events: [...world.events, ...added] };
         const card2: Card = { ...plain, statements: [...plain.statements, ...later] };
         const rec2 = read(card2, FULL, types);

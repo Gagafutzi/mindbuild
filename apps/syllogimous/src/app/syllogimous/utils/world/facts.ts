@@ -373,6 +373,9 @@ export interface Wording {
     speakers: string[];
     /** Places leave out every dimension they are level on. */
     compact?: boolean;
+    /** Once the knaves are gone every word is true, so nobody need be named
+       as saying it: "Ash sees Bee: …" for "Ash: I see Bee: …". */
+    unvoiced?: boolean;
 }
 
 /**
@@ -532,7 +535,7 @@ export function describeFact(w: Wording, f: Fact): string {
             return `at ${clock(f.hour)}, ${run(a, f.by[0])}, ties by ${hi(axisName(b), w.colors[f.by[1]])}: ${f.order.map(k => nameOf(w, k)).join(", ")}`;
         }
         case "view":
-            return `at ${clock(f.hour)}, ${seenWords(w, f.seen, nameOf(w, f.x), subj(w.speakers[f.who]))}`;
+            return `at ${clock(f.hour)}, ${seenWords(w, f.seen, nameOf(w, f.x), subj(w.speakers[f.who]), !w.unvoiced)}`;
     }
 }
 
@@ -609,6 +612,7 @@ function negatedWords(w: Wording, f: Fact): string {
 /** "Ash says: at 3 o'clock, …" — a speaker on themselves says "I". */
 export function describeStatement(w: Wording, s: Statement): string {
     const f = s.fact;
+    if (w.unvoiced) return describeFact(w, f);
     const body = f.kind === "type" ? describeClaimBy(w, s.speaker, f.claim)
         : f.kind === "stands" && f.who === s.speaker
             ? `I am in ${nameOf(w, f.host)}${standsTail(f)}`

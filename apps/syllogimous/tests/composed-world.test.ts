@@ -106,8 +106,11 @@ const shown = (q: Question, dims: number): Shown => ({
     setup: q.setup, premises: q.premises, prompt: strip(q.choicePrompt || (q.conclusion as string)), choices: q.choices.map(strip), dims,
 });
 
-/** A whole card back from its words. `things` and `speakers` are the names, in index order. */
-function parse(q: Shown, things: string[], speakers: string[]): Parsed {
+/**
+ * A whole card back from its words. `things` and `speakers` are the names, in
+ * index order; `voice` is a knight, whom a line naming no speaker is put down to.
+ */
+function parse(q: Shown, things: string[], speakers: string[], voice = -1): Parsed {
     const axes = readAxes(q.setup, q.dims);
     const thing = new Map<string, number>([["the origin", POST], ...things.map((n, i) => [n, i] as [string, number])]);
     const who = new Map(speakers.map((n, i) => [n, i] as [string, number]));
@@ -207,9 +210,9 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             return { kind: "stands", who: whoIs(m[1]), host: thing.get(m[2])!, ...(facing === undefined ? {} : { facing }),
                 ...(m[4] ? { twin: true } : {}), ...(m[5] ? { upside: true } : {}) };
         }
-        if ((m = new RegExp(`^at (\\d+), I see ${T}: (.+)$`).exec(body))) {
+        if ((m = new RegExp(`^at (\\d+), ${PI} sees? ${T}: (.+)$`).exec(body))) {
             /* Ahead, left, then every other dimension in order. */
-            const parts = m[3].split(", ");
+            const parts = m[4].split(", ");
             const ahead = parts[0] === "level ahead" ? 0 : /^(\d+) (ahead|behind)$/.exec(parts[0])!;
             const left = parts[1] === "level sideways" ? 0 : /^(\d+) (left|right)$/.exec(parts[1])!;
             const seen: Seen = {
@@ -227,7 +230,7 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
                 seen.rest[i] = ax.kind === "ring" ? ((v % ax.modulus!) + ax.modulus!) % ax.modulus! : v;
             });
             if (k !== parts.length) throw new Error(`a view with ${parts.length} parts for ${axes.length} axes: "${body}"`);
-            return { kind: "view", hour: +m[1], who: speakingNow, x: thing.get(m[2])!, seen };
+            return { kind: "view", hour: +m[1], who: whoIs(m[2]), x: thing.get(m[3])!, seen };
         }
         if ((m = new RegExp(`^at (\\d+), ${T} (is longer than|is shorter than|is as long as) ${T} in (.+)$`).exec(body))) {
             const cmp = ({ "is longer than": "longer", "is shorter than": "shorter", "is as long as": "same" } as const)[m[3] as "is longer than"];
@@ -312,7 +315,8 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
             const speaker = speakingNow = who.get(a[2])!, f = fact(speaker, a[1]);
             return [{ speaker, fact: a[3] === "yes" ? f : { kind: "not", f } as Fact }];
         }
-        const m = new RegExp(`^${P}: (.+)$`).exec(line);
+        /* Past the first stage the words are all true and nobody is named. */
+        const m = new RegExp(`^${P}: (.+)$`).exec(line) ?? (voice >= 0 ? [line, speakers[voice], line] : null);
         if (!m) throw new Error(`unread premise "${line}"`);
         const speaker = speakingNow = who.get(m[1])!;
         const [outer, bracket] = m[2].split(" (where ");
@@ -454,7 +458,7 @@ function walk(q: Question, premises: number, each: (p: Parsed, at: number, first
     /* The first card past the first stage, and the kinds the first stage settled. */
     let first: Parsed | null = null, known: boolean[] | undefined;
     for (;;) {
-        const p = parse(shown(q, worldSize(premises).dims), things, speakers);
+        const p = parse(shown(q, worldSize(premises).dims), things, speakers, known?.indexOf(true) ?? -1);
         if (p.kind === "types") known = kindsFrom(p.card) ?? undefined;
         else if (p.kind !== "asking") first = first ?? p;
         modes.push(q.answerMode);
@@ -496,7 +500,7 @@ test("composed world: the card alone answers every claim of every stage as shipp
                 }
                 const rec = read(p.card, FULL, known);
                 assert(rec, `the full reading of the card fails:\n${q.premises.map(strip).join("\n")}`);
-                equal(answered(p, rec!), shipped(q, p), `${p.kind}: the card's answer is not the one shipped`);
+                equal(answered(p, rec!), shipped(q, p), `${p.kind}: the card's answer is not the one shipped:\n${q.premises.map(strip).join("\n")}\n${strip(String(q.conclusion))}`);
             });
         });
     }
@@ -708,13 +712,12 @@ test("composed world: every part of the structure turns up in what ships", () =>
             "a heading left to work out", "fact:not", "fact:total", "fact:ranked", "a mirror twin", "head down", "an equal gap",
             "compact places", "two links in a sentence", "local clocks", "fact:signal", "fact:level", "fact:meet", "the light cone in an analogy", "an analogy to build", "an analogy left open",
             "kinds:mirror", "kinds:swap", "a place in the other kind's reckoning",
-        "two hours", "several axes", "inside the brackets", "an analogy across the brackets", "knave:event",
+        "two hours", "several axes", "inside the brackets", "an analogy across the brackets",
     ];
     /* And what actually ships: staged items, whose analogies are drawn from the same kinds. */
     seeded(8100, () => {
         for (let k = 0; k < 8; k++) {
             const st = buildStaged({ dims: 7, things: 4, speakers: 4 }, 300);
-            if (st) for (const s of st.later) if (!st.types[s.speaker]) seen.add(`knave:${s.fact.kind}`);
             if (st) for (const stage of [...st.analogies, ...st.judgements, st.closing]) {
                 if (stage.ask.on.includes(REACH)) seen.add("the light cone in an analogy");
                 if (stage.kind.id === "build") seen.add("an analogy to build");
@@ -744,6 +747,37 @@ test("composed world: lengths are told every way, and the card pins them on both
         for (const st of open) assert(st.every((b, x) => b!.pos.every((v, a) => v === open[0][x]!.pos[a])), "the worlds left open differ in more than a length");
         if (it.card.statements.some(s => s.space === 1)) equal(worlds(it.card, it.types, 1).length, 1, "and inside them");
     }
+});
+
+test("composed world: past the first stage nobody is named as saying a thing, since all of it is true", () => {
+    /* The knaves are gone by then, so "Ash: …" on every line only said again
+       what the stage before had settled. What a knight sees stays theirs —
+       "Ash sees Bee" — or the view would be from nowhere. */
+    seeded(9750, () => {
+        for (let k = 0; k < 10; k++) {
+            const q = createComposedWorld(ctxHolding([]), 4 + k % 5);
+            const { speakers } = names(q, 4 + k % 5);
+            const named = new RegExp(`^(?:${speakers.map(esc).join("|")}): `);
+            q.series.forEach((c, at) => {
+                const lines = (c.premises ?? []).map(strip);
+                for (const line of lines) {
+                    if (at < 2) assert(named.test(line) || line.startsWith("Asked "), `the first stage leaves a word unsaid by anyone: ${line}`);
+                    else {
+                        assert(!named.test(line), `claim ${at} names a speaker: ${line}`);
+                        assert(!/\bI (?:see|am)\b/.test(line), `claim ${at} has an "I" with nobody named: ${line}`);
+                    }
+                }
+                equal(new Set(lines).size, lines.length, `claim ${at} prints a line twice: ${lines.find((x, i) => lines.indexOf(x) !== i)}`);
+            });
+            assert(q.series.slice(2).some(c => (c.premises ?? []).some(l => / sees /.test(strip(l)))), "no knight says what they see past the first stage");
+        }
+        /* Unnamed, a knave's announcement would read as true: a turn the other way
+           round. One build in six had one, so ten could all miss it. */
+        for (let k = 0; k < 30; k++) {
+            const st = buildStaged(worldSize(4 + (k % 5)), 300)!;
+            for (const s of st.later) assert(st.types[s.speaker], `a knave announces ${JSON.stringify(s.fact)}`);
+        }
+    });
 });
 
 test("composed world: no card says the same thing twice", () => {

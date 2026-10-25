@@ -86,8 +86,10 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     /* The announcement goes at the end of the card, where the carousel lands
        when the last stage begins. */
     /* From the second stage on, the knaves have been found out and their words are gone. */
-    const plain = renderPremises(item.plain.statements, w, item.card.style?.wide);
-    const announced = [...plain, ...item.later.map(st => describeStatement(w, st))];
+    /* And what is left is all true, so it goes unsaid who says it. */
+    const told: Wording = { ...w, unvoiced: true };
+    const plain = renderPremises(item.plain.statements, told, item.card.style?.wide);
+    const announced = [...plain, ...item.later.map(st => describeStatement(told, st))];
 
     const series: SeriesClaim[] = [
         { text: "", isValid: true, answerMode: "select", choices: asking.choices, selectAnswer: asking.selectAnswer,
