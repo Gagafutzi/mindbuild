@@ -125,6 +125,7 @@ import "./minimal-premises.test";
 import "./coupling.test";
 import "./worldlines.test";
 import "./composed-world.test";
+import "./landing.test";
 import "./twist.test";
 import "./render-cost.test";
 

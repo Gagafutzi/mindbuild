@@ -5,7 +5,7 @@
 
 import { hi, subj } from "../phrasing";
 import { Axis, Frames } from "./space";
-import { Fact, POST, POST_NAME, Statement, View, Wording, clause, clock, describeFact, describeStatement, holds, placeClauses, ringWay, towards } from "./facts";
+import { Fact, POST, POST_NAME, Statement, Wording, clause, clock, describeFact, describeStatement, placeClauses, ringWay, towards } from "./facts";
 import { Item, StagedItem } from "./build";
 import { ConstructClaim } from "../../models/question.models";
 import { Answer, Ask, Part, QUESTIONS, REACH, openLength, relation } from "./questions";
@@ -102,30 +102,34 @@ export function unmaskingLines(rec: Reconstruction, w: Wording): string[] {
 }
 
 /**
- * How the words settle the first speakers: every other guess at what they
- * are, and the words that guess cannot survive.
+ * How the words and the answer settle the speakers: every wrong guess at what
+ * they are with the word it cannot survive, the readings the words leave open
+ * for the question to settle, and how the answer settles them.
  */
 function guessLines(item: StagedItem, w: Wording): string[] {
-    const firsts = item.types.map((_, i) => i).filter(i => i !== item.asking.who);
+    const all = item.types.map((_, i) => i), answer = item.asking.answer;
     const kind = (t: boolean) => hi(t ? "knight" : "knave");
-    const guessWords = (t: boolean[]) => firsts.map(i => `${subj(w.speakers[i])} ${kind(t[i])}`).join(", ");
+    const guessWords = (t: boolean[]) => all.map(i => `${subj(w.speakers[i])} ${kind(t[i])}`).join(", ");
     const said = (s: Statement) => `${subj(w.speakers[s.speaker])}'s "${describeFact(w, s.fact)}"`;
-    const words = item.words.filter(s => s !== item.asking.answer);
-    const out: string[] = [];
-    for (let m = 0; m < 1 << firsts.length; m++) {
-        const t = [...item.types];
-        firsts.forEach((i, j) => (t[i] = (m & (1 << j)) !== 0));
+    /* The words this guess needs true (a knight's) and false (a knave's), which nothing can make so together. */
+    const why = (b: NonNullable<ReturnType<typeof wordBreach>>, t: boolean[]) =>
+        `${b.parts.map(p => `${said(p.s)} ${t[p.s.speaker] ? "true" : "false"}`).join(" and ")} can't ${b.parts.length > 2 ? "all" : "both"} be`;
+    const words = item.words.filter(s => s !== answer);
+    const out: string[] = [], open: boolean[][] = [];
+    for (let m = 0; m < 1 << all.length; m++) {
+        const t = all.map(i => (m & (1 << i)) !== 0);
         if (t.every((v, i) => v === item.types[i])) continue;
         const b = wordBreach(item.card.axes, item.card.things, words, t);
-        if (!b) continue;
-        const why = b.kind === "clash" ? `${said(b.a)} and ${said(b.b)} clash`
-            : b.kind === "false" ? `${said(b.s)} is false from a knight`
-            : `${said(b.s)} is true from a knave`
-                + (b.still.length ? ` (no knight moves ${b.still.map(x => subj(w.things[x])).join(" or ")})` : "")
-                + (b.none ? " (no knight says it happens)" : "");
-        out.push(`If ${guessWords(t)}: ${why}`);
+        if (b) out.push(`If ${guessWords(t)}: ${why(b, t)}`);
+        else open.push(t);
     }
-    return [...out, `Only ${guessWords(item.types)} fits every word`];
+    out.push(`The words leave ${[item.types, ...open].map(guessWords).join("; or ")}`);
+    out.push(answerLine(item, w));
+    for (const t of open) {
+        const b = wordBreach(item.card.axes, item.card.things, item.words, t);
+        if (b) out.push(`If ${guessWords(t)}: ${why(b, t)}`);
+    }
+    return out;
 }
 
 /** A question about the world, as put to a speaker. */
@@ -143,24 +147,23 @@ export function answerLine(item: StagedItem, w: Wording): string {
  * settle; not one they leave open, and never "Are you a knight?".
  */
 export function renderQuestion(item: StagedItem, w: Wording): RenderedAsk {
-    const who = subj(w.speakers[item.asking.who]), opts = item.asking.options;
-    const so = (f: Fact) => holds(f, worldView(item.reconstruction)) === true;
+    const who = subj(w.speakers[item.asking.who]), opts = item.asking.options, q = item.asking.who;
+    /* The readings the words leave, and what the asked speaker would answer in each. */
+    const words = item.words.filter(s => s !== item.asking.answer), axes = item.card.axes, n = item.card.things;
+    const open = Array.from({ length: 1 << item.types.length }, (_, m) => item.types.map((_, i) => (m & (1 << i)) !== 0))
+        .filter(t => !wordBreach(axes, n, words, t));
+    const says = (f: Fact, knight: boolean) => {
+        const t = open.find(r => r[q] === knight)!;
+        return wordBreach(axes, n, [...words, { speaker: q, fact: f }], t) ? "no" : "yes";
+    };
     return {
-        prompt: `${who} is silent. Which questions would tell what ${who} is? Select all that would.`,
+        prompt: `Which questions to ${who} would tell what ${who} is? Select all that would.`,
         conclusion: "", correctChoice: -1,
         choices: opts.map(o => questionWords(w, o.fact)),
         selectAnswer: opts.map((o, i) => (o.tells ? i : -1)).filter(i => i >= 0),
         explanation: opts.map(o => !o.fact ? `"Are you a knight?": both kinds say yes`
-            : o.tells ? `"${describeFact(w, o.fact)}?": the words say ${so(o.fact) ? "yes" : "no"}, so a knight says ${so(o.fact) ? "yes" : "no"}, a knave ${so(o.fact) ? "no" : "yes"}`
+            : o.tells ? `"${describeFact(w, o.fact)}?": as the words leave things, a knight says ${says(o.fact, true)}, a knave ${says(o.fact, false)}`
             : `"${describeFact(w, o.fact)}?": nothing settles it yet, so either answer fits either kind`),
-    };
-}
-
-/** The world a reconstruction settles on, to judge a fact in. */
-function worldView(rec: Reconstruction): View {
-    return {
-        axes: rec.world.axes, at: (x, h) => thingAt(rec.world, x, h), start: x => (x === POST ? thingAt(rec.world, POST, 0) : rec.world.start[x]),
-        observer: () => null, eventsKnownThrough: () => true, events: () => rec.world.events, types: rec.types,
     };
 }
 
@@ -329,14 +332,8 @@ export function renderTypes(item: StagedItem, w: Wording): RenderedAsk {
             ? item.types.map((t, i) => 2 * i + (t ? 0 : 1))
             : item.types.map((t, i) => (t ? i : -1)).filter(i => i >= 0),
         /* Closed on the verdict, which names only the speakers asked about. */
-        explanation: [...guessLines(item, w), `${answerLine(item, w)}: ${asked(item, w)}`, typesLine(item.types, w)],
+        explanation: [...guessLines(item, w), typesLine(item.types, w)],
     };
-}
-
-/** Why the answer settles the asked speaker. */
-function asked(item: StagedItem, w: Wording): string {
-    const t = item.types[item.asking.who];
-    return `${t ? "true" : "false"}, so ${subj(w.speakers[item.asking.who])} is a ${hi(t ? "knight" : "knave")}`;
 }
 
 /** "So Ash and Cog are knights, and Bee is a knave." */

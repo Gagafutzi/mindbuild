@@ -26,7 +26,7 @@ import { TRANSFORMS, TransformSpec, canTransform } from "../src/app/syllogimous/
 import { Fact, IntervalRel, MAX_LEN, POST, Seen, Statement, intervalRel, negate, otherKind } from "../src/app/syllogimous/utils/world/facts";
 const LONG = MAX_LEN;
 import { Card, OPEN_MAX, Reconstruction, read, settleTypes, thingAt, worlds } from "../src/app/syllogimous/utils/world/reader";
-import { selfContradicts, wordBreach } from "../src/app/syllogimous/utils/world/words";
+import { selfContradicts, wordBreach, wordIn } from "../src/app/syllogimous/utils/world/words";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
 import { missedReview } from "../src/app/syllogimous/utils/review.utils";
 import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS } from "../src/app/syllogimous/utils/world/render";
@@ -332,7 +332,7 @@ function parse(q: Shown, things: string[], speakers: string[]): Parsed {
     /* The question. */
     const prompt = q.prompt, options = q.choices;
     let m: RegExpExecArray | null;
-    if ((m = new RegExp(`^${P} is silent\\. Which questions would tell what ${P} is\\? Select all that would\\.$`).exec(prompt))) {
+    if ((m = new RegExp(`^Which questions to ${P} would tell what ${P} is\\? Select all that would\\.$`).exec(prompt))) {
         const asked = who.get(m[1])!;
         const questions = options.map(o => {
             if (o === "Are you a knight?") return null;
@@ -424,17 +424,17 @@ function kindsFrom(card: Card): boolean[] | null {
 
 /**
  * Which questions tell, read from the card on screen: those where, whatever
- * the asked speaker answers, the words leave exactly one kind standing for
- * them. Everyone else is settled already, by the words.
+ * the asked speaker answers, every reading the words still allow has them the
+ * same kind. Other speakers may be open too, tied to the asked one.
  */
 function telling(p: Parsed): string {
-    const settled = settleTypes(p.card), asked = p.asked!;
-    const kinds = Array.from({ length: p.card.speakers }, (_, i) => settled.get(i) ?? false);
-    const standing = (f: Fact, knight: boolean) => !wordBreach(p.card.axes, p.card.things, [...p.card.statements, { speaker: asked, fact: f }],
-        kinds.map((t, i) => (i === asked ? knight : t)));
+    const asked = p.asked!, { axes, things, speakers, statements } = p.card;
+    const open = Array.from({ length: 1 << speakers }, (_, m) => Array.from({ length: speakers }, (_, i) => (m & (1 << i)) !== 0))
+        .filter(t => !wordBreach(axes, things, statements, t));
     return answerKey(p.questions!.map((f, i) => {
         if (!f) return -1;
-        const tells = [f, { kind: "not", f } as Fact].every(g => standing(g, true) !== standing(g, false));
+        const tells = [f, { kind: "not", f } as Fact].every(a =>
+            new Set(open.filter(t => !wordBreach(axes, things, [...statements, { speaker: asked, fact: a }], t)).map(t => t[asked])).size <= 1);
         return tells ? i : -1;
     }).filter(i => i >= 0));
 }
@@ -782,7 +782,7 @@ test("composed world: only a turn's direction, a shear's or a shift's sign is ne
     equal(negate({ kind: "event", hour: 2, t: { id: "mirror", axes: [1] } }), null, "a mirror has no other way round");
 });
 
-test("composed world: the first stage is the words that tell the speakers apart, one speaker silent until asked", () => {
+test("composed world: the first stage is the words that tell the speakers apart, one speaker left open until asked", () => {
     /* The first stage used to print the whole world above "who is a knight?":
        twenty-odd premises, most of them nothing to do with the question. */
     seeded(9000, () => {
@@ -790,17 +790,18 @@ test("composed world: the first stage is the words that tell the speakers apart,
             const st = buildStaged(worldSize(4 + (k % 5)), 300)!;
             const n = st.card.things, axes = st.card.axes, who = st.asking.who;
             const words = st.words.filter(s => s !== st.asking.answer);
-            assert(words.every(s => ["pace", "pacelike", "event"].includes(s.fact.kind) || (s.fact.kind === "place" && s.fact.y === POST)),
-                "the first stage carries a premise that tells nobody apart");
-            assert(!words.some(s => s.speaker === who), "the asked speaker spoke before being asked");
-            /* The words settle everyone else and not the asked speaker; the answer settles them too. */
+            assert(words.every(s => !!wordIn(s.fact)), "the first stage carries a premise that tells nobody apart");
+            /* The asked speaker speaks too, so their kind can be tied to others'. */
+            assert(words.some(s => s.speaker === who), "the asked speaker said nothing before being asked");
+            /* The words leave the asked speaker open, every reading they allow
+               besides the truth has the asked speaker wrong, and the answer settles everyone. */
             const without = settleTypes({ ...st.card, statements: words }), withAnswer = settleTypes({ ...st.card, statements: st.words });
-            assert(st.types.every((t, i) => (i === who ? !without.has(i) : without.get(i) === t)), "the words alone do not settle exactly the others");
-            assert(st.types.every((t, i) => withAnswer.get(i) === t), "the answer does not settle the asked speaker");
+            assert(!without.has(who), "the words alone settle the asked speaker");
+            const open = Array.from({ length: 1 << st.types.length }, (_, m) => st.types.map((_, i) => (m & (1 << i)) !== 0))
+                .filter(t => !wordBreach(axes, n, words, t) && !t.every((v, i) => v === st.types[i]));
+            assert(open.every(t => t[who] !== st.types[who]), "a reading the words allow has the asked speaker right and someone else wrong");
+            assert(st.types.every((t, i) => withAnswer.get(i) === t), "the answer does not settle everyone");
             for (const s of st.plain.statements) assert(st.types[s.speaker], "a knave's word survives the first stage");
-            /* What no knight gives does not move: so every pace a knight gives is there in the first stage. */
-            for (const s of st.plain.statements.filter(s => s.fact.kind === "pace" && !s.space))
-                assert(words.includes(s), "a knight's pace is missing from the first stage, which then says the thing stands still");
             assert(st.asking.options.some(o => o.tells) && st.asking.options.some(o => !o.tells), "the questions all tell, or none does");
             assert(st.asking.options.length <= 4, "more than four questions");
             assert(!wordBreach(axes, n, st.words, st.types), "the true kinds do not survive the words");
@@ -917,4 +918,24 @@ test("composed world: nobody contradicts themselves, so no knave is found out at
             }
         }
     });
+});
+
+test("composed world: a speaker whose words merely agree is not thereby a knight", () => {
+    /* Reported from play: Tractor said four things about how things move,
+       none clashing, and the card took Tractor for a knight — on a rule that
+       what no knight says moves stays still, under which a knave's "Cellar
+       moves opposite to Paw" would have been true. Logic alone leaves Tractor
+       open: four false paces are as possible as four true ones. */
+    const axes = makeAxes(() => 0.1, 3);
+    const tractor = (fact: Fact): Statement => ({ speaker: 0, fact });
+    const card: Card = { axes, things: 4, speakers: 2, statements: [
+        tractor({ kind: "pace", x: 0, vel: [-1, 0, 0] }),
+        tractor({ kind: "pacelike", x: 1, y: 2, sign: -1 }),
+        tractor({ kind: "pace", x: 2, vel: [0, 1, 0] }),
+        tractor({ kind: "pace", x: 1, vel: [0, -1, 0] }),
+    ] };
+    assert(!settleTypes(card).has(0), "consistent words settled their speaker as a knight");
+    /* Denials nothing can make both false do settle one: a knave could not say both. */
+    const both: Card = { ...card, statements: [tractor({ kind: "not", f: { kind: "pace", x: 0, vel: [0, 0, 0] } }), tractor({ kind: "not", f: { kind: "pace", x: 0, vel: [1, 0, 0] } })] };
+    equal(settleTypes(both).get(0), true, "two denials that cannot both be false are a knight's");
 });

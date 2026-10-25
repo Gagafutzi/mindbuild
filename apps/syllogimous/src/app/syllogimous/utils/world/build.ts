@@ -22,7 +22,7 @@ import { Axis, Body, FULL, Frames, SHORTCUTS, Seam, mod, reckon, sameBody } from
 import { TRANSFORMS, TransformSpec, canTransform, canonicalT } from "./transforms";
 import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, TIME, compareLengths, displacement, firstLevel, firstMeet, holds, intervalRel, localTime, otherKind, rankBy, seenFrom, spaceSteps, stepsBetween } from "./facts";
 import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleTypes, thingAt, worlds } from "./reader";
-import { selfContradicts, wordBreach } from "./words";
+import { selfContradicts, wordBreach, wordIn } from "./words";
 import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerFollows, answerKey } from "./questions";
 
 export interface Item {
@@ -160,117 +160,149 @@ function makeFrames(axes: Axis[], rnd: () => number, want?: boolean): Frames | u
  * ------------------------------------------------------------------ */
 
 /**
- * Words from the first speakers, until exactly one guess at what they are
- * survives them (`words.ts`): on how things move, on what happens on the hour,
- * and on where a thing is from the origin. A knight says again what another
- * knight said, in another form — a pace over several hours, or alike or
- * opposite to another thing's; a quarter turn from its other side; a place the
- * other way round the ring, by local clocks, or with one gap given by another
- * — or says a still thing never moves. A knave says a pace, a stillness, a
- * likeness, a turn or a place that is not so, though never two that
- * contradict each other: that would give them away at a glance. Each is the
- * one, of a few dozen drawn, that rules out the most guesses.
+ * Words from the speakers until every guess at what they are is ruled out but
+ * the truth and some with the asked speaker wrong (`words.ts`): on how things
+ * move, what happens on the hour, and where a thing is from the origin, each
+ * said or denied, true from a knight and false from a knave.
  *
- * In place of the claims about each other ("Bee and I are the same kind"),
- * which settled a card without a word about the world: two knights show
- * themselves the same kind by saying congruent things, never the same thing.
+ * Only logic rules a guess out — words that cannot be so and not so together
+ * — so it takes words that bear on each other: two on one topic, from one
+ * speaker or two, in forms of their own (a pace over several hours, a quarter
+ * turn from its other side, a place the other way round the ring or by local
+ * clocks, one gap given by another). Two speakers who agree in different
+ * words are of a kind; two denials nothing can make both false cannot both
+ * come from a knave. Nobody contradicts themselves: that would give a knave
+ * away at a glance. Each candidate is the one, of a few dozen drawn, that
+ * rules out the most guesses.
  */
-function puzzleWords(world: World, types: boolean[], firsts: number[], said0: Statement[], rnd: () => number): Statement[] | null {
+function puzzleWords(world: World, types: boolean[], voices: number[], rnd: () => number, asked: number): Statement[] | null {
     const axes = world.axes, n = world.start.length, vel = world.start.map(b => b.vel);
     const ids = Array.from({ length: n }, (_, k) => k);
-    const moving = ids.filter(x => vel[x].some(v => v !== 0));
-    const guesses = Array.from({ length: 1 << firsts.length }, (_, m) => {
+    /* Every wrong guess at what the speakers are. Those that have the asked
+       speaker right have to go; of those that have them wrong, some must stay,
+       for the question to settle — and with them whoever the asked speaker's
+       words tie to theirs. */
+    const guesses = Array.from({ length: 1 << voices.length }, (_, m) => {
         const t = [...types];
-        firsts.forEach((i, j) => (t[i] = (m & (1 << j)) !== 0));
+        voices.forEach((i, j) => (t[i] = (m & (1 << j)) !== 0));
         return t;
     }).filter(t => !t.every((v, i) => v === types[i]));
+    /* Everyone the other kind has to go as well: every word then flips with
+       them, and no question can tell that reading from the truth. */
+    const flipped = (t: boolean[]) => voices.every(i => t[i] !== types[i]);
+    /* And one other speaker is the same kind in every reading left open: what
+       they pin is pinned alike in all of them, so a question about it can
+       tell. Others may still be tied to the asked one. */
+    const anchor = pick(voices.filter(i => i !== asked), rnd);
+    const bad = guesses.filter(t => t[asked] === types[asked] || flipped(t) || t[anchor] !== types[anchor]), good = guesses.filter(t => !bad.includes(t));
     const out: Statement[] = [];
-    const standing = (extra: Statement[]) => guesses.filter(t => !wordBreach(axes, n, [...said0, ...out, ...extra], t));
-    /* Nobody contradicts themselves: a knave who did would be found out at a glance. */
-    const owns = (extra: Statement[]) => extra.some(st => selfContradicts(axes, [...said0, ...out, ...extra], st.speaker));
-    const key = (f: Fact) => (f.kind === "event" ? `e${f.hour}|${canonicalT(f.t)}` : JSON.stringify(f));
-    const said = (f: Fact) => [...said0, ...out].some(o => key(o.fact) === key(f) && JSON.stringify(o.fact) === JSON.stringify(f));
+    const standingIn = (among: boolean[][], extra: Statement[]) => among.filter(t => !wordBreach(axes, n, [...out, ...extra], t));
+    /* Ties: a reading left standing that has another speaker wrong besides the asked one. */
+    const tied = (left: boolean[][]) => left.some(t => t.some((v, i) => i !== asked && v !== types[i]));
+    /* What is still standing, worked out once a round: a candidate only has to be checked against that. */
+    let leftBad: boolean[][] = bad, leftGood: boolean[][] = good;
+    const owns = (extra: Statement[]) => extra.some(st => selfContradicts(axes, [...out, ...extra], st.speaker));
+    const said = (f: Fact) => out.some(o => JSON.stringify(o.fact) === JSON.stringify(f));
     const free = axes.map((ax, i) => (ax.kind === "parity" ? -1 : i)).filter(i => i >= 0);
+    const deny = (f: Fact): Fact => ({ kind: "not", f });
     /* A pace not so: one dimension's pace changed, by a step or to nothing. */
     const skewed = (v: number[]) => {
-        const out = [...v], a = pick(free, rnd);
-        out[a] = pick([-1, 0, 1].filter(u => u !== v[a]), rnd);
-        return out;
+        const o = [...v], a = pick(free, rnd);
+        o[a] = pick([-1, 0, 1].filter(u => u !== v[a]), rnd);
+        return o;
     };
+    const paceSaid = (x: number, v: number[]): Fact => ({ kind: "pace", x, vel: v, ...(v.some(u => u !== 0) && rnd() < 0.35 ? { every: pick([2, 3], rnd) } : {}) });
     /* Where a thing is from the origin at an hour, and that place a step off on one dimension. */
     const from = (x: number, h: number) => displacement(axes, thingAt(world, x, h), thingAt(world, POST, h));
     const nudged = (d: number[]) => {
-        const out = [...d], a = pick(free, rnd);
-        out[a] = axes[a].kind === "ring" ? mod(out[a] + pick([1, -1], rnd), axes[a].modulus!) : out[a] + pick([1, -1], rnd);
-        return out;
+        const o = [...d], a = pick(free, rnd);
+        o[a] = axes[a].kind === "ring" ? mod(o[a] + pick([1, -1], rnd), axes[a].modulus!) : o[a] + pick([1, -1], rnd);
+        return o;
     };
-    /* A word on where a thing is from the origin at an hour: true from a knight, a step off from a knave, in a form of its own — round the ring the other way, by local clocks, or one gap by another. */
-    const placeWord = (px: number, h: number, knight: boolean): Fact => {
-        const d = from(px, h), rings = axes.some((ax, i) => ax.kind === "ring" && d[i] !== 0);
+    /* A place in a form of its own: round the ring the other way, by local clocks, or one gap by another. */
+    const placeSaid = (px: number, h: number, d: number[]): Fact => {
+        const rings = axes.some((ax, i) => ax.kind === "ring" && d[i] !== 0);
         const lines = lineAxes(axes).filter(i => d[i] !== 0);
         const pairs = lines.flatMap(a => lines.filter(b => b > a && Math.abs(d[b]) === Math.abs(d[a])).map(b => [a, b] as [number, number]));
-        const delta = knight ? d : nudged(d);
-        const form = pick(["plain", ...(rings ? ["round", "round"] : []), ...(axes.length > TIME ? ["local"] : []), ...(pairs.length && knight ? ["bridge"] : [])], rnd);
-        const said = [...delta];
-        if (form === "local") said[TIME] = localTime(axes, delta, thingAt(world, px, h), thingAt(world, POST, h));
+        const form = pick(["plain", ...(rings ? ["round", "round"] : []), ...(axes.length > TIME ? ["local"] : []), ...(pairs.length ? ["bridge"] : [])], rnd);
+        const said = [...d];
+        if (form === "local") said[TIME] = localTime(axes, d, thingAt(world, px, h), thingAt(world, POST, h));
         return { kind: "place", hour: h, x: px, y: POST, delta: said, ...(form === "round" ? { round: true } : {}),
             ...(form === "local" ? { local: true } : {}), ...(form === "bridge" ? { bridge: pick(pairs, rnd) } : {}) };
     };
-    /* The places already spoken of, so a second word lands on the same one. */
-    const spoken = () => [...said0, ...out].flatMap(o => (o.fact.kind === "place" ? [[o.fact.x, o.fact.hour] as [number, number]] : []));
-    const early = world.events.filter(e => e.hour <= FIRST_HOURS);
-    /* A kind of word not yet used is worth a little more than its kills, so
-       a card's congruences come from places and turns as well as paces. */
+    /* A transformation from its other side, where it has one. */
+    const otherSide = (t: TransformSpec): TransformSpec => (t.id === "rotate" || t.id === "swap") && t.axes.length === 2
+        ? { ...t, axes: [t.axes[1], t.axes[0]], ...(t.id === "rotate" ? { k: 4 - (t.k ?? 1) } : {}) } : t;
+    const early = world.events.filter(e => e.hour <= FIRST_HOURS && TRANSFORMS[e.t.id].opposite);
+    /* A word on a topic from a speaker: so from a knight, not so from a knave — said, or the other way denied. */
+    type Topic = { kind: "pace"; x: number } | { kind: "place"; x: number; h: number } | { kind: "event"; e: (typeof early)[number] } | { kind: "like"; x: number; y: number; sign: 1 | -1 };
+    const wordOn = (k: number, tp: Topic): Fact => {
+        const so = types[k], asSaid = rnd() < 0.6;
+        if (tp.kind === "pace") {
+            const v = vel[tp.x], off = v.some(u => u !== 0) && rnd() < 0.4 ? v.map(() => 0) : skewed(v);
+            return so ? (asSaid ? paceSaid(tp.x, [...v]) : deny(paceSaid(tp.x, off))) : (asSaid ? paceSaid(tp.x, off) : deny(paceSaid(tp.x, [...v])));
+        }
+        if (tp.kind === "place") {
+            const d = from(tp.x, tp.h), off = nudged(d);
+            return so ? (asSaid ? placeSaid(tp.x, tp.h, d) : deny(placeSaid(tp.x, tp.h, off))) : (asSaid ? placeSaid(tp.x, tp.h, off) : deny(placeSaid(tp.x, tp.h, d)));
+        }
+        if (tp.kind === "event") {
+            const t = rnd() < 0.5 ? otherSide(tp.e.t) : tp.e.t, opp = TRANSFORMS[t.id].opposite!(t)!;
+            const happens: Fact = { kind: "event", hour: tp.e.hour, t }, not: Fact = { kind: "event", hour: tp.e.hour, t: opp };
+            return so ? (asSaid ? happens : deny(not)) : (asSaid ? not : deny(happens));
+        }
+        const like: Fact = { kind: "pacelike", x: tp.x, y: tp.y, sign: tp.sign };
+        const truth = vel[tp.x].every((v, i) => v === tp.sign * vel[tp.y][i]);
+        return truth === so ? like : deny(like);
+    };
+    /* A kind of word not yet used is worth a little more than its kills, so a
+       card's congruences come from places and turns as well as paces; so is one
+       that keeps another speaker's kind tied to the asked one's, and the asked
+       speaker's first word, which needs no kills to be worth saying. */
     const used = new Set<string>();
-    for (let guard = 0; guard < 14; guard++) {
-        const left = standing([]);
-        if (!left.length) return out;
-        let best: Statement[] | null = null, bestKills = 0, bestFamily = "";
-        for (let g = 0; g < 48; g++) {
-            const s = pick(firsts, rnd), x = pick(ids, rnd), y = pick(ids.filter(k => k !== x), rnd);
-            const family = pick(["pace", "pace", "place", "place", "event"], rnd), r = rnd();
-            let fact: Fact | null = null;
-            if (family === "pace") {
-                const sign = rnd() < 0.6 ? 1 : -1 as const;
-                const alike = vel[x].every((v, i) => v === sign * vel[y][i]);
-                if (types[s]) {
-                    if (r < 0.4 && moving.includes(x)) fact = { kind: "pace", x, vel: [...vel[x]], every: pick([2, 3], rnd) };
-                    else if (r < 0.65 && !moving.includes(x)) fact = { kind: "pace", x, vel: vel[x].map(() => 0) };
-                    else if (alike && (moving.includes(x) || moving.includes(y))) fact = { kind: "pacelike", x, y, sign };
-                } else if (r < 0.65) {
-                    const v = moving.includes(x) && rnd() < 0.4 ? vel[x].map(() => 0) : skewed(vel[x]);
-                    fact = { kind: "pace", x, vel: v, ...(v.some(u => u !== 0) && rnd() < 0.4 ? { every: pick([2, 3], rnd) } : {}) };
-                } else if (!alike) fact = { kind: "pacelike", x, y, sign };
-            } else if (family === "place") {
-                /* A place on its own rules nothing out: a second word on it does.
-                   So a new place comes as two words from two speakers, each in
-                   a form of its own; one already spoken of takes a single word. */
-                const old = spoken(), again = old.length > 0 && rnd() < 0.5;
-                const [px, h] = again ? pick(old, rnd) : [x, int(rnd, 1, FIRST_HOURS)];
-                const second = again ? [] : [pick(firsts.filter(k => k !== s), rnd)].filter(k => k !== undefined);
-                if (!again && !second.length) continue;
-                const both = [s, ...second].map(k => ({ speaker: k, fact: placeWord(px, h, types[k]) }));
-                if (both.some(b => said(b.fact)) || (both.length > 1 && JSON.stringify(both[0].fact) === JSON.stringify(both[1].fact)) || owns(both)) continue;
-                const kills = left.length - standing(both).length, score = kills ? kills + (used.has(family) ? 0 : 0.6) : 0;
-                if (score > bestKills) { best = both; bestKills = score; bestFamily = family; }
-                continue;
-            } else if (early.length) {
-                const e = pick(early, rnd), opp = TRANSFORMS[e.t.id].opposite?.(e.t);
-                /* The same transformation from its other side, where it has one. */
-                const other = (e.t.id === "rotate" || e.t.id === "swap") && e.t.axes.length === 2
-                    ? { ...e.t, axes: [e.t.axes[1], e.t.axes[0]], ...(e.t.id === "rotate" ? { k: 4 - (e.t.k ?? 1) } : {}) } : e.t;
-                if (types[s]) fact = { kind: "event", hour: e.hour, t: rnd() < 0.7 ? other : e.t };
-                else if (opp) fact = { kind: "event", hour: e.hour, t: rnd() < 0.5 ? opp : { ...opp, axes: [...opp.axes].reverse(), ...(opp.id === "rotate" ? { k: 4 - (opp.k ?? 1) } : {}) } };
+    const worth = (extra: Statement[], family: string, goodAfter: boolean[][]) => {
+        const kills = leftBad.length - standingIn(leftBad, extra).length;
+        const first = !out.some(st => st.speaker === asked) && extra.some(st => st.speaker === asked);
+        if (!kills && !first) return 0;
+        return kills + (used.has(family) ? 0 : 0.6) + (voices.length > 2 && tied(goodAfter) ? 0.4 : 0) + (first ? 1 : 0);
+    };
+    /* Topics already spoken of, so a second word can land on one. */
+    const spoken: Topic[] = [];
+    for (let guard = 0; guard < 18; guard++) {
+        const heard = out.some(st => st.speaker === asked);
+        leftBad = standingIn(leftBad, []); leftGood = standingIn(leftGood, []);
+        if (!leftGood.length) return null;
+        if (!leftBad.length && heard) return out;
+        let best: Statement[] | null = null, bestScore = 0, bestFamily = "", bestTopic: Topic | null = null;
+        for (let g = 0; g < 60; g++) {
+            const family = pick(["pace", "pace", "place", "place", "event", "like"], rnd);
+            const x = pick(ids, rnd), y = pick(ids.filter(k => k !== x), rnd);
+            const again = spoken.length && rnd() < 0.4 ? pick(spoken, rnd) : null;
+            const tp: Topic | null = again ?? (family === "pace" ? { kind: "pace", x }
+                : family === "place" ? { kind: "place", x, h: int(rnd, 1, FIRST_HOURS) }
+                : family === "event" ? (early.length ? { kind: "event", e: pick(early, rnd) } : null)
+                : { kind: "like", x, y, sign: rnd() < 0.6 ? 1 : -1 });
+            if (!tp) continue;
+            /* One word on a topic already spoken of; two on a new one, from one speaker or two. The asked speaker speaks until they have. */
+            const who = () => (!heard && rnd() < 0.4 ? asked : pick(voices, rnd));
+            const first = who(), speakers = again ? [first] : [first, rnd() < 0.25 ? first : who()];
+            const group = speakers.map(k => ({ speaker: k, fact: wordOn(k, tp) }));
+            /* Two things alike or opposite say something only once both paces are said: they come together. */
+            if (tp.kind === "like" && !again) {
+                const [k2, k3] = [who(), who()];
+                group.splice(1, 1, { speaker: k2, fact: wordOn(k2, { kind: "pace", x: tp.x }) }, { speaker: k3, fact: wordOn(k3, { kind: "pace", x: tp.y }) });
             }
-            if (!fact || said(fact)) continue;
-            const st: Statement = { speaker: s, fact };
-            if (owns([st])) continue;
-            const kills = left.length - standing([st]).length, score = kills ? kills + (used.has(family) ? 0 : 0.6) : 0;
-            if (score > bestKills) { best = [st]; bestKills = score; bestFamily = family; }
+            if (group.some(st => said(st.fact)) || new Set(group.map(st => JSON.stringify(st.fact))).size < group.length) continue;
+            if (owns(group)) continue;
+            const goodAfter = standingIn(leftGood, group);
+            if (!goodAfter.length) continue;
+            const score = worth(group, tp.kind, goodAfter);
+            if (score > bestScore) { best = group; bestScore = score; bestFamily = tp.kind; bestTopic = tp; }
         }
         if (!best) return null;
         out.push(...best);
         used.add(bestFamily);
+        if (bestTopic && !spoken.includes(bestTopic)) spoken.push(bestTopic);
     }
     return null;
 }
@@ -289,7 +321,11 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     const knights = firsts.filter(i => types[i]), anyKnight = types.map((t, i) => (t ? i : -1)).filter(i => i >= 0);
     if (!knights.length) return null;
     const statements: Statement[] = [];
-    const say = (speaker: number, fact: Fact) => statements.push({ speaker, fact, ...(space ? { space } : {}) });
+    /* Never the same sentence twice from one speaker: it adds nothing, and reads as a slip. */
+    const say = (speaker: number, fact: Fact) => {
+        if (statements.some(st => st.speaker === speaker && JSON.stringify(st.fact) === JSON.stringify(fact))) return;
+        statements.push({ speaker, fact, ...(space ? { space } : {}) });
+    };
 
     /* Places: a tree out from the Post, each at an hour of its own. */
     const order = shuffle(Array.from({ length: n }, (_, i) => i), rnd), placed: number[] = [POST];
@@ -375,6 +411,8 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
     for (let guard = 0; ; guard++) {
         const sols = worlds({ axes, things: n, speakers: S, statements, ...(world.frames ? { frames: world.frames } : {}) }, known, space);
         const wrong = sols.filter(st => !st.every((b, x) => b && sameBody(b, world.start[x])) && !onlyOpen(st));
+        /* The readings left open on purpose, which no statement may rule out. */
+        const kept = sols.filter(st => onlyOpen(st) && !st.every((b, x) => b && sameBody(b, world.start[x])));
         if (sols.length && !wrong.length) break;
         if (!sols.length || guard >= 6 * n) return null;
         /* Bodies by the hour, worked out once a reading: a meeting is looked for
@@ -388,7 +426,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         };
         const s = pick(anyKnight, rnd);
         let best: Fact | null = null, bestKills = 0;
-        for (let g = 0; g < 48; g++) {
+        for (let g = 0; g < 96; g++) {
             const x = int(rnd, 0, n - 1), y = pick(ids.filter(k => k !== x), rnd);
             const a = pick(lineAxes(axes), rnd), hour = int(rnd, 1, FIRST_HOURS);
             /* The hour two first meet tells lengths too: stretches meet where points would not. */
@@ -423,6 +461,8 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
             const others = there.filter(r => r !== null && r !== truth);
             const said = types[s] === denied ? pick(others, rnd) : truth;
             if (said === null || said === undefined) continue;
+            /* So from the speaker in every reading left open, or it settles what was to stay open. */
+            if (kept.some(st => ((value(st) === said) !== denied) !== types[s])) continue;
             /* A reading is ruled out where it makes the statement's claim come out other than the speaker's type does. */
             const kills = there.filter(r => ((r === said) !== denied) !== types[s]).length;
             if (kills <= bestKills) continue;
@@ -444,6 +484,9 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
        of the world turns up. True, since a knight says it. Preferably on an
        axis where the pair moves apart and one of them has a length, so that
        ignoring the motion or the lengths misreads it. */
+    /* On a card meant to leave a length open, only in a form no length bears
+       on — a ring's reach, steps apart, a ranked list, drawing level — since
+       the others would as often as not settle it. */
     const reporters = space === 0 ? [pick(anyKnight, rnd)] : [];
     const startOf = (k: number) => (k === POST ? { vel: axes.map(() => 0), size: axes.map(() => 1) } : world.start[k]);
     const telling = (x: number, y: number, a: number) =>
@@ -462,7 +505,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const [x, y, a] = pick(good.length && rnd() < 0.85 ? good : fresh, rnd);
         /* Or, a third of the time, what they see from where they stand. One
            report a card, so each form gets its share of them. */
-        if (obs && obs[i].host !== x && rnd() < 0.3) {
+        if (obs && obs[i].host !== x && !leaveOpen && rnd() < 0.3) {
             const truth = seenFrom(axes, thingAt(world, obs[i].host, hour), thingAt(world, x, hour), obs[i]);
             const seen = types[i] ? truth : skew(truth, axes, rnd);
             say(i, { kind: "view", hour, who: i, x, seen });
@@ -472,7 +515,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         const roll = rnd(), bx = thingAt(world, x, hour), by = thingAt(world, y, hour);
         /* Or, where time is a line, whether a ring from one would reach the
            other in time: just as it arrives, or only after. */
-        if (roll < 0.35 && axes[TIME]?.kind === "line") {
+        if (roll < 0.5 && axes[TIME]?.kind === "line") {
             /* Of the pairs, one a knight could say it of: a ring from the second
                reaches the first by its time, just then or before. */
             const ring = (p: number, q: number) => {
@@ -501,7 +544,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
         }
         /* Or the hour two first meet, sharing ground — searched over the pairs,
            since most pairs never do. A knave names an hour they do not. */
-        if (roll > 0.62 && roll <= 0.82) {
+        if (roll > 0.62 && roll <= 0.82 && !leaveOpen) {
             const at = (k: number, h: number) => (k === POST ? thingAt(world, POST, h) : truly(k, h));
             const meeting = ids.flatMap(p => ids.filter(q => q > p).map(q => [p, q, firstMeet(axes, at, p, q, LAST_HOUR)] as const))
                 .filter(([, , h]) => typeof h === "number" && h >= 1);
@@ -512,7 +555,7 @@ function makeCard(world: World, types: boolean[], firsts: number[], rnd: () => n
                 continue;
             }
         }
-        if (roll < 0.2) {
+        if (roll < 0.2 || leaveOpen) {
             const steps = stepsBetween(axes, bx, by);
             say(i, { kind: "total", hour, x, y, steps: types[i] ? steps : Math.max(0, steps + pick([-2, -1, 1, 2], rnd)) });
             continue;
@@ -601,51 +644,68 @@ interface Base {
  */
 function makeAsking(world: World, types: boolean[], who: number, words: Statement[], rnd: () => number): Asking | null {
     const axes = world.axes, n = world.start.length, ids = Array.from({ length: n }, (_, k) => k);
-    const settles = (f: Fact) => {
-        /* Settled when a guess at the asked speaker either way is thrown out by an answer: ask, both ways. */
-        const yes: Statement = { speaker: who, fact: f }, no: Statement = { speaker: who, fact: { kind: "not", f } };
-        const t = [...types], u = [...types];
-        t[who] = true; u[who] = false;
-        const ok = (st: Statement, kinds: boolean[]) => !wordBreach(axes, n, [...words, st], kinds);
-        /* It tells when each answer leaves exactly one kind standing. */
-        return ok(yes, t) !== ok(yes, u) && ok(no, t) !== ok(no, u);
-    };
+    /* What the words leave standing: the truth, and readings with the asked speaker the other kind. */
+    const standing = Array.from({ length: 1 << types.length }, (_, m) => types.map((_, i) => (m & (1 << i)) !== 0))
+        .filter(t => !wordBreach(axes, n, words, t));
+    /* A question tells when, whichever way the asked speaker answers, every reading still standing has them one kind. */
+    const settles = (f: Fact) => [f, { kind: "not", f } as Fact].every(a => {
+        const kinds = new Set(standing.filter(t => !wordBreach(axes, n, [...words, { speaker: who, fact: a }], t)).map(t => t[who]));
+        return kinds.size <= 1;
+    });
     const tells: Fact[] = [], blind: Array<Fact | null> = [null];
-    for (let g = 0; g < 80 && (tells.length < 3 || blind.length < 4); g++) {
+    /* The topics the words speak of: only there can a question be settled — and
+       best those spoken of by someone every open reading has the same kind,
+       whose word pins the same thing in all of them. */
+    const fixed = types.map((_, i) => standing.every(t => t[i] === types[i]));
+    const topics = (ws: Statement[]) => ws.map(st => wordIn(st.fact)?.f).filter((f): f is NonNullable<typeof f> => !!f);
+    const anchored = topics(words.filter(st => fixed[st.speaker]));
+    const spoken = anchored.length && rnd() < 0.8 ? anchored : topics(words);
+    for (let g = 0; g < 160 && (tells.length < 3 || blind.length < 4); g++) {
         const x = pick(ids, rnd), y = pick(ids.filter(k => k !== x), rnd), h = int(rnd, 1, FIRST_HOURS);
         const r = rnd();
         let f: Fact;
-        if (r < 0.3) f = { kind: "pace", x, vel: rnd() < 0.6 ? [...world.start[x].vel] : axes.map((ax, i) => (ax.kind === "parity" ? 0 : pick([-1, 0, 1], rnd))) };
-        else if (r < 0.45) f = { kind: "pacelike", x, y, sign: rnd() < 0.6 ? 1 : -1 };
-        else if (r < 0.7) {
-            /* Half the time about a place the words do speak of, which they then settle. */
-            const spokenOf = words.flatMap(st => (st.fact.kind === "place" ? [[st.fact.x, st.fact.hour] as [number, number]] : []));
-            const [px, ph] = spokenOf.length && rnd() < 0.5 ? pick(spokenOf, rnd) : [x, h];
-            const d = displacement(axes, thingAt(world, px, ph), thingAt(world, POST, ph));
-            if (rnd() < 0.4) { const a = pick(lineAxes(axes), rnd); d[a] += pick([1, -1], rnd); }
-            f = { kind: "place", hour: ph, x: px, y: POST, delta: d };
+        /* Most of the time a topic spoken of, asked another way or of another value. */
+        const on = spoken.length && rnd() < 0.65 ? pick(spoken, rnd) : null;
+        const off = (v: number[]) => { const o = [...v], a = pick(axes.map((ax, i) => (ax.kind === "parity" ? -1 : i)).filter(i => i >= 0), rnd); o[a] = pick([-1, 0, 1].filter(u => u !== v[a]), rnd); return o; };
+        if (on?.kind === "pace" || on?.kind === "pacelike") {
+            const px = on.x, v = world.start[px].vel;
+            f = rnd() < 0.5 ? { kind: "pace", x: px, vel: rnd() < 0.5 ? [...v] : off(v) }
+                : { kind: "pacelike", x: px, y: on.kind === "pacelike" ? on.y : y === px ? x : y, sign: rnd() < 0.6 ? 1 : -1 };
+        } else if (on?.kind === "place") {
+            const d = displacement(axes, thingAt(world, on.x, on.hour), thingAt(world, POST, on.hour));
+            if (rnd() < 0.5) { const a = pick(lineAxes(axes), rnd); d[a] += pick([1, -1], rnd); }
+            f = { kind: "place", hour: on.hour, x: on.x, y: POST, delta: d };
+        } else if (on?.kind === "event") {
+            const opp = TRANSFORMS[on.t.id].opposite?.(on.t);
+            f = { kind: "event", hour: on.hour, t: opp && rnd() < 0.5 ? opp : on.t };
         }
-        else if (r < 0.8) f = { kind: "rel", hour: h, x, y, axis: pick(lineAxes(axes), rnd), rel: intervalRel(thingAt(world, x, h), thingAt(world, y, h), pick(lineAxes(axes), rnd)) };
+        else if (r < 0.25) f = { kind: "pace", x, vel: rnd() < 0.6 ? [...world.start[x].vel] : off(world.start[x].vel) };
+        else if (r < 0.4) f = { kind: "pacelike", x, y, sign: rnd() < 0.6 ? 1 : -1 };
+        else if (r < 0.6) f = { kind: "place", hour: h, x, y: POST, delta: displacement(axes, thingAt(world, x, h), thingAt(world, POST, h)) };
+        else if (r < 0.75) f = { kind: "rel", hour: h, x, y, axis: pick(lineAxes(axes), rnd), rel: intervalRel(thingAt(world, x, h), thingAt(world, y, h), pick(lineAxes(axes), rnd)) };
         else if (r < 0.9) f = { kind: "meet", x, y, hour: h };
         else if (world.events.length) { const e = pick(world.events, rnd); f = { kind: "event", hour: e.hour, t: e.t }; }
         else continue;
         const key = JSON.stringify(f);
         if ([...tells, ...blind].some(o => JSON.stringify(o) === key) || words.some(w => JSON.stringify(w.fact) === key)) continue;
         if (settles(f)) { if (tells.length < 3) tells.push(f); }
-        else if (blind.length < 4 && f.kind !== "pace" && f.kind !== "pacelike" && f.kind !== "event") blind.push(f);
+        else if (blind.length < 4) blind.push(f);
     }
     if (!tells.length || blind.length < 2) return null;
     /* Four questions, one to three that tell. */
     const k = int(rnd, 1, Math.min(3, tells.length, 3));
     const options = shuffle([...tells.slice(0, k).map(fact => ({ fact, tells: true })),
         ...shuffle(blind, rnd).slice(0, 4 - k).map(fact => ({ fact, tells: false }))], rnd);
-    /* The answer to one that tells: the fact as it is from a knight, the other way from a knave. */
-    const asked = pick(options.filter(o => o.tells), rnd).fact!;
+    /* The answer to one that tells: the fact as it is from a knight, the other way from a knave
+       — and never one that contradicts what the asked speaker has already said. */
     const view = { axes, at: (x: number, h: number) => thingAt(world, x, h), start: (x: number) => (x === POST ? thingAt(world, POST, 0) : world.start[x]),
         observer: () => null, eventsKnownThrough: () => true, events: () => world.events, types };
-    const truth = holds(asked, view);
-    if (truth === null) return null;
-    return { who, options, answer: { speaker: who, fact: truth === types[who] ? asked : { kind: "not", f: asked } } };
+    const answers = options.filter(o => o.tells).map(o => {
+        const truth = holds(o.fact!, view);
+        return truth === null ? null : { speaker: who, fact: truth === types[who] ? o.fact! : { kind: "not", f: o.fact! } as Fact };
+    }).filter((a): a is Statement => !!a && !selfContradicts(axes, [...words, a], who));
+    if (!answers.length) return null;
+    return { who, options, answer: pick(answers, rnd) };
 }
 
 function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
@@ -674,24 +734,25 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
         : undefined;
     /* Now and then a card that leaves a length open, where there are enough things to ask what could be. */
     const leaveOpen = opts.things >= 4 && (opts.open ?? rnd() < 0.7);
+    /* The words first: they cost little, and a world they will not go on is
+       given up before its premises, which cost far more, are made. */
+    /* The first stage: the words that tell the speakers apart, and nothing else. */
+    const extra = puzzleWords(world, types, types.map((_, i) => i), rnd, asked);
+    if (!extra) return null;
+    const asking = makeAsking(world, types, asked, extra, rnd);
+    if (!asking) return null;
     const outside = makeCard(world, types, firsts, rnd, 0, leaveOpen);
     const inside = inner ? makeCard(inner, types, firsts, rnd, 1) : [];
     if (!outside || !inside) return null;
-    /* The first stage: every pace and event the knights give outside the
-       brackets — what nobody gives does not move or happen, so they all have
-       to be there — and the words that tell the speakers apart. */
-    const given = outside.filter(st => st.fact.kind === "pace" || st.fact.kind === "event");
-    const extra = puzzleWords(world, types, firsts, given, rnd);
-    if (!extra) return null;
-    const asking = makeAsking(world, types, asked, [...given, ...extra], rnd);
-    if (!asking) return null;
-    const words = shuffle([...given, ...extra, asking.answer], rnd);
+    const words = shuffle([...extra, asking.answer], rnd);
     const style = { compact: rnd() < 0.4, wide: rnd() < 0.7 };
     const plain: Card = {
         axes, things: opts.things, speakers: opts.speakers, statements: shuffle([...outside, ...inside], rnd), style,
         ...(frames ? { frames } : {}),
     };
-    const card: Card = { ...plain, statements: [...plain.statements, ...extra, asking.answer] };
+    /* Everything said, each sentence once: a word of the first stage may be a knight's word on the world too. */
+    const once = (st: Statement) => !plain.statements.some(o => o.speaker === st.speaker && JSON.stringify(o.fact) === JSON.stringify(st.fact) && !o.space);
+    const card: Card = { ...plain, statements: [...plain.statements, ...extra.filter(once), asking.answer] };
     /* The words alone settle everyone, the answer included. */
     const settled = settleTypes({ ...plain, statements: words });
     if (types.some((t, i) => settled.get(i) !== t)) return null;

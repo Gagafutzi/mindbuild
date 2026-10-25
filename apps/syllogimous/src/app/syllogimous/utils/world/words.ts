@@ -52,57 +52,63 @@ export function paceHolds(f: Extract<Fact, { kind: "pace" } | { kind: "pacelike"
 }
 
 /**
- * Why a guess at the speakers' kinds fails on the words, or null if it holds
- * up: two words a knight would vouch for that disagree, a knight's word that
- * comes out false, or a knave's that comes out true. `still` names the things
- * no knight gives a pace to, which the guess makes stand still; `none`, that
- * no knight says anything happens at that hour.
+ * Why a guess at the speakers' kinds cannot be, or null if some world fits
+ * it: words that would have to be true (a knight's, or a knave's denial) and
+ * words that would have to be false (a knave's, or a knight's denial) which
+ * no one pace, place or hour's events can satisfy together.
+ *
+ * Plain logic, with no rule filling in what nobody says: a speaker whose
+ * words merely agree with each other is not thereby a knight. Each topic — a
+ * thing's pace, a thing's place at an hour, an hour's events — is judged by
+ * itself, and two things alike or opposite only once both their paces are
+ * pinned. That is looser than the whole world, so it never throws out a guess
+ * the world allows; a card is kept only when it throws out every guess but
+ * the ones it means to leave open.
  */
-export type Breach =
-    | { kind: "clash"; a: Statement; b: Statement }
-    | { kind: "false"; s: Statement }
-    | { kind: "true"; s: Statement; still: number[]; none?: boolean };
+export interface Breach { parts: Array<{ s: Statement; holds: boolean }> }
 
-export function wordBreach(axes: Axis[], things: number, statements: Statement[], types: boolean[]): Breach | null {
+/* Each word read once: its topic and value don't change from guess to guess. */
+interface Read { space: number; f: Word; denied: boolean; key: string | null; value: number[] }
+const READ = new WeakMap<Statement, Read | null>();
+function readWord(axes: Axis[], s: Statement): Read | null {
+    if (READ.has(s)) return READ.get(s)!;
+    const w = wordIn(s.fact);
+    let r: Read | null = null;
+    if (w) {
+        const f = w.f;
+        const key = f.kind === "pace" ? `p${f.x}` : f.kind === "place" ? `l${f.x}@${f.hour}` : f.kind === "event" ? `e${f.hour}|${canonicalT(f.t)}` : null;
+        const value = f.kind === "pace" ? f.vel : f.kind === "place" ? fromOrigin(axes, f) : [1];
+        r = { space: s.space ?? 0, f, denied: w.denied, key, value };
+    }
+    READ.set(s, r);
+    return r;
+}
+
+export function wordBreach(axes: Axis[], _things: number, statements: Statement[], types: boolean[]): Breach | null {
+    const read = statements.map(s => [s, readWord(axes, s)] as const).filter((p): p is readonly [Statement, Read] => !!p[1]);
     for (const space of [0, 1]) {
-        const words = statements.filter(s => (s.space ?? 0) === space && wordIn(s.fact));
-        /* Paces: a knight's, or still. */
-        const given: Array<Statement | null> = Array(things).fill(null);
-        for (const s of words) {
-            if (s.fact.kind !== "pace" || !types[s.speaker]) continue;
-            const had = given[s.fact.x];
-            if (had && !sameVec((had.fact as { vel: number[] }).vel, s.fact.vel)) return { kind: "clash", a: had, b: s };
-            given[s.fact.x] = had ?? s;
+        /* Each word, with whether this guess needs it so or not so. */
+        const lits = read.filter(([, r]) => r.space === space).map(([s, r]) => ({ s, r, holds: types[s.speaker] !== r.denied }));
+        /* Per topic, a value pinned by what must be so, and the values ruled out by what must not be. */
+        const pinned = new Map<string, (typeof lits)[number]>();
+        for (const l of lits) {
+            if (l.r.key === null || !l.holds) continue;
+            const had = pinned.get(l.r.key);
+            if (had && !sameVec(had.r.value, l.r.value)) return { parts: [had, l].map(p => ({ s: p.s, holds: p.holds })) };
+            if (!had) pinned.set(l.r.key, l);
         }
-        const vel = (x: number) => (given[x] ? (given[x]!.fact as { vel: number[] }).vel : axes.map(() => 0));
-        /* Events: what knights say happens, and nothing else. */
-        const happens = new Set(words.filter(s => s.fact.kind === "event" && types[s.speaker])
-            .map(s => { const f = s.fact as Extract<Fact, { kind: "event" }>; return `${f.hour}|${canonicalT(f.t)}`; }));
-        /* Places: where a word somebody's kind vouches for puts a thing at an hour. */
-        const placed = new Map<string, { d: number[]; by: Statement }>();
-        for (const s of words) {
-            const { f, denied } = wordIn(s.fact)!;
-            if (f.kind !== "place" || types[s.speaker] === denied) continue;
-            const key = `${f.x}@${f.hour}`, d = fromOrigin(axes, f), had = placed.get(key);
-            if (had && !sameVec(had.d, d)) return { kind: "clash", a: had.by, b: s };
-            if (!had) placed.set(key, { d, by: s });
+        for (const l of lits) {
+            if (l.r.key === null || l.holds) continue;
+            const at = pinned.get(l.r.key);
+            if (at && sameVec(at.r.value, l.r.value)) return { parts: [at, l].map(p => ({ s: p.s, holds: p.holds })) };
         }
-        for (const s of words) {
-            const { f, denied } = wordIn(s.fact)!;
-            let holds: boolean;
-            if (f.kind === "pace" || f.kind === "pacelike") holds = paceHolds(f, vel);
-            else if (f.kind === "event") holds = happens.has(`${f.hour}|${canonicalT(f.t)}`);
-            else {
-                const at = placed.get(`${f.x}@${f.hour}`);
-                /* Nothing settles it: either way is possible. */
-                if (!at) continue;
-                holds = sameVec(at.d, fromOrigin(axes, f));
-            }
-            const truth = holds !== denied;
-            if (truth === types[s.speaker]) continue;
-            if (!truth) return { kind: "false", s };
-            const named = f.kind === "pace" ? [f.x] : f.kind === "pacelike" ? [f.x, f.y] : [];
-            return { kind: "true", s, still: named.filter(x => !given[x]), ...(f.kind === "event" && denied ? { none: true } : {}) };
+        /* Alike or opposite, once both paces are pinned. */
+        for (const l of lits) {
+            if (l.r.f.kind !== "pacelike") continue;
+            const f = l.r.f, a = pinned.get(`p${f.x}`), b = pinned.get(`p${f.y}`);
+            if (!a || !b) continue;
+            if (sameVec(a.r.value, b.r.value.map(v => f.sign * v)) !== l.holds)
+                return { parts: [a, b, l].map(p => ({ s: p.s, holds: p.holds })) };
         }
     }
     return null;
@@ -120,38 +126,12 @@ export function wordBreach(axes: Axis[], things: number, statements: Statement[]
  * to stand still here, since that rule is about knights, not about one voice.
  */
 export function selfContradicts(axes: Axis[], words: Statement[], speaker: number): boolean {
-    for (const space of [0, 1]) {
-        const own = words.filter(s => s.speaker === speaker && (s.space ?? 0) === space && wordIn(s.fact)).map(s => wordIn(s.fact)!);
-        /* A word and its own denial. */
-        const keys = own.map(o => JSON.stringify(o.f));
-        if (own.some((o, i) => own.some((p, j) => j !== i && keys[i] === keys[j] && o.denied !== p.denied))) return true;
-        const asserted = own.filter(o => !o.denied).map(o => o.f);
-        const pace = new Map<number, number[]>();
-        for (const f of asserted) {
-            if (f.kind !== "pace") continue;
-            const had = pace.get(f.x);
-            if (had && !sameVec(had, f.vel)) return true;
-            pace.set(f.x, f.vel);
-        }
-        for (const f of asserted) {
-            if (f.kind !== "pacelike") continue;
-            const a = pace.get(f.x), b = pace.get(f.y);
-            if (a && b && !sameVec(a, b.map(v => f.sign * v))) return true;
-        }
-        const placed = new Map<string, number[]>();
-        for (const f of asserted) {
-            if (f.kind !== "place") continue;
-            const key = `${f.x}@${f.hour}`, d = fromOrigin(axes, f), had = placed.get(key);
-            if (had && !sameVec(had, d)) return true;
-            placed.set(key, d);
-        }
-        /* A turn one way and the other on the same hour. */
-        const turns = asserted.filter(f => f.kind === "event") as Array<Extract<Fact, { kind: "event" }>>;
-        for (const a of turns) for (const b of turns) {
-            if (a === b || a.hour !== b.hour || a.t.id !== b.t.id) continue;
-            const opposite = TRANSFORMS[a.t.id].opposite?.(a.t);
-            if (opposite && canonicalT(opposite) === canonicalT(b.t)) return true;
-        }
-    }
-    return false;
+    /* As though the speaker were a knight: could everything they say be so? */
+    const own = words.filter(s => s.speaker === speaker);
+    if (wordBreach(axes, 0, own, Array.from({ length: speaker + 1 }, () => true))) return true;
+    /* A turn one way and the other on the same hour, which the events allow as two. */
+    const turns = own.map(s => wordIn(s.fact)).filter(w => w && !w.denied && w.f.kind === "event").map(w => w!.f as Extract<Fact, { kind: "event" }>);
+    return turns.some(a => turns.some(b => a !== b && a.hour === b.hour && a.t.id === b.t.id
+        && (TRANSFORMS[a.t.id].opposite?.(a.t) ? canonicalT(TRANSFORMS[a.t.id].opposite!(a.t)!) === canonicalT(b.t) : false)));
 }
+

@@ -1,12 +1,13 @@
-import { NgModule } from '@angular/core';
+import { NgModule, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule, Routes } from '@angular/router';
+import { Router, RouterModule, Routes } from '@angular/router';
 import { SharedModule } from 'src/app/shared/shared.module';
 import { SyllogimousComponent } from './syllogimous.component';
 import { GameComponent } from './pages/game/game.component';
 import { ModalLevelChangeComponent } from './components/modal-level-change/modal-level-change.component';
 import { CardComponent } from './components/card/card.component';
 import { IntroComponent } from './pages/intro/intro.component';
+import { landingScreen } from './utils/landing.utils';
 import { StartComponent } from './pages/start/start.component';
 import { TutorialComponent } from './pages/tutorial/tutorial.component';
 import { HistoryComponent } from './pages/history/history.component';
@@ -56,7 +57,9 @@ const routes: Routes = [
         path: '',
         component: SyllogimousComponent,
         children: [
-            { path: "", redirectTo: EnumScreens.Intro, pathMatch: "full" },
+            /* The intro, unless it was dismissed for good: a guard that sends the
+               empty path on, since a redirect cannot read storage. */
+            { path: "", pathMatch: "full", children: [], canActivate: [() => inject(Router).createUrlTree(["/", landingScreen()])] },
             { path: EnumScreens.Intro, component: IntroComponent },
             { path: EnumScreens.Start, component: StartComponent, runGuardsAndResolvers: 'always' },
             { path: EnumScreens.Game, component: GameComponent },
