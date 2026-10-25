@@ -31,7 +31,7 @@
 import { Claim, describeClaim, holds as claimHolds } from "../knaves.utils";
 import { hi, own, subj } from "../phrasing";
 import { Axis, Body, Frames, mod, reckon } from "./space";
-import { TRANSFORMS, TransformSpec } from "./transforms";
+import { TRANSFORMS, TransformSpec, canonicalT } from "./transforms";
 
 /** Index of the Post among things a fact can name. */
 export const POST = -1;
@@ -39,8 +39,12 @@ export const POST = -1;
 export type IntervalRel = "before" | "after" | "overlaps" | "within" | "spans" | "identical";
 
 export type Fact =
-    | { kind: "place"; hour: number; x: number; y: number; delta: number[]; bridge?: [number, number]; local?: boolean }
-    | { kind: "pace"; x: number; vel: number[] }
+    /* `round`: every ring said the other way round, "1 step anticlockwise" for 4 clockwise on a ring of five. */
+    | { kind: "place"; hour: number; x: number; y: number; delta: number[]; bridge?: [number, number]; local?: boolean; round?: boolean }
+    /* `every`: the same pace said over that many hours, "every 2 hours, … 2 north". */
+    | { kind: "pace"; x: number; vel: number[]; every?: number }
+    /* Two paces alike (1) or exactly opposite (-1). */
+    | { kind: "pacelike"; x: number; y: number; sign: 1 | -1 }
     | { kind: "size"; x: number; axis: number; len: number }
     | { kind: "sizes"; x: number; lens: Array<[number, number]> }
     | { kind: "cmp"; hour: number; x: number; y: number; axis: number; cmp: Cmp }
@@ -254,7 +258,7 @@ export const otherKind = (axes: Axis[], b: Body) => {
 };
 
 const sameVec = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
-const sameT = (a: TransformSpec, b: TransformSpec) => a.id === b.id && sameVec(a.axes, b.axes) && (a.k ?? 1) === (b.k ?? 1) && a.who === b.who;
+const sameT = (a: TransformSpec, b: TransformSpec) => canonicalT(a) === canonicalT(b);
 
 /** Whether `f` holds in the view, or null when the view does not settle it. */
 export function holds(f: Fact, v: View): boolean | null {
@@ -282,6 +286,10 @@ export function holds(f: Fact, v: View): boolean | null {
             return h === undefined ? null : h === f.hour;
         }
         case "pace": { const s = v.start(f.x); return s ? sameVec(s.vel, f.vel) : null; }
+        case "pacelike": {
+            const a = v.start(f.x), b = v.start(f.y);
+            return a && b ? sameVec(a.vel, b.vel.map(u => f.sign * u)) : null;
+        }
         case "size": { const s = v.start(f.x); return s ? s.size[f.axis] === f.len : null; }
         case "sizes": { const s = v.start(f.x); return s ? f.lens.every(([a, l]) => s.size[a] === l) : null; }
         case "cmp": {
@@ -378,8 +386,8 @@ export function placeClauses(w: Wording, f: Extract<Fact, { kind: "place" }>): s
             const [a] = f.bridge, sa = w.axes[a].scale, sb = w.axes[i].scale;
             return hi(`as many ${sb.direction[d > 0 ? 0 : 1]} as ${sa.direction[f.delta[a] > 0 ? 0 : 1]}`, w.colors[i]);
         }
-        if (f.local && i === TIME) return `${clause(w, i, d)} ${hi("by local clocks", w.colors[i])}`;
-        return w.compact && d === 0 ? "" : clause(w, i, d);
+        if (f.local && i === TIME) return `${clause(w, i, d, f.round)} ${hi("by local clocks", w.colors[i])}`;
+        return w.compact && d === 0 ? "" : clause(w, i, d, f.round);
     }).filter(Boolean);
     return parts.length ? parts.join(", ") : "level on every dimension";
 }
@@ -392,11 +400,13 @@ const nameOf = (w: Wording, x: number) => x === POST ? POST_NAME : subj(w.things
 const axisName = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
 
 /** One axis of a displacement, in that axis's colour. */
-export function clause(w: Wording, i: number, d: number): string {
+export function clause(w: Wording, i: number, d: number, round = false): string {
     const ax = w.axes[i], s = ax.scale;
     let text: string;
+    /* The other way round a ring, where asked: as far as is left of the ring. */
+    const back = round && ax.kind === "ring" && d !== 0, n = back ? ax.modulus! - d : d;
     if (ax.kind === "parity") text = d % 2 === 0 ? s.parity!.same : s.parity!.opposite;
-    else if (ax.kind === "ring") text = d === 0 ? s.tie : `${d} ${d === 1 ? s.cyclic!.step : s.cyclic!.step + "s"} ${s.cyclic!.direction[0]}`;
+    else if (ax.kind === "ring") text = d === 0 ? s.tie : `${n} ${n === 1 ? s.cyclic!.step : s.cyclic!.step + "s"} ${s.cyclic!.direction[back ? 1 : 0]}`;
     else text = d === 0 ? s.tie : `${Math.abs(d)} ${s.direction[d > 0 ? 0 : 1]}`;
     return hi(text, w.colors[i]);
 }
@@ -405,7 +415,8 @@ function paceWords(w: Wording, vel: number[]): string {
     const parts = vel.map((v, i) => {
         if (v === 0) return null;
         const ax = w.axes[i];
-        if (ax.kind === "ring") return hi(`1 ${ax.scale.cyclic!.step} ${ax.scale.cyclic!.direction[v > 0 ? 0 : 1]}`, w.colors[i]);
+        const n = Math.abs(v);
+        if (ax.kind === "ring") return hi(`${n} ${n === 1 ? ax.scale.cyclic!.step : ax.scale.cyclic!.step + "s"} ${ax.scale.cyclic!.direction[v > 0 ? 0 : 1]}`, w.colors[i]);
         return hi(`${Math.abs(v)} ${ax.scale.direction[v > 0 ? 0 : 1]}`, w.colors[i]);
     }).filter(Boolean);
     return parts.join(", ");
@@ -462,9 +473,11 @@ export function describeFact(w: Wording, f: Fact): string {
         case "place":
             return `at ${clock(f.hour)}, ${nameOf(w, f.x)} is ${placeClauses(w, f)} relative to ${nameOf(w, f.y)}`;
         case "pace": {
-            const p = paceWords(w, f.vel);
-            return p ? `every hour, ${nameOf(w, f.x)} moves ${p}` : `${nameOf(w, f.x)} never moves`;
+            const k = f.every ?? 1, p = paceWords(w, f.vel.map(v => k * v));
+            return p ? `every ${k === 1 ? "hour" : `${k} hours`}, ${nameOf(w, f.x)} moves ${p}` : `${nameOf(w, f.x)} never moves`;
         }
+        case "pacelike":
+            return `${nameOf(w, f.x)} moves exactly as ${nameOf(w, f.y)} does${f.sign === 1 ? "" : ", but the other way"}`;
         case "size":
             return `${nameOf(w, f.x)} is ${lengthWords(f.len)} along ${hi(axisName(w.axes[f.axis]), w.colors[f.axis])}`;
         case "sizes": {

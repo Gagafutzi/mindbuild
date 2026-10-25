@@ -27,8 +27,9 @@
 
 import { Claim, holds as claimHolds } from "../knaves.utils";
 import { Axis, Body, FULL, Frames, Reading, copyBody, mod, moveHour, reckon } from "./space";
-import { TRANSFORMS, TransformSpec } from "./transforms";
+import { TRANSFORMS, TransformSpec, canonicalT } from "./transforms";
 import { Fact, MAX_LEN, Observer, POST, Statement, TIME, View, holds, negate, otherKind } from "./facts";
+import { wordBreach } from "./words";
 
 export interface WorldEvent { hour: number; t: TransformSpec }
 
@@ -134,15 +135,21 @@ export interface Reconstruction {
 /** A reconstruction's world for one space: 0 outside the brackets, 1 inside. */
 export const spaceOf = (rec: { world: World; inner?: World }, space = 0): World => (space === 1 ? rec.inner! : rec.world);
 
-/** Types settled by what speakers say about each other alone. */
-export function settleByClaims(card: Card): Map<number, boolean> {
+/**
+ * Types settled by what speakers say about each other and about paces alone
+ * (`paces.ts`): every assignment tried, and kept where no claim and no pace
+ * word contradicts it. A reader who ignores motion has no paces to go on.
+ */
+export function settleTypes(card: Card, paces = true): Map<number, boolean> {
     const n = card.speakers;
     const claims: Array<{ speaker: number; claim: Claim }> = card.statements
         .filter(s => s.fact.kind === "type").map(s => ({ speaker: s.speaker, claim: (s.fact as { claim: Claim }).claim }));
     const solutions: boolean[][] = [];
     for (let mask = 0; mask < (1 << n); mask++) {
         const world = Array.from({ length: n }, (_, i) => (mask & (1 << i)) !== 0);
-        if (claims.every(c => claimHolds(c.claim, world) === world[c.speaker])) solutions.push(world);
+        if (!claims.every(c => claimHolds(c.claim, world) === world[c.speaker])) continue;
+        if (paces && wordBreach(card.axes, card.things, card.statements, world)) continue;
+        solutions.push(world);
     }
     /* Anyone the same in every solution is settled — a speaker who is only
        spoken about included: "at least one of us is a knave", said by a knight,
@@ -231,8 +238,11 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
     /* Events: known up to the first hour an unsettled speaker says something happens. */
     let horizon = Infinity;
     if (reading.events) for (const s of pending) if (s.fact.kind === "event") horizon = Math.min(horizon, s.fact.hour);
+    /* Two wordings of one transformation are one event, not two. */
+    const seen = new Set<string>();
     const events: WorldEvent[] = reading.events
         ? (said("event") as Array<Extract<Fact, { kind: "event" }>>).map(f => ({ hour: f.hour, t: f.t }))
+            .filter(e => { const k = `${e.hour}|${canonicalT(e.t)}`; return !seen.has(k) && !!seen.add(k); })
         : [];
 
     /* Paces: unknown while an unsettled speaker has a word on them. */
@@ -331,7 +341,7 @@ function derive(card: Card, types: Array<boolean | undefined>, reading: Reading,
        how stretches lie — those are where the lengths are told, so holding that
        reader to them would only stop it at the first. It still judges the
        unsettled speakers by them, as points, which is where it goes wrong. */
-    const checked = claimed.filter(c => !((!reading.motion && c.fact.kind === "pace") || (!reading.events && c.fact.kind === "event")
+    const checked = claimed.filter(c => !((!reading.motion && (c.fact.kind === "pace" || c.fact.kind === "pacelike")) || (!reading.events && c.fact.kind === "event")
         || (!reading.sizes && (c.fact.kind === "rel" || c.fact.kind === "size" || c.fact.kind === "sizes" || c.fact.kind === "cmp" || c.fact.kind === "meet"))));
     const things = (f: Fact) => ("x" in f ? [f.x, ...("y" in f ? [f.y] : [])] : []).filter(t => t !== POST);
     /* Each check is made as soon as everything it names is placed. */
@@ -410,11 +420,13 @@ export function worlds(card: Card, types: Array<boolean | undefined>, space = 0)
  * cannot: speakers left unmasked, things left unplaced, lengths left open, or a
  * contradiction.
  */
-export function read(card: Card, reading: Reading = FULL): Reconstruction | null {
+export function read(card: Card, reading: Reading = FULL, known?: boolean[]): Reconstruction | null {
     const types: Array<boolean | undefined> = Array(card.speakers).fill(undefined);
     const unmasked: Reconstruction["unmasked"] = [];
-    if (!reading.liars) for (let i = 0; i < card.speakers; i++) types[i] = true;
-    else for (const [i, t] of settleByClaims(card)) { types[i] = t; unmasked.push({ speaker: i, by: "claims" }); }
+    /* Past the first stage the kinds are known, and the card no longer says enough to find them. */
+    if (known) known.forEach((t, i) => (types[i] = t));
+    else if (!reading.liars) for (let i = 0; i < card.speakers; i++) types[i] = true;
+    else for (const [i, t] of settleTypes(card, reading.motion)) { types[i] = t; unmasked.push({ speaker: i, by: "claims" }); }
 
     /* Both spaces read side by side: a speaker can be unmasked by what they say
        inside the brackets as well as outside, and what that settles is then

@@ -9,8 +9,12 @@
  * every speaker, ignoring the motion, the seams, the lengths or the events —
  * answers it wrongly or cannot answer it at all.
  *
- * Asked in stages, one card and six to eight conclusions: who is a knight
- * and who a knave, ticked; two or three analogies to finish; then one or two
+ * Asked in stages, one card and seven to nine conclusions. First only the
+ * words that tell the speakers apart — on how things move, what happens on
+ * the hour, where things are — with one speaker silent: which question to put
+ * to them would tell what they are, then, with their answer, who is a knight
+ * and who a knave. Then the knights' words that make the world, the knaves'
+ * struck off: two or three analogies to finish; then one or two
  * transformations announced later in the day, two or three analogies to
  * judge across them, and one to build across them. Played from the Experimental page, unscored, its time
  * counted towards the daily goal.
@@ -27,7 +31,7 @@ import { getRandomSymbols } from "../utils/question.utils";
 import { ndAxisColors } from "../utils/ndspace.utils";
 import { StagedItem, buildStaged } from "../utils/world/build";
 import { describeStatement, Wording } from "../utils/world/facts";
-import { renderAsk, renderPremises, renderTypes, setupLines } from "../utils/world/render";
+import { answerLine, renderAsk, renderPremises, renderQuestion, renderTypes, setupLines } from "../utils/world/render";
 import { GeneratorContext } from "./context";
 
 /**
@@ -66,29 +70,35 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
         }
         if (!names.length) continue;
         const w = wording(item, names, things);
-        const premises = renderPremises(item.card.statements, w, item.card.style?.wide);
+        /* The first stage shows only the words that tell the speakers apart. */
+        const premises = renderPremises(item.words.filter(s => s !== item.asking.answer), w, item.card.style?.wide);
         if (premises.length) best = { item, names, premises };
     }
     if (!best) throw new Error("Cannot generate.");
     const { item, names, premises } = best;
     const w = wording(item, names, things);
 
+    const asking = renderQuestion(item, w);
     const ticks = renderTypes(item, w);
     const finishes = item.analogies.map(a => renderAsk(item.reconstruction, a, w));
     const verdicts = item.judgements.map(j => renderAsk(item.laterReconstruction, j, w));
     const closing = renderAsk(item.laterReconstruction, item.closing, w);
     /* The announcement goes at the end of the card, where the carousel lands
        when the last stage begins. */
-    const announced = [...premises, ...item.later.map(st => describeStatement(w, st))];
+    /* From the second stage on, the knaves have been found out and their words are gone. */
+    const plain = renderPremises(item.plain.statements, w, item.card.style?.wide);
+    const announced = [...plain, ...item.later.map(st => describeStatement(w, st))];
 
     const series: SeriesClaim[] = [
+        { text: "", isValid: true, answerMode: "select", choices: asking.choices, selectAnswer: asking.selectAnswer,
+            prompt: asking.prompt, explanation: asking.explanation, premises },
         { text: "", isValid: true, answerMode: "select", choices: ticks.choices, selectAnswer: ticks.selectAnswer,
-            prompt: ticks.prompt, explanation: ticks.explanation, premises },
-        ...finishes.map((f): SeriesClaim => f.construct
+            prompt: ticks.prompt, explanation: ticks.explanation, premises: [...premises, answerLine(item, w)] },
+        ...finishes.map((f, i): SeriesClaim => ({ ...(i === 0 ? { premises: plain } : {}), ...(f.construct
             ? { text: "", isValid: true, answerMode: "construct", construct: f.construct, prompt: f.prompt, explanation: f.explanation }
             : f.selectAnswer.length || f.prompt.includes("select every one that could")
             ? { text: "", isValid: true, answerMode: "select", choices: f.choices, selectAnswer: f.selectAnswer, prompt: f.prompt, explanation: f.explanation }
-            : { text: "", isValid: true, answerMode: "choice", choices: f.choices, correctChoice: f.correctChoice, prompt: f.prompt, explanation: f.explanation }),
+            : { text: "", isValid: true, answerMode: "choice", choices: f.choices, correctChoice: f.correctChoice, prompt: f.prompt, explanation: f.explanation }) })),
         ...verdicts.map((v, i): SeriesClaim => ({ text: v.conclusion, isValid: item.judgements[i].answer === true,
             answerMode: "boolean", explanation: v.explanation, ...(i === 0 ? { premises: announced } : {}) })),
         { text: "", isValid: true, answerMode: "construct", construct: closing.construct!, prompt: closing.prompt, explanation: closing.explanation },
@@ -98,12 +108,12 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     question.bucket = [...names];
     question.setup = setupLines(item.world.axes, w.colors, w.compact, item.card.statements, item.card.frames);
     question.premises = premises;
-    question.explanation = ticks.explanation;
+    question.explanation = asking.explanation;
     question.answerMode = "select";
-    question.choices = ticks.choices;
-    question.selectAnswer = ticks.selectAnswer;
+    question.choices = asking.choices;
+    question.selectAnswer = asking.selectAnswer;
     question.selectAsked = true;
-    question.choicePrompt = ticks.prompt;
+    question.choicePrompt = asking.prompt;
     question.conclusion = "";
     question.isValid = true;
     question.series = series;

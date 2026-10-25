@@ -133,6 +133,18 @@ export const TRANSFORMS: Record<string, TransformKind> = {
     },
 };
 
+/**
+ * One way of writing each transformation, to tell two wordings of one apart
+ * from two transformations: a quarter turn of (a, b) one way is a quarter turn
+ * of (b, a) the other, and a swap is the same either way round.
+ */
+export function canonicalT(t: TransformSpec): string {
+    const flip = (t.id === "rotate" || t.id === "swap") && t.axes.length === 2 && t.axes[0] > t.axes[1];
+    const axes = flip ? [t.axes[1], t.axes[0]] : t.axes;
+    const k = flip && t.id === "rotate" ? 4 - (t.k ?? 1) : t.k ?? 1;
+    return JSON.stringify([t.id, axes, k, t.who ?? null]);
+}
+
 /** Whether a transformation can act on these axes of this space. */
 export function canTransform(t: TransformSpec, axes: Axis[]): boolean {
     const kind = TRANSFORMS[t.id];
