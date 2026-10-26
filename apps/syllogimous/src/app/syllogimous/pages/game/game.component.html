@@ -30,7 +30,13 @@
   deliberate exception, because a verdict alone is one bit and the item that
   earned it took a minute to read.
 -->
-<div class="review" *ngIf="game.review.length">
+<!--
+  Scrolls, because it can be taller than the screen: a Composed World review on
+  a phone ran off both ends, and Continue with it, and nothing could bring it
+  back — the player was stuck on a panel they could not leave. `overflow-auto`
+  is Bootstrap's, since this stylesheet is at its budget.
+-->
+<div class="review overflow-auto" *ngIf="game.review.length">
     <div class="review__title">How it follows</div>
     <div class="review__note" *ngIf="game.reviewNote">{{ game.reviewNote }}</div>
     <ol class="review__steps">

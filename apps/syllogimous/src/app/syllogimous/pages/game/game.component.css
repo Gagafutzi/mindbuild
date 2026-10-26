@@ -403,7 +403,10 @@
      */
     z-index: 1045;
     display: grid;
-    align-content: center;
+    /* Centred while it fits; from the top once it does not, where plain
+       `center` pushed its head off the top of the screen, out of reach of the
+       scroll. A browser without `safe` drops the line and starts at the top. */
+    align-content: safe center;
     justify-items: center;
     gap: 1rem;
     padding: clamp(1rem, 5vw, 4rem);

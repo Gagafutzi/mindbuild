@@ -128,5 +128,6 @@ import "./composed-world.test";
 import "./landing.test";
 import "./twist.test";
 import "./render-cost.test";
+import "./review-scroll.test";
 
 run();
