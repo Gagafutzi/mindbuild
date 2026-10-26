@@ -29,7 +29,7 @@ import { Card, OPEN_MAX, Reconstruction, read, settleTypes, thingAt, worlds } fr
 import { selfContradicts, wordBreach, wordIn } from "../src/app/syllogimous/utils/world/words";
 import { hasNextClaim, takeSeriesAnswer } from "../src/app/syllogimous/utils/answer.utils";
 import { missedReview } from "../src/app/syllogimous/utils/review.utils";
-import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS, guessCover } from "../src/app/syllogimous/utils/world/render";
+import { TYPES_PROMPT_NAMES, TYPES_PROMPT_PAIRS, guessCover, renderQuestion } from "../src/app/syllogimous/utils/world/render";
 import { Ask, QUESTIONS, REACH, answerFollows, answerKey } from "../src/app/syllogimous/utils/world/questions";
 import { BuildOptions, Item, build, buildStaged, fitting, makeAxes, tryBuild } from "../src/app/syllogimous/utils/world/build";
 
@@ -828,6 +828,31 @@ test("composed world: every word of the first stage does work — none is implie
                 if (w.speaker === who && !rest.some(o => o.speaker === who)) continue;
                 assert(sign(rest) !== sign(words), `a word that changes nothing: ${JSON.stringify(w)}`);
             }
+        }
+    });
+});
+
+test("composed world: the question stage says what each kind would answer, not that nothing settles what the words do", () => {
+    /* Asked what a knave's false denial makes so, both kinds say no: the
+       question tells nothing, but the review said "nothing settles it yet",
+       and a player who had worked out the "no" was told they were wrong. */
+    seeded(9780, () => {
+        for (let k = 0; k < 24; k++) {
+            const st = buildStaged(worldSize(4 + (k % 5)), 300)!;
+            const axes = st.card.axes, n = st.card.things, who = st.asking.who;
+            const words = st.words.filter(s => s !== st.asking.answer);
+            const open = Array.from({ length: 1 << st.types.length }, (_, m) => st.types.map((_, i) => (m & (1 << i)) !== 0))
+                .filter(t => !wordBreach(axes, n, words, t));
+            const w = { axes, colors: axes.map(() => ""), things: Array.from({ length: n }, (_, i) => `T${i}`), speakers: st.types.map((_, i) => `S${i}`) };
+            const lines = renderQuestion(st, w).explanation.map(strip);
+            st.asking.options.forEach((o, i) => {
+                const could = (knight: boolean) => [true, false].filter(yes => open.some(t => t[who] === knight
+                    && !wordBreach(axes, n, [...words, { speaker: who, fact: yes ? o.fact : { kind: "not", f: o.fact } as Fact }], t)));
+                const kn = could(true), kv = could(false), line = lines[i];
+                if (kn.length === 1 && kv.length === 1 && kn[0] === kv[0]) assert(/both say/.test(line), `both kinds say one thing, but: ${line}`);
+                if (/nothing settles/.test(line)) assert(kn.length === 2 && kv.length === 2, `said to be open, but a kind's answer is settled: ${line}`);
+                equal(o.tells, kn.length === 1 && kv.length === 1 && kn[0] !== kv[0], `whether "${line}" tells`);
+            });
         }
     });
 });

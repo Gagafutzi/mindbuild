@@ -193,17 +193,26 @@ export function renderQuestion(item: StagedItem, w: Wording): RenderedAsk {
     const words = item.words.filter(s => s !== item.asking.answer), axes = item.card.axes, n = item.card.things;
     const open = Array.from({ length: 1 << item.types.length }, (_, m) => item.types.map((_, i) => (m & (1 << i)) !== 0))
         .filter(t => !wordBreach(axes, n, words, t));
-    const says = (f: Fact, knight: boolean) => {
-        const t = open.find(r => r[q] === knight)!;
-        return wordBreach(axes, n, [...words, { speaker: q, fact: f }], t) ? "no" : "yes";
+    /* What each kind could answer, over every reading the words leave. A
+       question that does not tell is not always one nothing settles: asked
+       what a knave's false denial makes so, both kinds say no — and "nothing
+       settles it yet" sent a player looking for a mistake that was not there. */
+    const could = (f: Fact, knight: boolean) => (["yes", "no"] as const).filter(a => open.some(t => t[q] === knight
+        && !wordBreach(axes, n, [...words, { speaker: q, fact: a === "yes" ? f : { kind: "not", f } as Fact }], t)));
+    const says = (f: Fact) => {
+        const k = could(f, true), v = could(f, false);
+        const shared = k.filter(a => v.includes(a)).map(a => hi(a)).join(" or ");
+        if (!shared) return `as the words leave things, a knight says ${hi(k[0])}, a knave ${hi(v[0])}`;
+        if (k.length === 1 && v.length === 1) return `a knight and a knave would both say ${shared}, so the answer tells nothing`;
+        if (k.length === 2 && v.length === 2) return `nothing settles it yet, so either kind could say yes or no`;
+        return `a knight could say ${k.map(a => hi(a)).join(" or ")}, a knave ${v.map(a => hi(a)).join(" or ")}, so a ${shared} could come from either`;
     };
     return {
         prompt: `Which questions to ${who} would tell what ${who} is? Select all that would.`,
         conclusion: "", correctChoice: -1,
         choices: opts.map(o => questionWords(w, o.fact)),
         selectAnswer: opts.map((o, i) => (o.tells ? i : -1)).filter(i => i >= 0),
-        explanation: opts.map(o => o.tells ? `"${describeFact(w, o.fact)}?": as the words leave things, a knight says ${says(o.fact, true)}, a knave ${says(o.fact, false)}`
-            : `"${describeFact(w, o.fact)}?": nothing settles it yet, so either answer fits either kind`),
+        explanation: opts.map(o => `"${describeFact(w, o.fact)}?": ${says(o.fact)}`),
     };
 }
 
