@@ -355,6 +355,7 @@ $('dailyGoal').oninput = e => {
   cfg.dailyGoal = Math.max(0, +e.target.value || 0);
   renderDailyTimer(); saveProgress();
 };
+$('hideTimer').onchange = e => { cfg.hideTimer = e.target.checked; renderDailyTimer(); saveProgress(); };
 $('moveTraceOn').onchange = e => { cfg.moveTrace = e.target.checked; saveProgress(); };
 $('autoAdvance').onchange = e => { cfg.autoAdvance = +e.target.value || 0; saveProgress(); };
 $('buzzer').onchange = e => {

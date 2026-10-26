@@ -156,6 +156,7 @@ function loadProgress() {
                      cfg.letterVoice = p.display.letterVoice || cfg.letterVoice;
                      cfg.cubeScale = p.display.cubeScale || cfg.cubeScale;
                      if (p.display.dailyGoal != null) cfg.dailyGoal = p.display.dailyGoal;
+                     cfg.hideTimer = !!p.display.hideTimer;
                      cfg.buzzer = !!p.display.buzzer;
                      if (p.display.haptics != null)
                        cfg.haptics = !!p.display.haptics;
@@ -264,7 +265,7 @@ function saveProgress() {
                        spinPath: cfg.spinPath, voiceSet: cfg.voiceSet,
                        letterVoice: cfg.letterVoice,
                        cubeScale: cfg.cubeScale,
-                       dailyGoal: cfg.dailyGoal, buzzer: cfg.buzzer,
+                       dailyGoal: cfg.dailyGoal, hideTimer: cfg.hideTimer, buzzer: cfg.buzzer,
                        haptics: cfg.haptics,
                        moveTrace: cfg.moveTrace, autoAdvance: cfg.autoAdvance };
   progress.stair = stairLog ? stairLog.map(v => +v.toFixed(4)) : null;

@@ -106,6 +106,9 @@ const cfg = {
   layout: 'dense',
   cubeScale: 1,
   dailyGoal: 20,
+  /* The day's minutes kept out of sight until the goal is met, so the clock is
+     not something to watch. Off by default: the readout is what most want. */
+  hideTimer: false,
   buzzer: false,
   /* A pulse for a wrong answer on a phone. On by default: unlike the buzzer it
      costs nothing to have on, works with the sound off, and on the desktop where

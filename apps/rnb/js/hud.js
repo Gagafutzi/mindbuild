@@ -72,10 +72,26 @@ function minutesToday() {
   return banked + (state.activeMs + open) / 60000;
 }
 
+/* Whether the day's minutes are to be kept out of sight: asked for, a goal set,
+   and not yet met. Shared with the Data panel, which shows the same number. */
+function timerHidden(m = minutesToday()) {
+  const goal = cfg.dailyGoal || 0;
+  return !!cfg.hideTimer && goal > 0 && m < goal;
+}
+
 function renderDailyTimer() {
   const el = $('hudToday'), goalEl = $('hudGoal');
   if (!el) return;
   const m = minutesToday(), goal = cfg.dailyGoal || 0;
+  /* The Data panel's count, by the same rule and on the same tick: drawn only
+     with the panel, it showed the minutes the corner was hiding. */
+  const data = $('minutesToday');
+  if (data) data.textContent = timerHidden(m) ? '\u2014' : Math.floor(progress.dailyMinutes[today()] || 0);
+  if (timerHidden(m)) {
+    el.textContent = '\u2014'; el.style.color = '';
+    goalEl.textContent = ''; goalEl.style.color = '';
+    return;
+  }
   el.textContent = m < 1 && m > 0 ? '<1m' : Math.floor(m) + 'm';
   const hit = goal > 0 && m >= goal;
   el.style.color = hit ? 'var(--good)' : '';

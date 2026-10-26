@@ -422,6 +422,7 @@ function syncSettingsUI() {
   $('cubeLayout').value = cfg.layout;
   $('layoutHint').textContent = LAYOUT_HINT[cfg.layout] || '';
   $('dailyGoal').value = cfg.dailyGoal || 0;
+  $('hideTimer').checked = !!cfg.hideTimer;
   $('buzzer').checked = !!cfg.buzzer;
   $('haptics').checked = !!cfg.haptics;
   $('moveTraceOn').checked = !!cfg.moveTrace;
@@ -451,7 +452,7 @@ function onConfigChanged(rebuildCube) {
 }
 
 function renderDataPanel() {
-  $('minutesToday').textContent = Math.floor(progress.dailyMinutes[today()] || 0);
+  $('minutesToday').textContent = timerHidden() ? '\u2014' : Math.floor(progress.dailyMinutes[today()] || 0);
   $('bestLoad').textContent = progress.bestLoad || 0;
   const st = $('dataStatus');
   if (!st) return;
