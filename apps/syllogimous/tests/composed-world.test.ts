@@ -112,7 +112,7 @@ const shown = (q: Question, dims: number): Shown => ({
  * A whole card back from its words. `things` and `speakers` are the names, in
  * index order; `voice` is a knight, whom a line naming no speaker is put down to.
  */
-function parse(q: Shown, things: string[], speakers: string[], voice = -1): Parsed {
+function parse(q: Shown, things: string[], speakers: string[], voice = -1, vantages = new Map<number, number>()): Parsed {
     const axes = readAxes(q.setup, q.dims);
     const thing = new Map<string, number>([["the origin", POST], ...things.map((n, i) => [n, i] as [string, number])]);
     const who = new Map(speakers.map((n, i) => [n, i] as [string, number]));
@@ -164,6 +164,29 @@ function parse(q: Shown, things: string[], speakers: string[], voice = -1): Pars
         return { kind: "place", hour, x, y, delta, ...(local ? { local: true } : {}), ...(round ? { round: true } : {}) };
     };
 
+    /* A view's parts: ahead, left, then every other dimension in order. */
+    const readSeen = (text: string, body: string): Seen => {
+        const parts = text.split(", ");
+        const ahead = parts[0] === "level ahead" ? 0 : /^(\d+) (ahead|behind)$/.exec(parts[0])!;
+        const left = parts[1] === "level sideways" ? 0 : /^(\d+) (left|right)$/.exec(parts[1])!;
+        const seen: Seen = {
+            ahead: ahead === 0 ? 0 : +ahead[1] * (ahead[2] === "behind" ? -1 : 1),
+            left: left === 0 ? 0 : +left[1] * (left[2] === "right" ? -1 : 1),
+            rest: axes.map(() => 0),
+        };
+        let k = 2;
+        axes.forEach((ax, i) => {
+            if (i === 0 || i === 1) return;
+            const c = parts[k++];
+            if (c.startsWith("level in ")) return;
+            const v = readClause(ax, c);
+            if (v === null) throw new Error(`unread view clause "${c}" on ${axisLabel(ax)}`);
+            seen.rest[i] = ax.kind === "ring" ? ((v % ax.modulus!) + ax.modulus!) % ax.modulus! : v;
+        });
+        if (k !== parts.length) throw new Error(`a view with ${parts.length} parts for ${axes.length} axes: "${body}"`);
+        return seen;
+    };
+    const standing: Fact[] = [];
     const fact = (speaker: number, body: string): Fact => {
         let m: RegExpExecArray | null;
         if ((m = /^I am a (knight|knave)$/.exec(body))) return { kind: "type", claim: { kind: "is", who: speaker, knight: m[1] === "knight" } };
@@ -212,27 +235,17 @@ function parse(q: Shown, things: string[], speakers: string[], voice = -1): Pars
             return { kind: "stands", who: whoIs(m[1]), host: thing.get(m[2])!, ...(facing === undefined ? {} : { facing }),
                 ...(m[4] ? { twin: true } : {}), ...(m[5] ? { upside: true } : {}) };
         }
+        /* Unvoiced, a view is told from where it is seen — the thing and the way it faces — and stands for the line saying so. */
+        const from = new RegExp(`^at (\\d+), from ${T}(?:, facing (north|east|south|west))?(, a mirror twin)?(, head down)?: ${T} is (.+)$`).exec(body);
+        if (from) {
+            const host = thing.get(from[2])!;
+            if (!vantages.has(host)) vantages.set(host, vantages.size);
+            const who = vantages.get(host)!, facing = from[3] ? ["north", "east", "south", "west"].indexOf(from[3]) : undefined;
+            standing.push({ kind: "stands", who, host, ...(facing === undefined ? {} : { facing }), ...(from[4] ? { twin: true } : {}), ...(from[5] ? { upside: true } : {}) });
+            return { kind: "view", hour: +from[1], who, x: thing.get(from[6])!, seen: readSeen(from[7], body) };
+        }
         if ((m = new RegExp(`^at (\\d+), ${PI} sees? ${T}: (.+)$`).exec(body))) {
-            /* Ahead, left, then every other dimension in order. */
-            const parts = m[4].split(", ");
-            const ahead = parts[0] === "level ahead" ? 0 : /^(\d+) (ahead|behind)$/.exec(parts[0])!;
-            const left = parts[1] === "level sideways" ? 0 : /^(\d+) (left|right)$/.exec(parts[1])!;
-            const seen: Seen = {
-                ahead: ahead === 0 ? 0 : +ahead[1] * (ahead[2] === "behind" ? -1 : 1),
-                left: left === 0 ? 0 : +left[1] * (left[2] === "right" ? -1 : 1),
-                rest: axes.map(() => 0),
-            };
-            let k = 2;
-            axes.forEach((ax, i) => {
-                if (i === 0 || i === 1) return;
-                const c = parts[k++];
-                if (c.startsWith("level in ")) return;
-                const v = readClause(ax, c);
-                if (v === null) throw new Error(`unread view clause "${c}" on ${axisLabel(ax)}`);
-                seen.rest[i] = ax.kind === "ring" ? ((v % ax.modulus!) + ax.modulus!) % ax.modulus! : v;
-            });
-            if (k !== parts.length) throw new Error(`a view with ${parts.length} parts for ${axes.length} axes: "${body}"`);
-            return { kind: "view", hour: +m[1], who: whoIs(m[2]), x: thing.get(m[3])!, seen };
+            return { kind: "view", hour: +m[1], who: whoIs(m[2]), x: thing.get(m[3])!, seen: readSeen(m[4], body) };
         }
         if ((m = new RegExp(`^at (\\d+), ${T} (is longer than|is shorter than|is as long as) ${T} in (.+)$`).exec(body))) {
             const cmp = ({ "is longer than": "longer", "is shorter than": "shorter", "is as long as": "same" } as const)[m[3] as "is longer than"];
@@ -336,6 +349,7 @@ function parse(q: Shown, things: string[], speakers: string[], voice = -1): Pars
         })();
         return [{ speaker, fact: head }, ...linked, ...inside.map(b => ({ speaker, fact: fact(speaker, b), space: 1 }))];
     });
+    for (const f of standing) if (!statements.some(o => JSON.stringify(o.fact) === JSON.stringify(f))) statements.push({ speaker: Math.max(voice, 0), fact: f });
     const frames = readFrames(q.setup, axes);
     const card: Card = { axes, things: things.length, speakers: speakers.length, statements, ...(frames ? { frames } : {}) };
 
@@ -474,10 +488,10 @@ function walk(q: Question, premises: number, each: (p: Parsed, at: number, befor
        the first two stages each shows its part alone, and a claim is read on
        every part shown up to it, as a player has to hold them. */
     let known: boolean[] | undefined;
-    const world: Statement[] = [];
+    const world: Statement[] = [], vantages = new Map<number, number>();
     for (;;) {
         const at = q.seriesAt, view = shown(q, worldSize(premises).dims);
-        const p = parse(view, things, speakers, known?.indexOf(true) ?? -1);
+        const p = parse(view, things, speakers, known?.indexOf(true) ?? -1, vantages);
         if (at >= 2) {
             /* Only what a stage shows of its own: one that shows nothing leaves the last stage's lines up, the second stage's words among them. */
             if (q.series[at].premises) for (const st of p.card.statements) if (!world.some(o => JSON.stringify(o) === JSON.stringify(st))) world.push(st);
@@ -799,7 +813,9 @@ test("composed world: past the first stage nobody is named as saying a thing, si
                 }
                 equal(new Set(lines).size, lines.length, `claim ${at} prints a line twice: ${lines.find((x, i) => lines.indexOf(x) !== i)}`);
             });
-            assert(q.series.slice(2).some(c => (c.premises ?? []).some(l => / sees /.test(strip(l)))), "no knight says what they see past the first stage");
+            /* Seen from a thing, facing a way: the viewer is where they stand, with no line of their own. */
+            assert(q.series.slice(2).some(c => (c.premises ?? []).some(l => /^at \d+, from /.test(strip(l)))), "nothing is seen from anywhere past the first stage");
+            assert(!q.series.slice(2).some(c => (c.premises ?? []).some(l => / is in .*facing| sees /.test(strip(l)))), "a viewer told apart from where they stand");
             /* What the space is like is not grey text above the card but the first premises, at every stage. */
             equal(q.setup.length, 0, "rules set apart above the premises");
             const rules = q.premises.filter(isRule);
@@ -1097,6 +1113,9 @@ test("composed world: every line of the world does work, seen from more than one
             assert(st.types.filter(Boolean).length >= 2, "fewer than two knights to give the world");
             const sts = st.plain.statements;
             if (sts.some(s => s.fact.kind === "view")) seen++;
+            /* Viewers in things of their own: unnamed, "from Driver" is all that tells two viewers apart. */
+            const grounds = sts.filter(s => s.fact.kind === "stands").map(s => (s.fact as { host: number }).host);
+            equal(new Set(grounds).size, grounds.length, "two viewers stand in one thing");
             const key = (r: Reconstruction | null) => r && JSON.stringify([r.world.start, r.inner?.start, r.alternatives?.length ?? 1]);
             const whole = key(read(st.plain, FULL, st.types));
             for (const s of sts) {

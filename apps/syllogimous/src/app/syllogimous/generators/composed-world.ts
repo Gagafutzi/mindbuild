@@ -30,7 +30,7 @@ import { canGenerateQuestion, clampPremises } from "../models/settings.models";
 import { getRandomSymbols } from "../utils/question.utils";
 import { ndAxisColors } from "../utils/ndspace.utils";
 import { Stage, StagedItem, buildStaged } from "../utils/world/build";
-import { describeStatement, Wording } from "../utils/world/facts";
+import { Fact, describeStatement, Wording } from "../utils/world/facts";
 import { answerLine, renderAsk, renderPremises, renderQuestion, renderTypes, setupLines } from "../utils/world/render";
 import { GeneratorContext } from "./context";
 
@@ -88,7 +88,8 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
        when the last stage begins. */
     /* From the second stage on, the knaves have been found out and their words are gone. */
     /* And what is left is all true, so it goes unsaid who says it. */
-    const told: Wording = { ...w, unvoiced: true };
+    const told: Wording = { ...w, unvoiced: true,
+        vantage: who => item.plain.statements.find(st => st.fact.kind === "stands" && st.fact.who === who && !st.space)?.fact as Extract<Fact, { kind: "stands" }> | undefined };
     /* What this item's space is like goes first among the premises, at every
        stage: it changes from item to item as they do, and set apart above
        them in grey it read as boilerplate. */

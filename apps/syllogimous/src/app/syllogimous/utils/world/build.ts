@@ -747,10 +747,14 @@ function makeBase(opts: BuildOptions, rnd: () => number): Base | null {
     const start = Array.from({ length: opts.things }, () => makeBody(axes, rnd));
     const frames = makeFrames(axes, rnd, opts.kinds);
     const world: World = { axes, start, events: makeEvents(axes, rnd, undefined, start), ...(frames ? { frames } : {}) };
-    /* Every speaker stands in a thing and faces one of four ways. */
+    /* Every speaker stands in a thing and faces one of four ways — each in a
+       thing of their own where there are things enough, so that past the
+       first stage, where nobody is named, a view is told by where it is seen
+       from: "from Driver, facing west". */
     /* Now and then a mirror twin, or one hanging head down. */
-    world.observers = Array.from({ length: opts.speakers }, () => ({
-        host: int(rnd, 0, opts.things - 1), facing: int(rnd, 0, 3),
+    const grounds = shuffle(Array.from({ length: opts.things }, (_, i) => i), rnd);
+    world.observers = Array.from({ length: opts.speakers }, (_, who) => ({
+        host: grounds[who % grounds.length], facing: int(rnd, 0, 3),
         ...(rnd() < 0.2 ? { twin: true } : {}), ...(rnd() < 0.2 ? { upside: true } : {}),
     }));
     /* One speaker says nothing until asked; the rest tell each other apart,

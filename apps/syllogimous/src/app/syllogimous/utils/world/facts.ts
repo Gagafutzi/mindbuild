@@ -376,6 +376,10 @@ export interface Wording {
     /** Once the knaves are gone every word is true, so nobody need be named
        as saying it: "Ash sees Bee: …" for "Ash: I see Bee: …". */
     unvoiced?: boolean;
+    /** Unvoiced, where each speaker stands: a view is then told from the thing
+       and the way it faces — "from Driver, facing west: Twine is …" — and the
+       line saying where they stand goes. */
+    vantage?: (who: number) => Extract<Fact, { kind: "stands" }> | undefined;
 }
 
 /**
@@ -534,8 +538,11 @@ export function describeFact(w: Wording, f: Fact): string {
                 : `least to most ${hi(ax.scale.direction[0], w.colors[i])}`;
             return `at ${clock(f.hour)}, ${run(a, f.by[0])}, ties by ${hi(axisName(b), w.colors[f.by[1]])}: ${f.order.map(k => nameOf(w, k)).join(", ")}`;
         }
-        case "view":
+        case "view": {
+            const at = w.unvoiced ? w.vantage?.(f.who) : undefined;
+            if (at) return `at ${clock(f.hour)}, from ${nameOf(w, at.host)}${standsTail(at)}: ${nameOf(w, f.x)} is ${seenParts(w, f.seen).join(", ")}`;
             return `at ${clock(f.hour)}, ${seenWords(w, f.seen, nameOf(w, f.x), subj(w.speakers[f.who]), !w.unvoiced)}`;
+        }
     }
 }
 
@@ -545,6 +552,12 @@ export function describeFact(w: Wording, f: Fact): string {
  * third party would put it, "of Willow" for "of me".
  */
 function seenWords(w: Wording, s: Seen, target: string, viewer: string, self = true): string {
+    /* Its nearest edges, from where the speaker stands. */
+    return `${self ? "I see" : `${viewer} sees`} ${target}: ${seenParts(w, s).join(", ")}`;
+}
+
+/** Where a thing's nearest edges are from a viewer: ahead, left, then every other dimension. */
+function seenParts(w: Wording, s: Seen): string[] {
     const parts: string[] = [];
     parts.push(s.ahead === 0 ? "level ahead" : `${Math.abs(s.ahead)} ${s.ahead > 0 ? "ahead" : "behind"}`);
     parts.push(s.left === 0 ? "level sideways" : `${Math.abs(s.left)} ${s.left > 0 ? "left" : "right"}`);
@@ -555,8 +568,7 @@ function seenWords(w: Wording, s: Seen, target: string, viewer: string, self = t
         else if (s.rest[i] === 0) parts.push(`level in ${hi(axisName(ax), c)}`);
         else parts.push(clause(w, i, s.rest[i]));
     });
-    /* Its nearest edges, from where the speaker stands. */
-    return `${self ? "I see" : `${viewer} sees`} ${target}: ${parts.join(", ")}`;
+    return parts;
 }
 
 /** What a speaker says of speakers, with "I" for themselves, named second. */

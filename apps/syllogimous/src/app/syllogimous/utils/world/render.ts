@@ -226,6 +226,8 @@ const sideWords = (rec: Reconstruction, s: number | undefined) =>
 const bare = (f: Fact): Fact => (f.kind === "not" ? bare(f.f) : f);
 
 export function renderPremises(statements: Statement[], w: Wording, wide = false): string[] {
+    /* Where a speaker stands is told on the views from there, where views are told so. */
+    if (w.unvoiced && w.vantage) statements = statements.filter(st => st.fact.kind !== "stands");
     const inner = statements.filter(st => st.space === 1);
     /* Two links in one sentence, where a speaker's two places chain at one hour:
        "at 3 o'clock, Ash is 2 north relative to Bee, which is 1 above relative to Cog". */
