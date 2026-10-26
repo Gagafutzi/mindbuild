@@ -1,0 +1,10 @@
+{
+  "id": "loci",
+  "name": "Loci Span",
+  "what": "Word span by the method of loci, from words that picture themselves to ones that leave nothing to see",
+  "categories": ["memory", "imagery"],
+  "unit": "words",
+  "license": null,
+  "maintainer": "Gagafutzi",
+  "build": null
+}

@@ -1,0 +1,102 @@
+{
+  "format": "chimera-record",
+  "version": 1,
+  "app": "loci",
+  "appVersion": "1.0.0",
+  "units": {
+    "level": "words",
+    "score": "words"
+  },
+  "sessions": [
+    {
+      "id": "loci-1793017578809",
+      "start": 1793017578809,
+      "end": 1793017586236,
+      "activeSeconds": 7,
+      "completed": true,
+      "mode": "Imagery 3 (technical)",
+      "modalities": [
+        "visual"
+      ],
+      "level": 3,
+      "levelEnd": 4,
+      "trials": 2,
+      "correct": 1,
+      "accuracy": 0.571,
+      "score": 3,
+      "input": "keyboard",
+      "settings": {
+        "imagery": 3,
+        "span": 3,
+        "rate": 0.5,
+        "lists": 2,
+        "present": "screen",
+        "adaptive": true
+      },
+      "extra": {
+        "imagery": 3,
+        "wordsShown": 7,
+        "wordsInPlace": 4,
+        "longestPerfect": 3
+      },
+      "trialLog": [
+        {
+          "i": 0,
+          "t": 0,
+          "level": 3,
+          "stimulus": [
+            "equation",
+            "metabolism",
+            "residue"
+          ],
+          "response": [
+            "equation",
+            "metabolism",
+            "residue"
+          ],
+          "correct": true,
+          "extra": {
+            "inPlace": 3,
+            "inList": 3,
+            "tiers": [
+              3,
+              3,
+              3
+            ]
+          }
+        },
+        {
+          "i": 1,
+          "t": 3294,
+          "level": 4,
+          "stimulus": [
+            "bacterium",
+            "gene",
+            "interval",
+            "sample"
+          ],
+          "response": [
+            "bacteriux",
+            "interval",
+            "gene",
+            "zebra"
+          ],
+          "correct": false,
+          "extra": {
+            "inPlace": 1,
+            "inList": 3,
+            "tiers": [
+              3,
+              3,
+              3,
+              3
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "state": {
+    "nextSpan": 4
+  }
+}

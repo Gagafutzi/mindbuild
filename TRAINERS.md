@@ -166,6 +166,20 @@ loudness, size) and metathetic ("which kind": pitch, hue) (Stevens 1957) †, an
 cross-modal correspondences (Spence 2011). Includes the Shepard tone (Shepard
 1964) as an endless-glide dimension †.
 
+### Loci Span — counted
+**Task.** Words one at a time; set each, as a picture, at the next place on a
+route you know, then type them back in order. Choose how readily the words
+picture themselves, from vivid (dragon, gnome, knight) to purely abstract
+(notion, essence); the list length adapts.
+**Loads.** Serial recall through imagery: turning a word into an image and
+binding it to a place, which is the hard part on abstract words.
+**Research** (all †, `apps/loci/README.md`): the method of loci (Yates 1966;
+Bower 1970); the imagery advantage and dual coding (Paivio 1971; norms by
+Paivio, Yuille & Madigan 1968 and Scott et al. 2019); memory champions use the
+method rather than different brains (Maguire et al. 2003); six weeks of loci
+training more than doubled word-list recall in naive adults (Dresler et al.
+2017).
+
 ### DorsalFlow — not counted yet
 **Task.** Detect motion direction in visual noise, or — as AudioFlow — by ear.
 Two mixed programs put the senses together: in Mixed Discrimination a Gabor

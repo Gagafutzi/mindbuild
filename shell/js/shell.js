@@ -64,6 +64,9 @@
        counted with no adapter. */
     { id: "ribbon", name: "Ribbon World", path: "ribbon/", colour: "#c9a227",
       what: "A twisted loop and a plain one: find the rules, picture the trip, spot the impossible, judge through fog" },
+    /* Written here, on the Chimera record, so counted with no adapter. */
+    { id: "loci", name: "Loci Span", path: "loci/", colour: "#b6e35a",
+      what: "Word span by the method of loci, from words that picture themselves to ones that leave nothing to see" },
   ];
 
   /* Stageable, but never a trainer.
