@@ -50,7 +50,11 @@ const LADDER: Record<number, { dims: number; things: number; speakers: number }>
 };
 export const worldSize = (numOfPremises: number) => LADDER[Math.max(4, Math.min(8, numOfPremises))];
 
-export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number): Question {
+/**
+ * `easy`: the knights and knaves as ever, then one small world shown whole and
+ * asked about only true or false — see `BuildOptions.easy`.
+ */
+export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number, easy = false): Question {
     ctx.logger.info("createComposedWorld");
     const type = EnumQuestionType.ComposedWorld;
     if (!canGenerateQuestion(type, numOfPremises, ctx.settings)) throw new Error("Cannot generate.");
@@ -59,7 +63,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     const size = worldSize(numOfPremises), { things } = size;
     let best: { item: StagedItem; names: string[]; premises: string[] } | null = null;
     for (let t = 0; t < 3 && !best; t++) {
-        const item = buildStaged(size, 300);
+        const item = buildStaged({ ...size, easy }, 300);
         if (!item) continue;
         /* Distinct, and none that reads as the origin. Drawn again rather than given up on. */
         let names: string[] = [];
@@ -83,7 +87,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     /* Each read on what was shown up to it; the far side of the brackets from the whole reading, for the wording of sides. */
     const finishes = item.analogies.map(a => renderAsk(a.rec ? { ...a.rec, inner: a.rec.inner ?? item.reconstruction.inner } : item.reconstruction, a, w));
     const verdicts = item.judgements.map(j => renderAsk(item.laterReconstruction, j, w));
-    const closing = renderAsk(item.laterReconstruction, item.closing, w);
+    const closing = item.closing ? renderAsk(item.laterReconstruction, item.closing, w) : null;
     /* The announcement goes at the end of the card, where the carousel lands
        when the last stage begins. */
     /* From the second stage on, the knaves have been found out and their words are gone. */
@@ -97,7 +101,9 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     /* Each part of the world on its own stage, and taken away after: what came
        before is to be remembered. The announcement, at the end, alone too. */
     const part = (a: Stage) => (a.shown ? [...rules, ...renderPremises(a.shown, told, item.card.style?.wide)] : null);
-    const announced = [...rules, ...item.later.map(st => describeStatement(told, st))];
+    /* Easy keeps the world on the card with what is announced; otherwise the announcement comes alone, the rest remembered. */
+    const announced = [...rules, ...(item.easy ? renderPremises(item.analogies.find(a => a.shown)?.shown ?? item.plain.statements, told, item.card.style?.wide) : []),
+        ...item.later.map(st => describeStatement(told, st))];
     const first = [...rules, ...premises];
 
     const series: SeriesClaim[] = [
@@ -107,12 +113,15 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
             prompt: ticks.prompt, explanation: ticks.explanation, premises: [...first, answerLine(item, w)] },
         ...finishes.map((f, i): SeriesClaim => ({ ...(part(item.analogies[i]) ? { premises: part(item.analogies[i])! } : {}), ...(f.construct
             ? { text: "", isValid: true, answerMode: "construct", construct: f.construct, prompt: f.prompt, explanation: f.explanation }
+            /* Easy asks the world true or false from the start. */
+            : item.analogies[i].kind.answerMode === "boolean"
+            ? { text: f.conclusion, isValid: item.analogies[i].answer === true, answerMode: "boolean", explanation: f.explanation }
             : f.selectAnswer.length || f.prompt.includes("select every one that could")
             ? { text: "", isValid: true, answerMode: "select", choices: f.choices, selectAnswer: f.selectAnswer, prompt: f.prompt, explanation: f.explanation }
             : { text: "", isValid: true, answerMode: "choice", choices: f.choices, correctChoice: f.correctChoice, prompt: f.prompt, explanation: f.explanation }) })),
         ...verdicts.map((v, i): SeriesClaim => ({ text: v.conclusion, isValid: item.judgements[i].answer === true,
             answerMode: "boolean", explanation: v.explanation, ...(i === 0 ? { premises: announced } : {}) })),
-        { text: "", isValid: true, answerMode: "construct", construct: closing.construct!, prompt: closing.prompt, explanation: closing.explanation },
+        ...(closing ? [{ text: "", isValid: true, answerMode: "construct", construct: closing.construct!, prompt: closing.prompt, explanation: closing.explanation } as SeriesClaim] : []),
     ];
 
     const question = new Question(type);

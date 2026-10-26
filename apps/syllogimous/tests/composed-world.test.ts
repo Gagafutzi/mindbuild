@@ -525,6 +525,38 @@ test("composed world: in stages — ticks, analogies to finish, verdicts across 
     });
 });
 
+test("composed world: easy keeps the knights and knaves, then one small world shown whole, true or false only", () => {
+    /* Asked for: the first stages are fine, the rest was too much. So the
+       world is three things on one side, shown whole on one card, and asked
+       about only true or false — each answer still on the card and every
+       shortcut still wrong. */
+    for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) seeded(1500 + premises, () => {
+        const q = createComposedWorld(ctxHolding([]), premises, true);
+        const modes = walk(q, premises, (p, at, before, known) => {
+            if (p.kind === "asking") { equal(telling(p), shipped(q, p), "the questions that tell are not the ones shipped"); return; }
+            if (p.kind === "types") { equal(answered(p, { types: kindsFrom(p.card)! } as Reconstruction), shipped(q, p), "types: the words' answer is not the one shipped"); return; }
+            const need = askNeed(p.ask), truth = shipped(q, p);
+            const rec = read(p.card, FULL, known, need);
+            assert(rec, `the card on screen does not read:\n${q.premises.map(strip).join("\n")}`);
+            equal(answered(p, rec!), truth, `claim ${at}: the card's answer is not the one shipped`);
+            for (const [name, reading] of Object.entries(SHORTCUTS)) {
+                if (name === "liars" || (name === "kinds" && !p.card.frames) || (name === "perspective" && !p.card.statements.some(s => s.fact.kind === "view"))) continue;
+                const r = read(p.card, reading, known, need);
+                assert((r ? answered(p, r) : answerKey(null)) !== truth, `claim ${at}: ignoring ${name} still gives ${truth}`);
+            }
+            if (at >= 4) {
+                const without = read(before, FULL, known, need);
+                assert((without ? answered(p, without) : answerKey(null)) !== truth, `claim ${at}: the verdict is the same without what was announced`);
+            }
+        });
+        equal(modes.join(" "), "select select boolean boolean boolean boolean", "the stages of an easy item");
+        const world = q.series[2].premises!.map(strip).filter(l => !isRule(l));
+        assert(world.length <= 18, `an easy world of ${world.length} lines`);
+        assert(!world.includes("Inside:") && !world.some(l => l.includes("(where")), "an easy world has brackets");
+        equal(q.series.filter(c => c.answerMode === "boolean").map(c => c.isValid).sort().join(), "false,false,true,true", "verdicts not two each way");
+    });
+});
+
 test("composed world: the card alone answers every claim of every stage as shipped", () => {
     for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) for (let r = 0; r < 3; r++) {
         seeded(1100 + 10 * premises + r, () => {
@@ -761,7 +793,7 @@ test("composed world: every part of the structure turns up in what ships", () =>
     seeded(8100, () => {
         for (let k = 0; k < 8; k++) {
             const st = buildStaged({ dims: 7, things: 4, speakers: 4 }, 300);
-            if (st) for (const stage of [...st.analogies, ...st.judgements, st.closing]) {
+            if (st) for (const stage of [...st.analogies, ...st.judgements, ...(st.closing ? [st.closing] : [])]) {
                 if (stage.ask.on.includes(REACH)) seen.add("the light cone in an analogy");
                 if (stage.kind.id === "build") seen.add("an analogy to build");
                 if (stage.kind.id === "could") seen.add("an analogy left open");

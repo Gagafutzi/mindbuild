@@ -27,7 +27,7 @@ import { NUMBER_WORDS } from "../constants/question.constants";
 import { EXPERIMENTAL_ONLY, EnumScreens, EnumTiers, ORDERED_QUESTION_TYPES, ORDERED_TIERS, TIER_SCORE_ADJUSTMENTS, TIER_SCORE_RANGES, TIERS_MATRIX } from "../constants/game.constants";
 import { dialsFor, ladderFor } from "../utils/progression.utils";
 import { composeDelayLine, DELAY_TYPES, DEFAULT_DELAY, DEFAULT_DELAY_ROUNDS } from "../generators/delay-line";
-import { LS_DONT_SHOW, LS_GAME_MODE, LS_SCORE, LS_SERIES_BONUS, LS_SKIP_TUTORIALS, LS_STREAM, LS_STREAM_ANALOGY, LS_STREAM_LENGTH, LS_STREAM_TYPE, LS_STREAM_WINDOW, LS_SYMBOL_RELATIONS, LS_DELAY, LS_DELAY_TYPE, LS_WORLD, LS_WORLD_PREMISES, LS_DELAY_DEPTH, LS_DELAY_ROUNDS, LS_RANDOM_LABELS, LS_TIMER, LS_ZEN } from "../constants/local-storage.constants";
+import { LS_DONT_SHOW, LS_GAME_MODE, LS_SCORE, LS_SERIES_BONUS, LS_SKIP_TUTORIALS, LS_STREAM, LS_STREAM_ANALOGY, LS_STREAM_LENGTH, LS_STREAM_TYPE, LS_STREAM_WINDOW, LS_SYMBOL_RELATIONS, LS_DELAY, LS_DELAY_TYPE, LS_WORLD, LS_WORLD_PREMISES, LS_WORLD_EASY, LS_DELAY_DEPTH, LS_DELAY_ROUNDS, LS_RANDOM_LABELS, LS_TIMER, LS_ZEN } from "../constants/local-storage.constants";
 import { explanationsOn, missedReview, reviewSteps, setExplanationsOn } from "../utils/review.utils";
 // Aliased: the service exposes members of the same names, and a call that
 // could be read as either is worth one line of renaming to avoid.
@@ -762,7 +762,7 @@ export class GameService implements GeneratorContext {
 
         /* Composed World is played this way only: a staged item of five to
            seven conclusions on one card is not an item to draw among others. */
-        if (this.worldOn) return this.asMinimal(createComposedWorld(this, this.worldPremises));
+        if (this.worldOn) return this.asMinimal(createComposedWorld(this, this.worldPremises, this.worldEasy));
 
         if (this.streamOn) {
             return this.asMinimal(
@@ -1638,6 +1638,18 @@ export class GameService implements GeneratorContext {
     setWorldPremises(n: number) {
         const { minNumOfPremises: lo, maxNumOfPremises: hi } = QUESTION_TYPE_SETTING_PARAMS[EnumQuestionType.ComposedWorld];
         try { localStorage.setItem(LS_WORLD_PREMISES, String(Math.min(hi, Math.max(lo, Math.floor(Number(n) || lo))))); } catch { /* private mode */ }
+    }
+
+    /** Easy: the knights and knaves as ever, then one small world shown whole, true or false only. */
+    get worldEasy(): boolean {
+        try { return localStorage.getItem(LS_WORLD_EASY) === "1"; } catch { return false; }
+    }
+
+    setWorldEasy(on: boolean) {
+        try {
+            if (on) localStorage.setItem(LS_WORLD_EASY, "1");
+            else localStorage.removeItem(LS_WORLD_EASY);
+        } catch { /* private mode; the default stands */ }
     }
 
     /* ---------------- delay line ---------------- */

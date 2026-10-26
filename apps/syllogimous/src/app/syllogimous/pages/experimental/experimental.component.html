@@ -24,6 +24,17 @@
                     <option *ngFor="let n of worldSizes" [value]="n.premises">{{ n.label }}</option>
                 </select>
             </div>
+
+            <label class="flag" [class.is-idle]="!worldOn">
+                <input type="checkbox" class="form-check-input" [disabled]="!worldOn"
+                       [checked]="worldEasy" (change)="setWorldEasy($any($event.target).checked)">
+                <span>Easy
+                    <small class="d-block text-muted">
+                        Knights and knaves as ever; then one small world, shown whole,
+                        and only true or false.
+                    </small>
+                </span>
+            </label>
         </div>
     </app-collapsible>
 

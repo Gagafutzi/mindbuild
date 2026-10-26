@@ -53,6 +53,12 @@ export interface BuildOptions {
     kinds?: boolean;
     /** Ask this kind only; otherwise every kind that fits the card, evenly. */
     kind?: string;
+    /**
+     * Staged items only: the knights and knaves as ever, then a world small
+     * enough to show whole — three things, no brackets, nothing left open, no
+     * reckoning of the other kind — asked about only true or false.
+     */
+    easy?: boolean;
     rnd?: () => number;
 }
 
@@ -1061,9 +1067,11 @@ export interface StagedItem {
     /**
      * Last, one analogy to build across what was announced: a verdict can be
      * guessed half the time, a point on every dimension cannot, and it is
-     * built in the world the announcement changed.
+     * built in the world the announcement changed. None on an easy item.
      */
-    closing: Stage;
+    closing?: Stage;
+    /** Easy: one small world shown whole, and true or false only. */
+    easy?: boolean;
 }
 
 export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
@@ -1086,6 +1094,20 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
     const early: Span = { h1: [1, FIRST_HOURS], h2: [1, FIRST_HOURS] };
     if (opts.open && !rec.alternatives) return null;
     const analogies: Stage[] = [];
+    /* Easy: the whole world at once, and two verdicts on it, one each way, in either order. */
+    if (opts.easy) {
+        /* Three things for up to four speakers: two seen from in one thing would read as one viewer, unnamed. Drawn again. */
+        const grounds = plain.statements.filter(st => st.fact.kind === "stands").map(st => (st.fact as { host: number }).host);
+        if (new Set(grounds).size !== grounds.length) return null;
+        const reads = shortcutReads(plain, types);
+        for (const wantTrue of shuffle([true, false], rnd)) {
+            const stage = fairStage(QUESTIONS.judge, base, rec, reads, rnd, early, wantTrue, analogies.map(a => a.ask));
+            if (!stage) return null;
+            /* In the order a reader builds it: one part, since the world is three things on one side. */
+            analogies.push({ ...stage, ...(analogies.length ? {} : { shown: partsOf(plain, world.start.length).flatMap(p => p.statements) }), rec });
+        }
+        return announce(base, plain, rec, analogies, rnd, true);
+    }
     /* About the speakers themselves, straight after they are told apart, on the words that told them. */
     if (QUESTIONS.speakers.fits!(opts.things, opts.speakers) && rnd() < 0.5) {
         const stage = fairStage(QUESTIONS.speakers, base, rec, shortcutReads(plain, types), rnd, early);
@@ -1140,6 +1162,15 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
         analogies.push({ ...stage, shown: [], rec });
     }
 
+    return announce(base, plain, rec, analogies, rnd, false);
+}
+
+/**
+ * The last stage: transformations announced after the first part of the day,
+ * and analogies judged across them; then, but for easy items, one built.
+ */
+function announce(base: Base, plain: Card, rec: Reconstruction, analogies: Stage[], rnd: () => number, easy: boolean): StagedItem | null {
+    const { world, card, words, asking, types, firsts } = base;
     /* Stage 3: transformations announced, by knights — the knaves are gone by
        then, and nobody is named, so a knave's turn the other way round would
        read as the world's — and analogies judged across them. */
@@ -1161,13 +1192,15 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
            each, three in four shipped true: a false verdict is fair far less
            often (every shortcut has to make the analogy hold), and a draw that
            found none cut the list short on the true ones before it. */
-        for (let k = 0, want = int(rnd, 2, 3); k < want; k++) {
+        for (let k = 0, want = easy ? 2 : int(rnd, 2, 3); k < want; k++) {
             const stage = fairStage(QUESTIONS.judge, base, rec2, reads2, rnd, across, k < 2 ? k === 1 : rnd() < 0.5, judgements.map(j => j.ask));
             if (!stage) break;
             judgements.push(stage);
         }
         if (judgements.length < 2) continue;
         judgements = shuffle(judgements, rnd);
+        /* Easy ends on the verdicts; otherwise one built last. */
+        if (easy) return { world: whole, card, plain, words, asking, later, types, reconstruction: rec, laterReconstruction: rec2, analogies, judgements, easy };
         const closing = fairStage(QUESTIONS.build, base, rec2, reads2, rnd, across, undefined, [...analogies, ...judgements].map(j => j.ask));
         if (!closing) continue;
         return { world: whole, card, plain, words, asking, later, types, reconstruction: rec, laterReconstruction: rec2, analogies, judgements, closing };
@@ -1184,12 +1217,14 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
  */
 export function buildStaged(opts: BuildOptions, attempts = 400): StagedItem | null {
     const rnd = opts.rnd ?? Math.random;
-    opts = {
-        ...opts,
-        nested: opts.nested ?? rnd() < 0.75,
-        open: opts.open ?? (opts.things >= 4 && rnd() < 0.6),
-        kinds: opts.kinds ?? rnd() < 0.5,
-    };
+    opts = opts.easy
+        ? { ...opts, things: Math.min(opts.things, 3), nested: false, open: false, kinds: false }
+        : {
+            ...opts,
+            nested: opts.nested ?? rnd() < 0.75,
+            open: opts.open ?? (opts.things >= 4 && rnd() < 0.6),
+            kinds: opts.kinds ?? rnd() < 0.5,
+        };
     for (let i = 0; i < attempts; i++) {
         const item = tryBuildStaged(opts);
         if (item) return item;

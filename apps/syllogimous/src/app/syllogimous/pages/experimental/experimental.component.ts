@@ -57,6 +57,10 @@ export class ExperimentalComponent {
 
     setWorldPremises(value: string) { this.game.setWorldPremises(Number(value)); }
 
+    get worldEasy() { return this.game.worldEasy; }
+
+    setWorldEasy(value: boolean) { this.game.setWorldEasy(value); }
+
     /** Every size, chosen outright: what each one puts on the card. */
     worldSizes = (() => {
         const { minNumOfPremises: lo, maxNumOfPremises: hi } = QUESTION_TYPE_SETTING_PARAMS[EnumQuestionType.ComposedWorld];
