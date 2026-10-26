@@ -1082,22 +1082,34 @@ test("composed world: open cards and kinds ship their share, not what survives t
     });
 });
 
-test("composed world: the world is given by every knight, each from where they stand", () => {
-    /* One knight gave the whole world on most cards, so nothing was said from
-       anywhere but one place, and seeing from a speaker's place and heading
-       was one speaker's puzzle. */
+test("composed world: every line of the world does work, seen from more than one place", () => {
+    /* One knight gave the whole world on most cards, so seeing from a
+       speaker's place was one speaker's puzzle; then every knight gave a view,
+       and most views only restated where a thing was, from a speaker whose
+       facing was given — a line to check that told nothing. Now a view, a
+       relation or a report is on the card only if the card reads otherwise
+       without it, a speaker's ground only if something is seen from there,
+       and a thing's lengths take one line. */
+    let seen = 0;
     seeded(9700, () => {
         for (let k = 0; k < 10; k++) {
             const st = buildStaged(worldSize(4 + (k % 5)), 300)!;
-            const knights = st.types.map((t, i) => (t ? i : -1)).filter(i => i >= 0);
-            assert(knights.length >= 2, "fewer than two knights to give the world");
-            for (const i of knights) {
-                const own = st.plain.statements.filter(s => s.speaker === i && !s.space);
-                assert(own.some(s => s.fact.kind === "view"), "a knight says nothing from where they stand");
-                assert(own.length >= 3, `a knight gives only ${own.length} of the world's premises`);
+            assert(st.types.filter(Boolean).length >= 2, "fewer than two knights to give the world");
+            const sts = st.plain.statements;
+            if (sts.some(s => s.fact.kind === "view")) seen++;
+            const key = (r: Reconstruction | null) => r && JSON.stringify([r.world.start, r.inner?.start, r.alternatives?.length ?? 1]);
+            const whole = key(read(st.plain, FULL, st.types));
+            for (const s of sts) {
+                const f = s.fact, side = s.space ?? 0;
+                if (f.kind === "stands") assert(sts.some(v => v.fact.kind === "view" && v.fact.who === f.who && (v.space ?? 0) === side), "a speaker stands where nothing is seen from");
+                if (f.kind === "sizes" || f.kind === "size") equal(sts.filter(o => (o.fact.kind === "sizes" || o.fact.kind === "size") && o.fact.x === f.x && (o.space ?? 0) === side).length, 1, "a thing's lengths take two lines");
+                if (["place", "pace", "event", "stands", "sizes", "size"].includes(f.kind)) continue;
+                assert(key(read({ ...st.plain, statements: sts.filter(o => o !== s) }, FULL, st.types)) !== whole, `a line the card reads the same without: ${JSON.stringify(f)}`);
             }
         }
     });
+    /* A view stays where it does work, and on most cards one does: something is seen from somewhere. */
+    assert(seen >= 7, `only ${seen} of 10 cards see anything from anywhere`);
 });
 
 test("composed world: nobody contradicts themselves, so no knave is found out at a glance", () => {

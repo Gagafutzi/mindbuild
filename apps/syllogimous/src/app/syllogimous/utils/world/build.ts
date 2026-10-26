@@ -889,6 +889,50 @@ const shortcutReads = (card: Card, known?: boolean[], need?: number[][]) => Obje
         && (name !== "perspective" || card.statements.some(s => s.fact.kind === "view")))
     .map(([name, r]) => [name, read(card, r, known, need)] as const);
 
+/**
+ * The world card less what the rest of it already says, read to the same
+ * world. Any view, relation or report the card reads the same without goes:
+ * a view restating where a thing is, from a speaker whose facing is given,
+ * made the reader check it and told them nothing, and the report of steps
+ * apart or a ranked list was there so every form turned up, not because a
+ * question needed it. Then where a speaker stands, if nothing is seen from
+ * there. Last, a thing's lengths in one line, where they took two.
+ *
+ * Lengths stay as given. Taken out where a view would pin them instead, the
+ * card read the same, but a reading with a length unpinned searches every
+ * length on seven axes before it fails, and an item took half a minute.
+ */
+function lean(plain: Card, rec: Reconstruction, types: boolean[], rnd: () => number): Card {
+    const alts = (r: Reconstruction) => r.alternatives?.length ?? 1;
+    const same = (statements: Statement[]) => {
+        const r = read({ ...plain, statements }, FULL, types);
+        return !!r && alts(r) === alts(rec) && sameWorld(r.world, rec.world) && (!rec.inner || (!!r.inner && sameWorld(r.inner, rec.inner)));
+    };
+    let kept = plain.statements;
+    /* Views, relations and reports the card reads the same without. */
+    const skeleton = new Set<Fact["kind"]>(["place", "pace", "event", "stands", "sizes", "size"]);
+    for (const st of shuffle(kept.filter(k => !skeleton.has(k.fact.kind)), rnd)) {
+        const next = kept.filter(k => k !== st);
+        if (same(next)) kept = next;
+    }
+    /* Where a speaker stands, only where something is seen from there. */
+    kept = kept.filter(st => st.fact.kind !== "stands"
+        || kept.some(v => v.fact.kind === "view" && v.fact.who === (st.fact as { who: number }).who && (v.space ?? 0) === (st.space ?? 0)));
+    /* A thing's lengths in one line. */
+    const merged: Statement[] = [];
+    for (const st of kept) {
+        const f = st.fact;
+        if (f.kind !== "size" && f.kind !== "sizes") { merged.push(st); continue; }
+        const lens: Array<[number, number]> = f.kind === "size" ? [[f.axis, f.len]] : f.lens;
+        const into = merged.find(m => m.fact.kind === "sizes" && m.fact.x === f.x && (m.space ?? 0) === (st.space ?? 0));
+        if (!into) { merged.push({ ...st, fact: { kind: "sizes", x: f.x, lens: [...lens] } }); continue; }
+        const g = into.fact as Extract<Fact, { kind: "sizes" }>;
+        for (const l of lens) if (!g.lens.some(m => m[0] === l[0])) g.lens.push(l);
+        g.lens.sort((a, b) => a[0] - b[0]);
+    }
+    return { ...plain, statements: merged };
+}
+
 /** The things a fact is about, besides the origin; all of a ranked list. */
 function thingsOf(f: Fact): number[] {
     switch (f.kind) {
@@ -1025,7 +1069,10 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
     /* Once the first stage has told the knights from the knaves, the rest of
        the item is asked on the knights' words that make the world: the
        knaves' are gone, and so are the words that only told who is what. */
-    const { world, card, plain, words, asking, types, firsts, rec } = base;
+    const { world, card, words, asking, types, firsts } = base;
+    /* The world card without what repeats what the rest already says. */
+    const plain = lean(base.plain, base.rec, types, rnd), rec = read(plain, FULL, types);
+    if (!rec) return null;
 
     /* Stage 2: the world in parts, an analogy to finish on each, in the first
        part of the day. Each part is shown on its own and then taken away: the
