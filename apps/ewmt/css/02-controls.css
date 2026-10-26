@@ -61,3 +61,15 @@ button, input, select { position:relative; z-index:1; }
     margin:auto;
   }
 }
+
+/* Custom Words (session only). Additive styles; nothing above is altered. */
+.custom-words-panel { margin:-4px 0 10px; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--bg-elevated); }
+.custom-words-row { display:flex; gap:8px; }
+.custom-words-row input { flex:1; min-width:0; text-transform:uppercase; }
+.custom-words-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.custom-words-list:empty { margin-top:0; }
+.custom-word-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 6px 4px 10px; border:1px solid var(--border-hover); border-radius:999px; font-family:var(--font-mono); font-size:.62rem; letter-spacing:.6px; color:var(--text); background:rgba(255,255,255,.03); }
+.custom-word-chip button { border:none; background:none; color:var(--text-muted); cursor:pointer; font-size:.8rem; line-height:1; padding:0 4px; }
+.custom-word-chip button:hover { color:var(--text); }
+.custom-words-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
+.custom-words-count { font-family:var(--font-mono); font-size:.6rem; color:var(--text-dim); }

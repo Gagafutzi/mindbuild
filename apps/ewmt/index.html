@@ -70,6 +70,10 @@
           <div class="mode-name">DUAL N-BACK</div>
           <div class="mode-desc">Position + Audio</div>
         </div>
+        <div class="mode-card" data-mode="tri" id="mode-tri">
+          <div class="mode-name">TRI N-BACK</div>
+          <div class="mode-desc">Pos + Aud + Image</div>
+        </div>
         <div class="mode-card" data-mode="quad" id="mode-quad">
           <div class="mode-name">QUAD N-BACK</div>
           <div class="mode-desc">Pos + Aud + Shape + Color</div>
@@ -95,6 +99,17 @@
 
         <!-- Only relevant once "Your Images" is the chosen set. -->
         <div class="custom-panel" id="custom-panel" hidden>
+          <div class="custom-deck-row">
+            <label class="custom-deck-label" for="custom-deck-select">Deck</label>
+            <select id="custom-deck-select" aria-label="Custom image deck"></select>
+            <input id="custom-deck-name" type="text" maxlength="40" placeholder="New deck name" aria-label="New deck name" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="custom-deck-row">
+            <button type="button" class="btn btn-secondary" id="custom-deck-create">New deck</button>
+            <button type="button" class="btn btn-secondary" id="custom-deck-rename">Rename</button>
+            <button type="button" class="btn btn-secondary" id="custom-deck-delete">Delete</button>
+          </div>
+          <p class="custom-note" id="custom-deck-note">Decks group your own pictures, e.g. gore, social anxiety — each deck trains separately.</p>
           <div class="custom-panel-row">
             <label class="btn btn-secondary custom-pick">
               Choose images
@@ -123,7 +138,7 @@
       <div class="control-row">
         <div class="control-label">Starting N-Level</div>
         <div style="display:flex;align-items:center;gap:10px">
-          <input type="range" id="rng-start-n" min="1" max="9" value="2" style="width:120px" oninput="document.getElementById('disp-start-n').textContent=this.value">
+          <input type="range" id="rng-start-n" min="1" max="20" value="2" style="width:120px" oninput="document.getElementById('disp-start-n').textContent=this.value">
           <span class="range-display" id="disp-start-n">2</span>
         </div>
       </div>
@@ -189,7 +204,7 @@
             </div>
             <div class="control-row">
               <div class="control-label">Max N</div>
-              <input type="number" id="inp-var-max" min="1" max="9" value="3" style="width:60px">
+              <input type="number" id="inp-var-max" min="1" max="20" value="3" style="width:60px">
             </div>
           </div>
           <div class="control-row">
@@ -253,6 +268,26 @@
             </div>
             <label class="toggle-switch"><input type="checkbox" id="chk-word-interference"><span class="toggle-slider"></span></label>
           </div>
+          <!-- Custom Words (session only). Additive panel: in-memory list, never saved, never mixed into the built-in banks. -->
+          <div class="control-row">
+            <div>
+              <div class="control-label">Custom Words (session only)</div>
+              <small style="display:block;color:var(--text-dim);font-size:.62rem;line-height:1.35;max-width:320px;margin-top:3px">Your own audio words for this session. Spoken via the Audio modality and optionally shown as interference distractors. Kept in memory only &mdash; cleared on reload, never saved.</small>
+            </div>
+            <label class="toggle-switch"><input type="checkbox" id="chk-custom-words"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="custom-words-panel" id="custom-words-panel">
+            <div class="custom-words-row">
+              <input id="inp-custom-word" type="text" maxlength="24" placeholder="Type a word, e.g. FOCUS" autocomplete="off" spellcheck="false" aria-label="Custom word to add">
+              <button type="button" class="btn btn-secondary" id="btn-add-custom-word">Add</button>
+            </div>
+            <div class="custom-words-list" id="list-custom-words" aria-live="polite"></div>
+            <div class="custom-words-footer">
+              <span class="custom-words-count" id="custom-words-count">0 words for this session</span>
+              <button type="button" class="btn btn-secondary" id="btn-clear-custom-words">Clear</button>
+            </div>
+            <p class="custom-note" id="custom-words-note">Off until you enable the toggle above. Added words join the audio pool for blocks generated while enabled.</p>
+          </div>
           <div class="panel-title" style="margin-top:16px;color:var(--magenta)">Affective Parameters</div>
           <div class="control-row">
             <div class="control-label">Interference / Lures</div>
@@ -285,6 +320,7 @@
             <label class="stim-check"><input type="checkbox" id="chk-aud" checked onchange="App.onStimChange()"><span class="check-box"></span><span class="check-label">Audio</span></label>
             <label class="stim-check" id="chk-shp-wrapper"><input type="checkbox" id="chk-shp" onchange="App.onStimChange()"><span class="check-box"></span><span class="check-label">Shape</span></label>
             <label class="stim-check" id="chk-col-wrapper"><input type="checkbox" id="chk-col" onchange="App.onStimChange()"><span class="check-box"></span><span class="check-label">Color</span></label>
+            <label class="stim-check" id="chk-img-wrapper"><input type="checkbox" id="chk-img" onchange="App.onStimChange()"><span class="check-box"></span><span class="check-label">Image</span></label>
           </div>
           <div class="panel-title" style="margin-top:14px">Keybindings</div>
           <div class="keybind-grid" id="keybind-grid"></div>
@@ -295,6 +331,7 @@
       <button class="btn btn-secondary" id="btn-full-dashboard" style="flex:0.4">Dashboard</button>
       <button class="btn btn-primary" id="btn-init-session">INITIALIZE SESSION</button>
     </div>
+    <div class="app-footer">ENGINEERED BY TURPENSTEIN</div>
   </div>
 </div>
 
@@ -410,5 +447,6 @@
 <script src="js/07-engine.js"></script>
 <script src="js/08-app.js"></script>
 <script src="js/09-theme.js"></script>
+<script src="js/10-custom-words.js"></script>
 </body>
 </html>
