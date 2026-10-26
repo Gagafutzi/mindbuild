@@ -29,7 +29,7 @@ import { Question, SeriesClaim } from "../models/question.models";
 import { canGenerateQuestion, clampPremises } from "../models/settings.models";
 import { getRandomSymbols } from "../utils/question.utils";
 import { ndAxisColors } from "../utils/ndspace.utils";
-import { StagedItem, buildStaged } from "../utils/world/build";
+import { Stage, StagedItem, buildStaged } from "../utils/world/build";
 import { describeStatement, Wording } from "../utils/world/facts";
 import { answerLine, renderAsk, renderPremises, renderQuestion, renderTypes, setupLines } from "../utils/world/render";
 import { GeneratorContext } from "./context";
@@ -80,7 +80,8 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
 
     const asking = renderQuestion(item, w);
     const ticks = renderTypes(item, w);
-    const finishes = item.analogies.map(a => renderAsk(item.reconstruction, a, w));
+    /* Each read on what was shown up to it; the far side of the brackets from the whole reading, for the wording of sides. */
+    const finishes = item.analogies.map(a => renderAsk(a.rec ? { ...a.rec, inner: a.rec.inner ?? item.reconstruction.inner } : item.reconstruction, a, w));
     const verdicts = item.judgements.map(j => renderAsk(item.laterReconstruction, j, w));
     const closing = renderAsk(item.laterReconstruction, item.closing, w);
     /* The announcement goes at the end of the card, where the carousel lands
@@ -88,15 +89,22 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     /* From the second stage on, the knaves have been found out and their words are gone. */
     /* And what is left is all true, so it goes unsaid who says it. */
     const told: Wording = { ...w, unvoiced: true };
-    const plain = renderPremises(item.plain.statements, told, item.card.style?.wide);
-    const announced = [...plain, ...item.later.map(st => describeStatement(told, st))];
+    /* What this item's space is like goes first among the premises, at every
+       stage: it changes from item to item as they do, and set apart above
+       them in grey it read as boilerplate. */
+    const rules = setupLines(item.world.axes, w.colors, item.card.frames);
+    /* Each part of the world on its own stage, and taken away after: what came
+       before is to be remembered. The announcement, at the end, alone too. */
+    const part = (a: Stage) => (a.shown ? [...rules, ...renderPremises(a.shown, told, item.card.style?.wide)] : null);
+    const announced = [...rules, ...item.later.map(st => describeStatement(told, st))];
+    const first = [...rules, ...premises];
 
     const series: SeriesClaim[] = [
         { text: "", isValid: true, answerMode: "select", choices: asking.choices, selectAnswer: asking.selectAnswer,
-            prompt: asking.prompt, explanation: asking.explanation, premises },
+            prompt: asking.prompt, explanation: asking.explanation, premises: first },
         { text: "", isValid: true, answerMode: "select", choices: ticks.choices, selectAnswer: ticks.selectAnswer,
-            prompt: ticks.prompt, explanation: ticks.explanation, premises: [...premises, answerLine(item, w)] },
-        ...finishes.map((f, i): SeriesClaim => ({ ...(i === 0 ? { premises: plain } : {}), ...(f.construct
+            prompt: ticks.prompt, explanation: ticks.explanation, premises: [...first, answerLine(item, w)] },
+        ...finishes.map((f, i): SeriesClaim => ({ ...(part(item.analogies[i]) ? { premises: part(item.analogies[i])! } : {}), ...(f.construct
             ? { text: "", isValid: true, answerMode: "construct", construct: f.construct, prompt: f.prompt, explanation: f.explanation }
             : f.selectAnswer.length || f.prompt.includes("select every one that could")
             ? { text: "", isValid: true, answerMode: "select", choices: f.choices, selectAnswer: f.selectAnswer, prompt: f.prompt, explanation: f.explanation }
@@ -108,8 +116,8 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
 
     const question = new Question(type);
     question.bucket = [...names];
-    question.setup = setupLines(item.world.axes, w.colors, w.compact, item.card.statements, item.card.frames);
-    question.premises = premises;
+    question.setup = [];
+    question.premises = first;
     question.explanation = asking.explanation;
     question.answerMode = "select";
     question.choices = asking.choices;

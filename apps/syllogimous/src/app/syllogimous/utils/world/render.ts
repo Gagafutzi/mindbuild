@@ -27,26 +27,22 @@ export interface Rendered {
 const axisWord = (a: Axis) => a.scale.name.toLowerCase().replace("-", "–");
 
 /**
- * What is particular to this card's space: its rings and their seams.
+ * What is particular to this card's space: its rings and their seams, and how
+ * the other kind reckons. Composed World prints them first among the premises,
+ * since they change from item to item as the premises do.
  *
  * The rules every card shares — knights and knaves, lengths, paces, the hour a
- * statement holds at, the origin — are the tutorial's, given once. Printed on
- * every card they took half the screen above the premises, read once and then
- * scrolled past on every item after.
+ * statement holds at, the origin, local clocks, how a ring spreads, places
+ * leaving out what they are level on — are the tutorial's, given once.
+ * Printed on every card they took half the screen above the premises, read
+ * once and then scrolled past on every item after.
  */
-export function setupLines(axes: Axis[], colors: string[] = [], compact = false, statements: Statement[] = [], frames?: Frames): string[] {
-    const out: string[] = compact ? ["Places leave out what they are level on."] : [];
+export function setupLines(axes: Axis[], colors: string[] = [], frames?: Frames): string[] {
+    const out: string[] = [];
     if (frames) {
         const k = axes.findIndex(a => a.kind === "parity"), line = (i: number) => hi(axisWord(axes[i]), colors[i]);
         const how = frames.rule === "mirror" ? `${line(frames.axes[0])} reversed` : `${line(frames.axes[0])} and ${line(frames.axes[1])} swapped`;
         out.push(`From a thing of the ${hi("opposite kind", colors[k])}, places are in its reckoning: ${how}.`);
-    }
-    /* The rule a card leans on, on the cards that lean on it. */
-    if (statements.some(st => st.fact.kind === "place" && st.fact.local)) {
-        out.push(`Local clocks run 1 ${hi("later", colors[3])} per step ${hi("clockwise", colors[0])}.`);
-    }
-    if (statements.some(st => st.fact.kind === "signal")) {
-        out.push(`A ring spreads 1 step per step ${hi("later", colors[3])}.`);
     }
     axes.forEach((a, i) => {
         if (a.kind !== "ring") return;
@@ -243,7 +239,7 @@ export function renderPremises(statements: Statement[], w: Wording, wide = false
     }
     const tails = new Set(linked.values());
     const outer = statements.filter(st => !st.space && !tails.has(st));
-    const riders = new Map<Statement, Statement[]>();
+    const riders = new Map<Statement, Statement[]>(), alone: Statement[] = [];
     for (const st of inner) {
         const hosts = outer.filter(o => o.speaker === st.speaker && !tails.has(o));
         /* The fewest riders first, so the brackets spread over the speaker's lines;
@@ -252,17 +248,21 @@ export function renderPremises(statements: Statement[], w: Wording, wide = false
         const alike = (o: Statement) => +(bare(o.fact).kind === bare(st.fact).kind && "x" in bare(o.fact) && "x" in bare(st.fact)
             && (bare(o.fact) as { x: number }).x === (bare(st.fact) as { x: number }).x);
         const host = hosts.sort((a, b) => alike(a) - alike(b) || (riders.get(a)?.length ?? 0) - (riders.get(b)?.length ?? 0))[0];
-        if (!host) return [];
+        if (!host) { alone.push(st); continue; }
         riders.set(host, [...(riders.get(host) ?? []), st]);
     }
-    return outer.map(o => {
+    return [...outer.map(o => {
         const tail = linked.get(o);
         const line = tail && tail.fact.kind === "place"
             ? `${describeStatement(w, o)}, which is ${placeClauses(w, tail.fact)} from ${tail.fact.y === POST ? POST_NAME : subj(w.things[tail.fact.y])}`
             : describeStatement(w, o);
         const on = riders.get(o);
         return on ? `${line} ${hi(`(where ${on.map(st => describeFact(w, st.fact)).join("; and ")})`)}` : line;
-    });
+    }),
+    /* Inside the brackets with nothing outside to ride on — a part of the world
+       shown on its own — under one heading: "(where …)" on every line was a
+       word of noise a line. */
+    ...(alone.length ? [hi("Inside:"), ...alone.map(st => describeFact(w, st.fact))] : [])];
 }
 
 /** One question about a reconstruction, with the relations its answer was read off. */

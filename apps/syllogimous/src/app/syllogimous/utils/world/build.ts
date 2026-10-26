@@ -23,7 +23,7 @@ import { TRANSFORMS, TransformSpec, canTransform, canonicalT } from "./transform
 import { Cmp, Fact, IntervalRel, PLANE, POST, Seen, Statement, TIME, compareLengths, displacement, firstLevel, firstMeet, holds, intervalRel, localTime, otherKind, rankBy, seenFrom, spaceSteps, stepsBetween } from "./facts";
 import { Card, Reconstruction, World, bodyAt, clearReaderCache, read, settleTypes, thingAt, worlds } from "./reader";
 import { selfContradicts, wordBreach, wordIn } from "./words";
-import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerFollows, answerKey } from "./questions";
+import { Answer, Ask, QUESTIONS, QuestionKind, Span, answerFollows, answerKey, askNeed } from "./questions";
 
 export interface Item {
     world: World;
@@ -809,7 +809,26 @@ export interface Stage {
     answer: Answer;
     /** What each shortcut reading answers: never the answer. */
     shortcuts: Record<string, Answer>;
+    /** The part of the world this stage shows, alone: what came before is to be remembered. */
+    shown?: Statement[];
+    /** The reading of everything shown up to this stage. */
+    rec?: Reconstruction;
 }
+
+/** Whether two readings agree on every thing a part needs, at every hour, and on how much they leave open. */
+function sameReading(a: Reconstruction, b: Reconstruction, need: number[][]): boolean {
+    if ((a.alternatives?.length ?? 1) !== (b.alternatives?.length ?? 1)) return false;
+    return need.every((ts, sp) => ts.every(t => {
+        const wa = sp ? a.inner : a.world, wb = sp ? b.inner : b.world;
+        if (!wa?.start[t] || !wb?.start[t]) return false;
+        for (let h = 0; h <= LAST_HOUR; h++) if (!sameBody(thingAt(wa, t, h), thingAt(wb, t, h))) return false;
+        return true;
+    }));
+}
+
+/** Whether every thing a question reads is placed where it reads it. */
+const placed = (ask: Ask, rec: Reconstruction) =>
+    askNeed(ask).every((ts, sp) => ts.every(t => !!(sp ? rec.inner : rec.world)?.start[t]));
 
 /**
  * A question of this kind that the full reading answers and every given wrong
@@ -821,11 +840,12 @@ export interface Stage {
 function fairStage(
     kind: QuestionKind, base: Base, rec: Reconstruction, wrongs: Array<readonly [string, Reconstruction | null]>,
     rnd: () => number, span?: Span, wantTrue?: boolean, unlike: Ask[] = [],
+    among?: number[][], allow?: (ask: Ask) => boolean,
 ): Stage | null {
     const { world, types } = base, things = world.start.length;
     for (let guard = 0; guard < 400; guard++) {
-        const ask = kind.draw(rec, things, types.length, types, rnd, span);
-        if (!ask || unlike.some(u => JSON.stringify({ ...u, options: [] }) === JSON.stringify({ ...ask, options: [] }))) continue;
+        const ask = kind.draw(among ? { ...rec, among } : rec, things, types.length, types, rnd, span);
+        if (!ask || (allow && !allow(ask)) || unlike.some(u => JSON.stringify({ ...u, options: [] }) === JSON.stringify({ ...ask, options: [] }))) continue;
         const answer = answerFollows(kind, ask, rec);
         if (answer === null) continue;
         /* What could be has to be more than what is: the open length must matter. */
@@ -848,7 +868,9 @@ function fairStage(
             const s1 = ask.s1, s2 = ask.s2!;
             for (const [a, b] of [[s1, s1], [s2, s2], [1 - s1, 1 - s2]]) {
                 if (a === s1 && b === s2) continue;
-                const other = answerFollows(kind, { ...ask, s1: a, s2: b }, rec);
+                /* On a card shown in parts a side may not have the things yet: that misreading cannot be made at all. */
+                const swapped = { ...ask, s1: a, s2: b };
+                const other = placed(swapped, rec) ? answerFollows(kind, swapped, rec) : null;
                 shortcuts[`spaces ${a}${b}`] = other;
                 if (answerKey(other) === answerKey(answer)) { fair = false; break; }
             }
@@ -861,11 +883,82 @@ function fairStage(
 /* Forgetting the kinds is a shortcut only on a card that has them; trusting
    everyone, only on one where somebody lies — past the first stage, with the
    kinds known and only knights left on the card, nobody does. */
-const shortcutReads = (card: Card, known?: boolean[]) => Object.entries(SHORTCUTS)
+const shortcutReads = (card: Card, known?: boolean[], need?: number[][]) => Object.entries(SHORTCUTS)
     .filter(([name]) => (name !== "kinds" || card.frames) && (name !== "liars" || !known)
         /* Nor headings, on a card where nobody says what they see. */
         && (name !== "perspective" || card.statements.some(s => s.fact.kind === "view")))
-    .map(([name, r]) => [name, read(card, r, known)] as const);
+    .map(([name, r]) => [name, read(card, r, known, need)] as const);
+
+/** The things a fact is about, besides the origin; all of a ranked list. */
+function thingsOf(f: Fact): number[] {
+    switch (f.kind) {
+        case "not": return thingsOf(f.f);
+        case "ranked": return f.order;
+        case "event": return f.t.who === undefined ? [] : [f.t.who];
+        case "stands": return [f.host];
+        case "type": return [];
+        default: return ("y" in f ? [f.x, f.y] : [f.x]).filter(t => t !== POST);
+    }
+}
+
+/** A part of the world card: some things on one side of the brackets, and what is said of them. */
+export interface Part { space: number; things: number[]; statements: Statement[] }
+
+/**
+ * The world card in parts: outside the brackets first, then inside; on each
+ * side the things in the order the places reach them from the origin, three
+ * first where there are five or more and then two at a time, a lone last one
+ * joining the ones before. A sentence goes in the part
+ * of the latest thing it names — a view, of the thing seen or the ground it
+ * is seen from — so each part is read on what came before it.
+ */
+export function partsOf(card: Card, n: number): Part[] {
+    const parts: Part[] = [];
+    for (const sp of card.statements.some(st => st.space === 1) ? [0, 1] : [0]) {
+        const here = card.statements.filter(st => (st.space ?? 0) === sp);
+        const order: number[] = [], placed = new Set<number>([POST]);
+        for (let grew = true; grew;) {
+            grew = false;
+            for (const { fact: f } of here) {
+                if (f.kind !== "place") continue;
+                const next = placed.has(f.y) && !placed.has(f.x) ? f.x : placed.has(f.x) && !placed.has(f.y) ? f.y : null;
+                if (next !== null) { order.push(next); placed.add(next); grew = true; }
+            }
+        }
+        for (let x = 0; x < n; x++) if (!placed.has(x)) order.push(x);
+        /* Three first where there are five or more, so the first part has a question of its own to ask; then two at a time. */
+        const groups: number[][] = [order.slice(0, order.length >= 5 ? 3 : 2)];
+        for (let i = groups[0].length; i < order.length; i += 2) groups.push(order.slice(i, i + 2));
+        if (groups.length > 1 && groups[groups.length - 1].length === 1) groups[groups.length - 2].push(...groups.pop()!);
+        const from = parts.length;
+        for (const g of groups) parts.push({ space: sp, things: g, statements: [] });
+        const groupOf = (t: number) => Math.max(0, groups.findIndex(g => g.includes(t)));
+        for (const st of here) {
+            const f = st.fact;
+            let ts = thingsOf(f);
+            if (f.kind === "view") {
+                const ground = here.find(o => o.fact.kind === "stands" && o.fact.who === f.who);
+                if (ground) ts = [...ts, (ground.fact as { host: number }).host];
+            }
+            parts[from + (ts.length ? Math.max(...ts.map(groupOf)) : 0)].statements.push(st);
+        }
+    }
+    /* In the order a reader builds the part: what happens, then each thing —
+       where, how it moves, how long — then how things lie to each other, then
+       who stands where and what they see. Shuffled, a thing's place and its
+       pace were ten lines apart. */
+    const rank: Partial<Record<Fact["kind"], number>> = { event: 0, place: 1, pace: 2, sizes: 3, size: 3, stands: 5, view: 6 };
+    for (const p of parts) {
+        const order = new Map(p.things.map((t, i) => [t, i]));
+        const key = (st: Statement) => {
+            const f = st.fact.kind === "not" ? st.fact.f : st.fact, r = rank[f.kind] ?? 4;
+            const t = thingsOf(f).map(x => order.get(x) ?? -1);
+            return [r === 1 || r === 2 || r === 3 ? 1 : r, r <= 3 && t.length ? Math.max(...t) : 0, r, f.kind === "event" ? f.hour : 0];
+        };
+        p.statements.sort((a, b) => { const ka = key(a), kb = key(b); return ka.reduce((d, v, i) => d || v - kb[i], 0); });
+    }
+    return parts;
+}
 
 /**
  * One item, or null when this attempt's world would not make one; callers retry.
@@ -934,28 +1027,66 @@ export function tryBuildStaged(opts: BuildOptions): StagedItem | null {
        knaves' are gone, and so are the words that only told who is what. */
     const { world, card, plain, words, asking, types, firsts, rec } = base;
 
-    /* Stage 2: analogies to finish, in the first part of the day. */
+    /* Stage 2: the world in parts, an analogy to finish on each, in the first
+       part of the day. Each part is shown on its own and then taken away: the
+       questions on later parts read things from earlier ones, which have to
+       be remembered. The whole world on one card ran to fifty lines no one
+       could take in, and nearly every line was needed to pin it down. */
     const early: Span = { h1: [1, FIRST_HOURS], h2: [1, FIRST_HOURS] };
-    /* Picked, built, or about the speakers themselves. */
-    const finishing = ["which", "which", "build", ...(QUESTIONS.speakers.fits!(opts.things, opts.speakers) ? ["speakers"] : [])];
-    const reads = shortcutReads(plain, types);
-    const analogies: Stage[] = [];
-    /* A card left open asks what could be, first; one meant to be open that came out settled is drawn again. */
     if (opts.open && !rec.alternatives) return null;
-    if (rec.alternatives) {
-        const could = fairStage(QUESTIONS.could, base, rec, reads, rnd, early);
-        if (!could) return null;
-        analogies.push(could);
+    const analogies: Stage[] = [];
+    /* About the speakers themselves, straight after they are told apart, on the words that told them. */
+    if (QUESTIONS.speakers.fits!(opts.things, opts.speakers) && rnd() < 0.5) {
+        const stage = fairStage(QUESTIONS.speakers, base, rec, shortcutReads(plain, types), rnd, early);
+        if (stage) analogies.push(stage);
     }
-    for (let k = analogies.length, want = int(rnd, 2, 3); k < want; k++) {
-        /* A kind that will not go on this world gives way to the other, rather
-           than the world — which cost far more to build than a question. */
+    const parts = partsOf(plain, world.start.length);
+    let shown: Statement[] = [], pending: Statement[] = [];
+    const seen = parts.map(() => false);
+    for (let k = 0; k < parts.length; k++) {
+        pending = [...pending, ...parts[k].statements];
+        seen[k] = true;
+        const sofar = [...shown, ...pending], card: Card = { ...plain, statements: sofar };
+        const need = [0, 1].map(sp => parts.filter((p, j) => seen[j] && p.space === sp).flatMap(p => p.things));
+        const among = need, most = Math.max(...need.map(ts => ts.length));
+        const last = k === parts.length - 1, lastOutside = !parts.slice(k + 1).some(p => p.space === 0);
+        if (most < 2 && !last) continue;
+        const r = read(card, FULL, types, need);
+        if (!r) { if (last) return null; continue; }
+        /* Something new and, past the first part asked on, something from before. */
+        const fresh = new Set(pending.flatMap(st => thingsOf(st.fact).map(t => `${st.space ?? 0}:${t}`)));
+        const old = new Set(shown.flatMap(st => thingsOf(st.fact).map(t => `${st.space ?? 0}:${t}`)));
+        const allow = (ask: Ask) => {
+            const used = askNeed(ask).flatMap((ts, sp) => ts.map(t => `${sp}:${t}`));
+            if (!used.every(u => need[+u[0]].includes(+u.slice(2)))) return false;
+            return used.some(u => fresh.has(u)) && (!old.size || used.some(u => old.has(u) && !fresh.has(u)));
+        };
+        /* A shortcut is one only where it misreads the part: ignoring the kinds
+           where no place on it is in the other kind's reckoning reads the
+           same world, and no question could tell it from the truth. Asked to
+           beat it anyway, nine parts in ten found no question at all. The
+           stages across the whole world, at the end, still beat every one. */
+        const wrongs = shortcutReads(card, types, need).filter(([, w]) => !w || !sameReading(w, r, need));
+        const kinds = [...(opts.open && lastOutside && !analogies.some(a => a.kind.open) ? ["could"] : []),
+            ...shuffle(["which", "which", "build"], rnd)];
         let stage: Stage | null = null;
-        for (const id of shuffle(finishing, rnd)) {
-            if ((stage = fairStage(QUESTIONS[id], base, rec, reads, rnd, early, undefined, analogies.map(a => a.ask)))) break;
+        for (const id of kinds) {
+            if (id === "which" && most < 3) continue;
+            if ((stage = fairStage(QUESTIONS[id], base, r, wrongs, rnd, early, undefined, analogies.map(a => a.ask), among, id === "could" ? undefined : allow))) break;
+            if (id === "could") break;
         }
-        if (!stage) { if (analogies.length >= 2) break; return null; }
-        analogies.push(stage);
+        if (opts.open && lastOutside && !analogies.some(a => a.kind.open) && stage?.kind.id !== "could") { if (last) return null; continue; }
+        if (!stage) { if (last) return null; continue; }
+        analogies.push({ ...stage, shown: pending, rec: r });
+        shown = sofar; pending = [];
+    }
+    /* One more from memory alone where the world came in a single part. */
+    if (analogies.filter(a => a.shown).length < 2) {
+        const reads = shortcutReads(plain, types);
+        let stage: Stage | null = null;
+        for (const id of shuffle(["which", "build"], rnd)) if ((stage = fairStage(QUESTIONS[id], base, rec, reads, rnd, early, undefined, analogies.map(a => a.ask)))) break;
+        if (!stage) return null;
+        analogies.push({ ...stage, shown: [], rec });
     }
 
     /* Stage 3: transformations announced, by knights — the knaves are gone by

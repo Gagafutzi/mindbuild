@@ -420,7 +420,7 @@ export function worlds(card: Card, types: Array<boolean | undefined>, space = 0)
  * cannot: speakers left unmasked, things left unplaced, lengths left open, or a
  * contradiction.
  */
-export function read(card: Card, reading: Reading = FULL, known?: boolean[]): Reconstruction | null {
+export function read(card: Card, reading: Reading = FULL, known?: boolean[], need?: number[][]): Reconstruction | null {
     const types: Array<boolean | undefined> = Array(card.speakers).fill(undefined);
     const unmasked: Reconstruction["unmasked"] = [];
     /* Past the first stage the kinds are known, and the card no longer says enough to find them. */
@@ -456,8 +456,10 @@ export function read(card: Card, reading: Reading = FULL, known?: boolean[]): Re
     /* Outside the brackets a card may leave a little open — a length or two
        of one thing — and then every world it allows is kept; whatever is asked
        has to come out the same in all of them, or be asked as what could be. */
+    /* A card cut for one question places the things it reads, and may leave the rest. */
+    if (need?.[1]?.length && !ds[1]) return null;
     if (ds.some((d, k) => !d.consistent || d.horizon !== Infinity || !d.solutions.length || d.solutions.length > (k === 0 ? OPEN_MAX : 1)
-        || d.solutions.some(st => st.some(b => !b)))) return null;
+        || d.solutions.some(st => st.some((b, x) => !b && (!need || need[k].includes(x)))))) return null;
     /* The speakers' own claims about each other have to hold of the types arrived at. */
     if (reading.liars) for (const s of card.statements) {
         if (s.fact.kind === "type" && claimHolds(s.fact.claim, types as boolean[]) !== types[s.speaker]) return null;

@@ -59,6 +59,19 @@ export interface Ask {
     options?: number[];
 }
 
+/**
+ * The things a question reads, by space: its first pair where the first
+ * relation is read, the rest where the second is. A card cut for one question
+ * has to place these, and nothing else.
+ */
+export function askNeed(q: Ask): number[][] {
+    const out: number[][] = [[], []];
+    if (q.kind === "speakers") return out;
+    out[q.s1 ?? 0].push(q.x, q.y);
+    out[q.s2 ?? 0].push(q.z, ...(q.w !== undefined ? [q.w] : []), ...(q.options ?? []));
+    return out.map(s => [...new Set(s)]);
+}
+
 export interface QuestionKind {
     id: string;
     answerMode: "choice" | "boolean" | "select" | "construct";
@@ -96,12 +109,15 @@ function matches(world: World, things: number, z: number, h: number, on: number[
    something that stands in a relation. */
 const everyone = (things: number) => Array.from({ length: things }, (_, i) => i);
 
-function drawPairs(things: number, rnd: () => number) {
-    const all = everyone(things);
-    const x = pick(all, rnd);
-    const y = pick(all.filter(t => t !== x), rnd);
-    const z = pick(all.filter(t => t !== x), rnd);
-    return { x, y, z };
+/* The things a question may be drawn from on a side of the brackets: on a card shown in parts, those shown there so far. */
+const drawable = (sp: Spaces, things: number, side?: number) => sp.among?.[side ?? 0] ?? everyone(things);
+
+/* The first pair from the first relation's side, the third term from the second's; null where a side has too few. */
+function drawPairs(first: number[], second: number[], rnd: () => number) {
+    const x = pick(first, rnd);
+    const y = pick(first.filter(t => t !== x), rnd);
+    const z = pick(second.filter(t => t !== x), rnd);
+    return y === undefined || z === undefined ? null : { x, y, z };
 }
 
 /** The hours a question may read its two relations at, inclusive. */
@@ -116,7 +132,11 @@ function hours(rnd: () => number, span: Span) {
 }
 
 /** The space outside the brackets and, where the card has one, the space inside. */
-export interface Spaces { world: World; inner?: World; alternatives?: World[] }
+export interface Spaces {
+    world: World; inner?: World; alternatives?: World[];
+    /** On a card shown in parts, the things shown so far on each side of the brackets, which alone a question may be drawn from. */
+    among?: number[][];
+}
 
 /** The one length the worlds a card allows disagree on, and the values it takes in them. */
 export function openLength(sp: Spaces): { thing: number; axis: number; values: number[] } | null {
@@ -163,9 +183,12 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         /* Two to offer besides the third term. */
         fits: things => things >= 3,
         draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd);
-            const q: Ask = { kind: "which", x, y, z, h1, h2, on, ...drawSpaces(sp, rnd) };
-            const pool = everyone(things).filter(w => w !== z);
+            const sides = drawSpaces(sp, rnd), first = drawable(sp, things, sides.s1), second = drawable(sp, things, sides.s2);
+            const pair = drawPairs(first, second, rnd);
+            if (!pair) return null;
+            const { x, y, z } = pair, { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd);
+            const q: Ask = { kind: "which", x, y, z, h1, h2, on, ...sides };
+            const pool = second.filter(w => w !== z);
             const fit = matches(spaceOf(sp, q.s2), things, z, h2, on, firstRel(sp, q), pool);
             if (fit.length !== 1 || pool.length < 2) return null;
             /* The other option a near miss where there is one: the candidate
@@ -189,9 +212,11 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         id: "judge",
         answerMode: "boolean",
         draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd);
-            const w = pick(everyone(things).filter(t => t !== z), rnd);
-            return { kind: "judge", x, y, z, w, h1, h2, on, ...drawSpaces(sp, rnd) };
+            const sides = drawSpaces(sp, rnd), second = drawable(sp, things, sides.s2), pair = drawPairs(drawable(sp, things, sides.s1), second, rnd);
+            if (!pair) return null;
+            const { x, y, z } = pair, { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd);
+            const w = pick(second.filter(t => t !== z), rnd);
+            return { kind: "judge", x, y, z, w, h1, h2, on, ...sides };
         },
         answer(q, rec) {
             const s = spaceOf(rec, q.s2);
@@ -205,8 +230,10 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         /* Three to choose among at least: two would be a choice with a submit button. */
         fits: things => things >= 4,
         draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd).slice(0, 2);
-            return { kind: "every", x, y, z, h1, h2, on, ...drawSpaces(sp, rnd), options: everyone(things).filter(w => w !== z) };
+            const sides = drawSpaces(sp, rnd), second = drawable(sp, things, sides.s2), pair = drawPairs(drawable(sp, things, sides.s1), second, rnd);
+            if (!pair) return null;
+            const { x, y, z } = pair, { h1, h2 } = hours(rnd, span), on = drawAxes(sp.world.axes, rnd).slice(0, 2);
+            return { kind: "every", x, y, z, h1, h2, on, ...sides, options: second.filter(w => w !== z) };
         },
         answer(q, rec) {
             const w = spaceOf(rec, q.s2);
@@ -228,12 +255,14 @@ export const QUESTIONS: Record<string, QuestionKind> = {
                of the analogy or the other. */
             const open = openLength(sp);
             if (!open) return null;
-            let { x, y, z } = drawPairs(things, rnd);
-            if (rnd() < 0.5) { x = open.thing; if (y === x) y = pick(everyone(things).filter(t => t !== x), rnd); if (z === x) z = pick(everyone(things).filter(t => t !== x), rnd); }
-            else { z = open.thing; if (x === z) x = pick(everyone(things).filter(t => t !== z), rnd); if (y === x) y = pick(everyone(things).filter(t => t !== x), rnd); }
+            const out = drawable(sp, things, 0), pair = drawPairs(out, out, rnd);
+            if (!pair) return null;
+            let { x, y, z } = pair;
+            if (rnd() < 0.5) { x = open.thing; if (y === x) y = pick(out.filter(t => t !== x), rnd); if (z === x) z = pick(out.filter(t => t !== x), rnd); }
+            else { z = open.thing; if (x === z) x = pick(out.filter(t => t !== z), rnd); if (y === x) y = pick(out.filter(t => t !== x), rnd); }
             const { h1, h2 } = hours(rnd, span);
             const on = [...new Set([open.axis, ...drawAxes(sp.world.axes, rnd).filter(i => i !== REACH).slice(0, rnd() < 0.5 ? 0 : 1)])].sort((a, b) => a - b);
-            return { kind: "could", x, y, z, h1, h2, on, ...(sp.inner ? { s1: 0, s2: 0 } : {}), options: everyone(things).filter(w => w !== z) };
+            return { kind: "could", x, y, z, h1, h2, on, ...(sp.inner ? { s1: 0, s2: 0 } : {}), options: out.filter(w => w !== z) };
         },
         answer(q, rec) {
             const fit = new Set<number>();
@@ -253,9 +282,11 @@ export const QUESTIONS: Record<string, QuestionKind> = {
         answerMode: "construct",
         fits: things => things >= 3,
         draw(sp, things, _s, _t, rnd, span = ALL_DAY) {
-            const { x, y, z } = drawPairs(things, rnd), { h1, h2 } = hours(rnd, span);
-            const w = pick(everyone(things).filter(t => t !== z), rnd);
-            return { kind: "build", x, y, z, w, h1, h2, on: sp.world.axes.map((_, i) => i), ...drawSpaces(sp, rnd) };
+            const sides = drawSpaces(sp, rnd), second = drawable(sp, things, sides.s2), pair = drawPairs(drawable(sp, things, sides.s1), second, rnd);
+            if (!pair) return null;
+            const { x, y, z } = pair, { h1, h2 } = hours(rnd, span);
+            const w = pick(second.filter(t => t !== z), rnd);
+            return { kind: "build", x, y, z, w, h1, h2, on: sp.world.axes.map((_, i) => i), ...sides };
         },
         answer(q, rec) {
             const a = spaceOf(rec, q.s1), b = spaceOf(rec, q.s2);
