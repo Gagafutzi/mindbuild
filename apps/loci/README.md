@@ -37,6 +37,9 @@ down as placing becomes automatic.
   word from the list, at another place) or ✗.
 - No word repeats within a session, so a word is never recalled from an
   earlier list's route.
+- **Goal: 30 words** recalled perfectly in one list. The setup screen and the
+  session summary show the best span so far against it, taken from every
+  session in the record.
 
 ## Record
 

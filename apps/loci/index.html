@@ -188,6 +188,12 @@ function record() {
 /* ---------- words ---------- */
 
 var TIERS = LOCI_WORDS.tiers;
+/* The span being trained toward: thirty words recalled in order, in one list. */
+var GOAL = 30;
+/* The longest list ever recalled perfectly, across every session kept. */
+function best() {
+  return record().sessions.reduce(function (m, x) { return Math.max(m, (x.extra && x.extra.longestPerfect) || x.score || 0); }, 0);
+}
 var $ = function (id) { return document.getElementById(id); };
 var settings = Object.assign({ imagery: 5, span: 5, rate: 2.5, lists: 10, present: "screen", adaptive: true }, load(SETTINGS_KEY, {}));
 
@@ -402,7 +408,8 @@ function finish(completed) {
 
   $("kpis").innerHTML = "";
   [["Words in place", words ? Math.round(100 * inPlace / words) + "%" : "—"], ["Perfect lists", perfect + " / " + s.lists.length],
-   ["Longest perfect", longest ? longest + " words" : "—"], ["Length", s.startSpan + " → " + s.span]].forEach(function (k) {
+   ["Longest perfect", longest ? longest + " words" : "—"], ["Length", s.startSpan + " → " + s.span],
+   ["Best toward " + GOAL, best() + " / " + GOAL]].forEach(function (k) {
     var d = document.createElement("div"); d.className = "kpi";
     d.innerHTML = '<div class="val"></div><div class="lab"></div>';
     d.querySelector(".val").textContent = k[1]; d.querySelector(".lab").textContent = k[0];
@@ -438,7 +445,9 @@ function drawTiers() {
 }
 function lastNote() {
   var r = record(), last = r.sessions[r.sessions.length - 1];
-  $("lastNote").textContent = last ? "Last: " + Math.round(100 * (last.accuracy || 0)) + "% in place, longest perfect " + (last.score || 0) : "";
+  var b = best();
+  $("lastNote").textContent = (last ? "Last: " + Math.round(100 * (last.accuracy || 0)) + "% in place, longest perfect " + (last.score || 0) + " · " : "") +
+    (b >= GOAL ? "Goal reached: " + b + " words" : "Goal: " + GOAL + " words, best " + b);
 }
 
 $("span").value = settings.span; $("rate").value = settings.rate; $("lists").value = settings.lists;
@@ -448,7 +457,7 @@ drawTiers();
 lastNote();
 
 /* For the tests, and nothing else. */
-window.LociSpan = { score: score, same: same, draw: draw };
+window.LociSpan = { score: score, same: same, draw: draw, best: best, GOAL: GOAL };
 })();
 </script>
 </body>
