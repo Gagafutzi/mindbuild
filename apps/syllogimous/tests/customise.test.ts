@@ -165,6 +165,42 @@ test("half strength lands between the palette and the text", () => {
         "half strength washed the colour out entirely");
 });
 
+test("a fresh install wears the hub's look, and a saved theme keeps its own", () => {
+    /*
+     * Syllogimous is one of the hub's trainers, and the rest wear sage on
+     * near-black with square corners. Nothing saved means the Mindbuild
+     * preset; something saved is somebody's choice and must survive.
+     */
+    localStorage.clear();
+    const fresh = new ThemeService();
+    equal(String(fresh.theme.accent).toLowerCase(), "#8fbda4", "a fresh theme should be the hub's sage");
+    equal(Number(fresh.theme.radius), 0, "a fresh theme should be square");
+
+    fresh.usePreset("Moonlit");
+    const reloaded = new ThemeService();
+    equal(String(reloaded.theme.accent).toLowerCase(), "#22d3ee", "a saved Moonlit was repainted");
+
+    reloaded.reset();
+    equal(String(reloaded.theme.accent).toLowerCase(), "#8fbda4", "reset should return to the default");
+    localStorage.clear();
+});
+
+test("pills follow the corner-radius knob, so a square theme has none", () => {
+    /*
+     * The writer is the knob, the reader the stylesheet. A fixed 999px kept
+     * every button, badge and tab a pill under the Mindbuild preset, whose
+     * radius is 0 — the knob was written and nothing round read it.
+     */
+    for (const f of [
+        "src/assets/css/custom-styles/theme.css",
+        "src/app/syllogimous/components/side-nav/side-nav.component.css",
+    ]) {
+        const css = readFileSync(f, "utf8");
+        const fixed = css.match(/border-radius:\s*(999|9999)px/g) ?? [];
+        equal(fixed.length, 0, `${f} has a pill radius that ignores --th-radius`);
+    }
+});
+
 /**
  * Every mode says what it is before you play it.
  *

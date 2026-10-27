@@ -1,0 +1,26 @@
+/* ============================================================
+   THE HUB'S LOOK, worn over this trainer's own
+   ============================================================
+
+   Old gold on black was Chimera Hub's; here it takes the hub's sage, so the
+   trainer one click from the hub looks like the hub. A separate file, loaded
+   last, so listening.css stays as Chimera Hub has it. The names say gold;
+   the values are the hub's. */
+
+:root {
+  --bg: #080d0b;
+  --panel: #0f1713;
+  --panel-2: #142019;
+  --ink: #c9e0d3;
+  --ink-strong: #e6f4ec;
+  --dim: #7e9a8a;
+  --gold: #8fbda4;
+  --gold-2: #b7d8c5;
+  --button: #8fbda4;
+  --line: rgba(143, 189, 164, .3);
+}
+
+/* What is filled with the accent is inked dark, as on the hub. */
+button.primary { color: #08100c; }
+/* The title as the hub sets one: tracked capitals. */
+h1 { letter-spacing: .2em; text-transform: uppercase; font-size: 1.4rem; }

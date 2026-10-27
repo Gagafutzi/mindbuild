@@ -1,0 +1,26 @@
+/* ============================================================
+   THE HUB'S LOOK, worn over the harness's
+   ============================================================
+
+   The Chimera harness is built to be retinted: its custom properties carry
+   every colour and the hierarchy is in the type. Here they take the hub's
+   values — sage on near-black — so the trainer one click from the hub looks
+   like the hub. A separate file, loaded last, so the harness and the
+   trainer's own sheet stay as Chimera Hub has them.
+
+   The same file sits in apps/relations and apps/ribbon. Keep the two the same. */
+
+:root {
+  --h-bg: #080d0b;
+  --h-panel: #0f1713;
+  --h-panel-hi: #1a2821;
+  --h-ink: #c9e0d3;
+  --h-ink-strong: #e6f4ec;
+  --h-dim: #7e9a8a;
+  --h-accent: #8fbda4;
+  --h-accent-2: #b7d8c5;
+  --h-ok: #a9d2bb;
+  --h-bad: #8c4a4a;
+  --h-line: rgba(143, 189, 164, .30);
+  --h-line-soft: rgba(143, 189, 164, .13);
+}

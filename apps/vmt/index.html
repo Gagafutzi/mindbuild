@@ -237,7 +237,9 @@ tr.clickable{cursor:pointer}
 #home-stats .card div:first-child{white-space:nowrap;font-size:22px!important}
 @media(max-width:900px){.two{grid-template-columns:1fr}.pick{grid-template-columns:1fr}.pick .arrow{display:none}}
 </style>
-<style>:is([id*='google_ads_iframe'],[id*='taboola-'],.taboolaHeight,.taboola-placeholder,#top-ad,#credential_picker_container,#credentials-picker-container,#credential_picker_iframe,#onetap_google_intermediate_iframe,[id*='google-one-tap-iframe'],#google-one-tap-popup-container,.google-one-tap__module,.google-one-tap-modal-div,.adthrive-auto-injected-player-container,.adthrive[id^="cls-video-container"]:has(.adthrive-auto-injected-player-container),#amp_floatingAdDiv,#ez-content-blocker-container) {display:none!important;min-height:0!important;height:0!important;}</style></head>
+<style>:is([id*='google_ads_iframe'],[id*='taboola-'],.taboolaHeight,.taboola-placeholder,#top-ad,#credential_picker_container,#credentials-picker-container,#credential_picker_iframe,#onetap_google_intermediate_iframe,[id*='google-one-tap-iframe'],#google-one-tap-popup-container,.google-one-tap__module,.google-one-tap-modal-div,.adthrive-auto-injected-player-container,.adthrive[id^="cls-video-container"]:has(.adthrive-auto-injected-player-container),#amp_floatingAdDiv,#ez-content-blocker-container) {display:none!important;min-height:0!important;height:0!important;}</style><!-- The hub's look over this page's own, loaded last so it wins. -->
+<link href="hub-skin.css" rel="stylesheet">
+</head>
 <body>
 <div id="app-wrapper">
 
@@ -2428,4 +2430,16 @@ window.addEventListener('DOMContentLoaded',()=>{
 </script>
 
 
-<span style="visibility: hidden;" id="__TIMER_INJECTION_FLAG__{a8cf72f7-09b7-4cd4-9aaa-7a023bf09916}"></span></body></html>
+<span style="visibility: hidden;" id="__TIMER_INJECTION_FLAG__{a8cf72f7-09b7-4cd4-9aaa-7a023bf09916}"></span><!-- The hub's colour slider. Absent outside the built site, and then the skin's sage stands. -->
+<script src="../shared/theme.js?v=1"></script>
+<script>
+if (window.HubTheme) HubTheme.follow(document.documentElement, function (p) {
+  var T = HubTheme;
+  return {
+    '--bg': T.hex(p.bg), '--bg1': T.hex(p.bg2), '--bg2': T.hex(p.panel), '--bg3': T.hex(p.panelHi),
+    '--line': T.rgba(p.accent, .24), '--text': T.hex(p.ink), '--muted': T.hex(p.dim),
+    '--accent': T.hex(p.accent), '--accent2': T.hex(p.accent2),
+  };
+});
+</script>
+</body></html>

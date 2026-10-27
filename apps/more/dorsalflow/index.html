@@ -8,8 +8,17 @@
     <script type="module" crossorigin src="./assets/dorsalflow.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-p7QK8ZAL.css">
     <link rel="stylesheet" href="./assets/audioflow.css">
+    <link rel="stylesheet" href="./hub-skin.css">
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
     <div id="root"></div>
+    <script src="../../shared/theme.js?v=1"></script>
+    <script>
+      /* The hub's colour slider: hub-skin.css writes every hue as an offset
+         from --hub-shift, so one property turns the whole palette. */
+      if (window.HubTheme) HubTheme.follow(document.documentElement, function (p, shift) {
+        return { "--hub-shift": shift + "deg" };
+      });
+    </script>
   </body>
 </html>

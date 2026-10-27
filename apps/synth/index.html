@@ -24,9 +24,9 @@
   --bad:#ff5f5f;
   --warn:#ffb020;
   --gold:#ffd76a;
-  /* Square, like the hub. --r-pill stays: it rounds the cursor dot and a
-     handful of small badges, where round is the shape rather than a style. */
-  --r-xs:0; --r-sm:0; --r:0; --r-lg:0; --r-pill:999px;
+  /* Square, like the hub — the badges and bars too, which were pills: the hub
+     has not one rounded corner. The cursor dot is round by its own rule. */
+  --r-xs:0; --r-sm:0; --r:0; --r-lg:0; --r-pill:0;
   --sp:16px;
   --shadow:0 8px 30px rgba(0,0,0,.45);
   --rank0:#8a90a0; --rank1:#4a9eff; --rank2:#aa6eff; --rank3:#ffa000;
@@ -84,6 +84,9 @@ a:hover{text-decoration:underline}
 .btn-danger:hover{background:#2a1618; border-color:var(--bad)}
 .btn-lg{padding:14px 28px; font-size:1.05rem; border-radius:var(--r)}
 .btn-sm{padding:6px 11px; font-size:.8rem}
+/* Buttons and fields take the page's monospace: left to the browser they fell
+   back to Arial, the one sans-serif thing in a hub of monospace. */
+button, input, select, textarea{font-family:inherit}
 .icon-btn{
   width:36px; height:36px; padding:0; border-radius:var(--r-sm);
   background:transparent; border:1px solid var(--line); color:var(--muted);

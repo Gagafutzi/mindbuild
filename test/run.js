@@ -851,6 +851,35 @@ test("Loci Span's words: five tiers, each word in one, enough for a session with
   for (const w of ["molecule", "fraction", "document"]) assert.strictEqual(where.get(w), 3, `${w} is not among the hard to picture`);
 });
 
+/*
+ * The trainers that wear the hub's look over their own: each carries a
+ * hub-skin.css, and it only works loaded last — the skin redefines the page's
+ * own tokens, and a page style after it would quietly win them back. The
+ * colour slider reaches them through theme.js, at a depth that differs for
+ * apps/more.
+ */
+test("every skinned trainer loads its hub skin after its own styles, and the hub's colour", () => {
+  for (const app of ["cct", "rrt", "vmt", "relations", "ribbon", "listening", "more/dorsalflow"]) {
+    const dir = path.join(__dirname, "..", "apps", app);
+    const html = readFileSync(path.join(dir, "index.html"), "utf8");
+    const head = html.slice(0, html.indexOf("</head>"));
+    const skin = head.search(/<link[^>]*href="(\.\/)?hub-skin\.css"/);
+    assert.ok(skin >= 0, `${app} does not load hub-skin.css in its head`);
+    readFileSync(path.join(dir, "hub-skin.css"), "utf8");
+
+    const later = head.slice(skin + 1);
+    assert.ok(!/<style|<link[^>]*stylesheet/.test(later.slice(later.indexOf(">"))),
+      `${app} has a stylesheet after hub-skin.css, which would win back what the skin set`);
+
+    const theme = html.match(/<script src="([^"]*shared\/theme\.js)[^"]*"/);
+    assert.ok(theme, `${app} does not load the hub's colour`);
+    /* Resolved as the built site lays it out: apps/<app> becomes <app>, and
+       the site's shared/ is this repo's. */
+    readFileSync(path.join(__dirname, "..", app, theme[1]), "utf8");
+    assert.ok(/HubTheme\.follow\(/.test(html), `${app} loads theme.js and never follows it`);
+  }
+});
+
 /* ------------------------------------------------------------------ */
 
 for (const [name, fn] of cases) {

@@ -1,0 +1,63 @@
+/* ============================================================
+   THE HUB'S LOOK, worn over this trainer's own
+   ============================================================
+
+   Loaded after the page's own styles, and changing nothing but how it looks:
+   the dark theme's tokens remapped onto the hub's (sage on near-black, one
+   quiet accent), one monospace family, and not one rounded corner. A trainer
+   one click from the hub that looks like a different application is the thing
+   a shared look exists to prevent.
+
+   Only the dark theme is remapped. The hub has no light one, and the toggle
+   stays this trainer's own choice.
+
+   The same file sits in apps/cct and apps/rrt, which share a design. Keep the
+   two the same. */
+
+[data-theme="dark"] {
+  --bg: #080d0b;
+  --surface: #0f1713;
+  --surface2: #142019;
+  --surface3: #1a2821;
+  --border: rgba(143, 189, 164, .22);
+  --border2: rgba(143, 189, 164, .36);
+  --text: #c9e0d3;
+  --text-dim: #7e9a8a;
+  --text-faint: #4d6357;
+  --accent: #8fbda4;
+  --accent-dim: rgba(143, 189, 164, .10);
+  --accent-glow: transparent;
+  /* The one warm thing: what is wrong, or about to be wiped. */
+  --danger: #e08a7c;
+  --danger-dim: rgba(224, 138, 124, .12);
+  --warn: #d8c27a;
+  --warn-dim: rgba(216, 194, 122, .13);
+  --info: #b7d8c5;
+  --info-dim: rgba(183, 216, 197, .12);
+}
+
+:root {
+  --mono: ui-monospace, "JetBrains Mono", "IBM Plex Mono", "SF Mono", SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --sans: var(--mono);
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+}
+
+/* Hard-coded corners too — pills at 99px, chips at 4px — except the small
+   status dots, which are data rather than shape, as the hub's own are. */
+*, *::before, *::after { border-radius: 0 !important; }
+.brand-dot, .trial-dot, .rank-dot { border-radius: 50% !important; }
+
+/* Hierarchy from tracking, not weight or colour. */
+.home-title { letter-spacing: .14em; text-transform: uppercase; font-weight: 600; line-height: 1.25; }
+.home-title span { letter-spacing: .08em; }
+.btn { letter-spacing: .1em; text-transform: uppercase; font-size: .74rem; }
+/* A phone has no width to spare for tracking: monospace is already wider than
+   the sans it replaces, and spaced caps pushed the footer's Start off screen. */
+@media (max-width: 560px) {
+  .btn { letter-spacing: .03em; padding-left: .8rem; padding-right: .8rem; }
+  .home-title { letter-spacing: .06em; }
+}
+[data-theme="dark"] .btn-primary { color: #08100c; box-shadow: none; }
+input, select, textarea, button { font-family: inherit; }

@@ -1,0 +1,41 @@
+/* ============================================================
+   THE HUB'S LOOK, worn over this trainer's own
+   ============================================================
+
+   Loaded after the page's own styles, and changing nothing but how it looks:
+   its tokens remapped onto the hub's (sage on near-black, one quiet accent),
+   one monospace family, and not one rounded corner. Green, yellow, red and
+   orange stay as they are: here they are data — which stats are which, how a
+   pair is converging — and the hub keeps data colours too. */
+
+:root {
+  --bg: #080d0b; --bg1: #0d1512; --bg2: #0f1713; --bg3: #1a2821;
+  --line: rgba(143, 189, 164, .24);
+  --text: #c9e0d3; --muted: #7e9a8a;
+  --accent: #8fbda4; --accent2: #b7d8c5;
+  --canvas-bg: #050807;
+  --radius: 0;
+  --shadow: 0 1px 2px rgba(0,0,0,.5), 0 20px 48px -26px rgba(0,0,0,.95);
+}
+
+body, input, select, textarea, button {
+  font-family: ui-monospace, "JetBrains Mono", "IBM Plex Mono", "SF Mono", SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+
+/* Every corner square, hard-coded ones too; the dots that mark a step or a
+   result, and the round info button, are marks rather than boxes. */
+*, *::before, *::after { border-radius: 0 !important; }
+.seq-slot.active::before, #fb-mark i, .info-btn { border-radius: 50% !important; }
+
+/* Hierarchy from tracking, not weight. */
+.hero-title { font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.brand { font-weight: 600; letter-spacing: .2em; text-transform: uppercase; }
+.btn { font-weight: 600; letter-spacing: .12em; text-transform: uppercase; font-size: 12px; color: #08100c; }
+.btn-ghost { color: var(--muted); }
+/* White read as nothing on sage; what is filled with the accent is inked dark, as on the hub. */
+.round-opt.sel, .round-opt:hover, .tab.active, .seq-slot.active,
+.seq-slot.replayable:hover:not(:disabled), .info-btn:hover { color: #08100c; }
+@media (max-width: 560px) {
+  .btn { letter-spacing: .04em; }
+  .hero-title, .brand { letter-spacing: .05em; }
+}

@@ -168,8 +168,12 @@ body {
  * Controls — pill chips, as in the bar of the reference              *
  * ------------------------------------------------------------------ */
 
+/* Pills scale off the corner-radius knob — `* 99` is a pill at any
+   non-zero radius, and square at 0. A fixed 999px kept them round under
+   the Mindbuild preset, whose whole form is that nothing is. */
+
 .btn {
-    border-radius: 999px !important;
+    border-radius: calc(var(--th-radius, 14px) * 99) !important;
     border: var(--th-border);
     /* Enough fill to read as a surface. At 0.07 a button was indistinguishable
        from the card behind it until you hovered. */
@@ -185,6 +189,13 @@ body {
     border-color: rgba(var(--th-accent-rgb), 0.55);
     box-shadow: 0 0 calc(var(--th-glow) * 1.4) rgba(var(--th-accent-rgb), 0.3);
     color: var(--th-text);
+}
+
+/* thickstrap's hard navy drop under primary buttons, held to the glow knob:
+   unchanged wherever glow reaches its .25rem, and gone at glow 0, where the
+   Mindbuild preset otherwise wore a blue block under every sage button. */
+.btn-primary, .btn-outline-primary {
+    --shadow-size-sm: min(.25rem, var(--th-glow));
 }
 
 /*
@@ -334,14 +345,14 @@ input[type="range"] {
 
 input[type="range"]::-webkit-slider-runnable-track {
     block-size: 5px;
-    border-radius: 999px;
+    border-radius: calc(var(--th-radius, 14px) * 99);
     background: rgba(var(--th-accent-rgb), 0.14);
     border: 1px solid rgba(var(--th-accent-rgb), 0.2);
 }
 
 input[type="range"]::-moz-range-track {
     block-size: 5px;
-    border-radius: 999px;
+    border-radius: calc(var(--th-radius, 14px) * 99);
     background: rgba(var(--th-accent-rgb), 0.14);
     border: 1px solid rgba(var(--th-accent-rgb), 0.2);
 }
@@ -349,7 +360,7 @@ input[type="range"]::-moz-range-track {
 /* Filled portion, so the value reads at a glance. Firefox only. */
 input[type="range"]::-moz-range-progress {
     block-size: 5px;
-    border-radius: 999px;
+    border-radius: calc(var(--th-radius, 14px) * 99);
     background: var(--th-accent);
 }
 
@@ -534,11 +545,11 @@ app-card-dropdown {
  * Misc chrome                                                         *
  * ------------------------------------------------------------------ */
 
-.badge { border-radius: 999px; background: rgba(var(--th-accent-rgb), .15) !important; color: var(--th-accent) !important; }
-.progress { background: rgba(255,255,255,.05); border-radius: 999px; }
+.badge { border-radius: calc(var(--th-radius, 14px) * 99); background: rgba(var(--th-accent-rgb), .15) !important; color: var(--th-accent) !important; }
+.progress { background: rgba(255,255,255,.05); border-radius: calc(var(--th-radius, 14px) * 99); }
 .progress-bar { background: var(--th-accent); }
 .nav-link { color: var(--th-text-dim); }
-.nav-link.active { color: var(--th-accent) !important; background: rgba(var(--th-accent-rgb), .1) !important; border-radius: 999px; }
+.nav-link.active { color: var(--th-accent) !important; background: rgba(var(--th-accent-rgb), .1) !important; border-radius: calc(var(--th-radius, 14px) * 99); }
 
 /* ------------------------------------------------------------------ *
  * Tabs and the panel under them                                       *
@@ -626,7 +637,7 @@ app-card-dropdown {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
     background: rgba(var(--th-accent-rgb), .28);
-    border-radius: 999px;
+    border-radius: calc(var(--th-radius, 14px) * 99);
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(var(--th-accent-rgb), .5); }
 ::selection { background: rgba(var(--th-accent-rgb), .3); color: #fff; }

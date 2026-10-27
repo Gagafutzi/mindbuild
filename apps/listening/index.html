@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Listening Integration</title>
   <link rel="stylesheet" href="listening.css">
+  <!-- The hub's look over the harness's, loaded last so it wins. -->
+  <link rel="stylesheet" href="hub-skin.css">
 </head>
 <body>
   <main class="wrap">
@@ -85,5 +87,17 @@
   <script src="audio/en.js"></script>
   <script src="audio/en_bryce.js"></script>
   <script src="listening.js"></script>
+<!-- The hub's colour slider. Absent outside the built site, and then the skin's sage stands. -->
+<script src="../shared/theme.js?v=1"></script>
+<script>
+if (window.HubTheme) HubTheme.follow(document.documentElement, function (p) {
+  var T = HubTheme;
+  return {
+    '--bg': T.hex(p.bg), '--panel': T.hex(p.panel), '--panel-2': T.hex(p.panelHi),
+    '--ink': T.hex(p.ink), '--ink-strong': T.hex(p.inkStrong), '--dim': T.hex(p.dim),
+    '--gold': T.hex(p.accent), '--gold-2': T.hex(p.accent2), '--button': T.hex(p.accent), '--line': T.rgba(p.accent, .3),
+  };
+});
+</script>
 </body>
 </html>

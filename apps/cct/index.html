@@ -357,6 +357,8 @@
     ::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
     hr.div{border:none;border-top:1px solid var(--border);margin:1rem 0}
   </style>
+  <!-- The hub's look over this page's own, loaded last so it wins. -->
+  <link href="hub-skin.css" rel="stylesheet">
 </head>
 <body>
 
@@ -3226,6 +3228,21 @@ function showResults(){
 function mkStat(label,val,cls=''){
   return `<div class="stat-block"><div class="stat-block-label">${label}</div><div class="stat-block-val ${cls}">${val}</div></div>`;
 }
+</script>
+<!-- The hub's colour slider: the dark theme's tokens follow it. Absent when
+     the page is opened outside the built site, and then the skin's sage stands. -->
+<script src="../shared/theme.js?v=1"></script>
+<script>
+if (window.HubTheme) HubTheme.follow(document.documentElement, function (p) {
+  if (document.documentElement.getAttribute('data-theme') !== 'dark') return {};
+  var T = HubTheme;
+  return {
+    '--bg': T.hex(p.bg), '--surface': T.hex(p.panel), '--surface2': T.rgba(p.panelHi, .7), '--surface3': T.hex(p.panelHi),
+    '--border': T.rgba(p.accent, .22), '--border2': T.rgba(p.accent, .36),
+    '--text': T.hex(p.ink), '--text-dim': T.hex(p.dim),
+    '--accent': T.hex(p.accent), '--accent-dim': T.rgba(p.accent, .10), '--info': T.hex(p.accent2),
+  };
+});
 </script>
 </body>
 </html>
