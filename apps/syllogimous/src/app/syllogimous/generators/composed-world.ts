@@ -48,11 +48,28 @@ const LADDER: Record<number, { dims: number; things: number; speakers: number }>
     7: { dims: 6, things: 4, speakers: 4 },
     8: { dims: 7, things: 5, speakers: 4 },
 };
-export const worldSize = (numOfPremises: number) => LADDER[Math.max(4, Math.min(8, numOfPremises))];
+/**
+ * Easy climbs its own, shorter ladder. Capping the things at three left every
+ * other part of the size alone, so an easy item at the top rung still put all
+ * seven axes on every line and four speakers before it: a world card of a
+ * dozen lines each naming seven positions, and as much to read in all as a
+ * hard item. Every line names one position per axis, so the axes are what
+ * the card's length is made of, and they are what easy cuts.
+ */
+const EASY_LADDER: Record<number, { dims: number; things: number; speakers: number }> = {
+    4: { dims: 2, things: 3, speakers: 2 },
+    5: { dims: 2, things: 3, speakers: 3 },
+    6: { dims: 3, things: 3, speakers: 3 },
+    7: { dims: 3, things: 3, speakers: 3 },
+    8: { dims: 4, things: 3, speakers: 3 },
+};
+export const worldSize = (numOfPremises: number, easy = false) =>
+    (easy ? EASY_LADDER : LADDER)[Math.max(4, Math.min(8, numOfPremises))];
 
 /**
- * `easy`: the knights and knaves as ever, then one small world shown whole and
- * asked about only true or false — see `BuildOptions.easy`.
+ * `easy`: a smaller item all round — fewer axes and speakers (`EASY_LADDER`),
+ * three things, one world shown whole and asked about only true or false. See
+ * `BuildOptions.easy`.
  */
 export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number, easy = false): Question {
     ctx.logger.info("createComposedWorld");
@@ -60,7 +77,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     if (!canGenerateQuestion(type, numOfPremises, ctx.settings)) throw new Error("Cannot generate.");
     numOfPremises = clampPremises(type, numOfPremises);
 
-    const size = worldSize(numOfPremises), { things } = size;
+    const size = worldSize(numOfPremises, easy), { things } = size;
     let best: { item: StagedItem; names: string[]; premises: string[] } | null = null;
     for (let t = 0; t < 3 && !best; t++) {
         const item = buildStaged({ ...size, easy }, 300);

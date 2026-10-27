@@ -61,14 +61,19 @@ export class ExperimentalComponent {
 
     setWorldEasy(value: boolean) { this.game.setWorldEasy(value); }
 
-    /** Every size, chosen outright: what each one puts on the card. */
-    worldSizes = (() => {
+    /** Every size, chosen outright: what each one puts on the card. Easy climbs its own ladder, so it has its own labels. */
+    private sizes = [false, true].map(easy => {
         const { minNumOfPremises: lo, maxNumOfPremises: hi } = QUESTION_TYPE_SETTING_PARAMS[EnumQuestionType.ComposedWorld];
         return Array.from({ length: hi - lo + 1 }, (_, i) => {
-            const s = worldSize(lo + i);
+            const s = worldSize(lo + i, easy);
             return { premises: lo + i, label: `${s.dims} axes, ${s.things} things, ${s.speakers} speakers` };
         });
-    })();
+    });
+
+    get worldSizes() { return this.sizes[this.worldEasy ? 1 : 0]; }
+
+    /* The same option elements across the switch, so the chosen size stays chosen and only its label changes. */
+    byPremises = (_: number, n: { premises: number }) => n.premises;
 
     get streamType() { return this.game.streamType; }
 

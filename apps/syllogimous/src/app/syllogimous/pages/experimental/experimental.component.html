@@ -21,7 +21,7 @@
                 <select id="world-premises" class="form-select form-select-sm"
                         [disabled]="!worldOn" [value]="worldPremises"
                         (change)="setWorldPremises($any($event.target).value)">
-                    <option *ngFor="let n of worldSizes" [value]="n.premises">{{ n.label }}</option>
+                    <option *ngFor="let n of worldSizes; trackBy: byPremises" [value]="n.premises">{{ n.label }}</option>
                 </select>
             </div>
 
@@ -30,8 +30,8 @@
                        [checked]="worldEasy" (change)="setWorldEasy($any($event.target).checked)">
                 <span>Easy
                     <small class="d-block text-muted">
-                        Knights and knaves as ever; then one small world, shown whole,
-                        and only true or false.
+                        Fewer axes, speakers and premises; one small world, shown
+                        whole, and only true or false.
                     </small>
                 </span>
             </label>

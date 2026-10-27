@@ -461,8 +461,8 @@ function telling(p: Parsed): string {
     }).filter(i => i >= 0));
 }
 
-function names(q: Question, n: number) {
-    const { things } = worldSize(n);
+function names(q: Question, n: number, easy = false) {
+    const { things } = worldSize(n, easy);
     return { things: q.bucket.slice(0, things), speakers: q.bucket.slice(things) };
 }
 
@@ -481,8 +481,8 @@ function sameReading(a: Reconstruction, b: Reconstruction, need: number[][]): bo
  * Every claim of an item as the screen shows it, in order, advanced by the
  * game's own series code — answered right, so the next claim comes up.
  */
-function walk(q: Question, premises: number, each: (p: Parsed, at: number, before: Card, known?: boolean[]) => void): string[] {
-    const { things, speakers } = names(q, premises);
+function walk(q: Question, premises: number, each: (p: Parsed, at: number, before: Card, known?: boolean[]) => void, easy = false): string[] {
+    const { things, speakers } = names(q, premises, easy);
     const modes: string[] = [];
     /* The kinds the first stage settled, and the world as shown so far: past
        the first two stages each shows its part alone, and a claim is read on
@@ -490,7 +490,7 @@ function walk(q: Question, premises: number, each: (p: Parsed, at: number, befor
     let known: boolean[] | undefined;
     const world: Statement[] = [], vantages = new Map<number, number>();
     for (;;) {
-        const at = q.seriesAt, view = shown(q, worldSize(premises).dims);
+        const at = q.seriesAt, view = shown(q, worldSize(premises, easy).dims);
         const p = parse(view, things, speakers, known?.indexOf(true) ?? -1, vantages);
         if (at >= 2) {
             /* Only what a stage shows of its own: one that shows nothing leaves the last stage's lines up, the second stage's words among them. */
@@ -548,14 +548,25 @@ test("composed world: easy keeps the knights and knaves, then one small world sh
                 const without = read(before, FULL, known, need);
                 assert((without ? answered(p, without) : answerKey(null)) !== truth, `claim ${at}: the verdict is the same without what was announced`);
             }
-        });
+        }, true);
         equal(modes.join(" "), "select select boolean boolean boolean boolean", "the stages of an easy item");
         const world = q.series[2].premises!.map(strip).filter(l => !isRule(l));
         assert(world.length <= 18, `an easy world of ${world.length} lines`);
         assert(!world.includes("Inside:") && !world.some(l => l.includes("(where")), "an easy world has brackets");
         equal(q.series.filter(c => c.answerMode === "boolean").map(c => c.isValid).sort().join(), "false,false,true,true", "verdicts not two each way");
+        /* Fewer axes than a hard item of the same size, read off what ships:
+           every line names a position per axis, so the axes are the length. */
+        const dims = worldSize(premises, true).dims;
+        assert(dims < worldSize(premises).dims, `easy at ${premises} has as many axes as hard`);
+        const every = [...q.premises, ...q.series.flatMap(c => c.premises ?? [])].map(strip).join("\n");
+        AXIS_WORDS.forEach((re, axis) => assert(axis < dims || !re.test(every),
+            `an easy item of ${dims} axes at ${premises} premises speaks of axis ${axis}:\n${every}`));
     });
 });
+
+/** A word only each axis past the ring and north–south uses, in the fixed order. */
+const AXIS_WORDS: RegExp[] = [/$^/, /$^/, /\b(above|below|up–down)\b/, /\b(later|earlier)\b/, /\b(narrower|wider|containment)\b/,
+    /\b(greater|smaller|quantity)\b/, /\bkind\b/];
 
 test("composed world: the card alone answers every claim of every stage as shipped", () => {
     for (let premises = RANGE.minNumOfPremises; premises <= RANGE.maxNumOfPremises; premises++) for (let r = 0; r < 3; r++) {

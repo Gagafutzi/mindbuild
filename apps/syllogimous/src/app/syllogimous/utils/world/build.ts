@@ -85,7 +85,8 @@ const LAST_HOUR = 11;
  * Time's portal leads into containment, so it waits until containment is there.
  */
 export function makeAxes(rnd: () => number, dims = 7): Axis[] {
-    const east: Seam = rnd() < 0.5 ? { type: "twist", target: 1 } : { type: "portal", target: 2, shift: 1 + Math.floor(rnd() * 2) };
+    /* The portal leads into up–down, so a space without it (easy's two axes) twists. */
+    const east: Seam = rnd() < 0.5 || dims < 3 ? { type: "twist", target: 1 } : { type: "portal", target: 2, shift: 1 + Math.floor(rnd() * 2) };
     const t = rnd();
     const time: Axis = t < 0.4 ? { scale: LINEAR_SCALES["temporal"], kind: "line" }
         : t < 0.7 ? { scale: LINEAR_SCALES["temporal"], kind: "ring", modulus: TIME_RING, seam: { type: "plain" } }
