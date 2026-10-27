@@ -100,12 +100,16 @@
         <option value="voice">Spoken</option>
         <option value="both">Shown and spoken</option>
       </select></label>
+      <label class="f">Order<select id="order">
+        <option value="serial">Matters</option>
+        <option value="free">Any order</option>
+      </select></label>
       <label class="f">Length<select id="adaptive">
         <option value="1">Adapts</option>
         <option value="0">Fixed</option>
       </select></label>
     </div>
-    <p class="muted small">Adapting, a list grows by one word after a perfect list and shrinks by one after two misses in a row, and the next session starts where this one ended.</p>
+    <p class="muted small">Adapting, a list grows by one word after a perfect list and shrinks by one after two misses in a row, and the next session starts where this one ended. In any order, a list is perfect when every word comes back, wherever it is written.</p>
     <div class="row" style="margin-top:16px">
       <button class="btn primary" id="startBtn" type="button">Start</button>
       <span class="muted small" id="lastNote"></span>
@@ -121,7 +125,7 @@
   <!-- ===================== RECALL ===================== -->
   <section id="recall" hidden>
     <h2>Walk the route</h2>
-    <p class="muted small">Type each word in order and press Enter. Enter on an empty line skips a place; Backspace on an empty line takes the last one back.</p>
+    <p class="muted small" id="recallHow">Type each word in order and press Enter. Enter on an empty line skips a place; Backspace on an empty line takes the last one back.</p>
     <div class="slots" id="slots"></div>
     <input id="answer" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" aria-label="Next word">
     <div class="row" style="margin-top:12px"><button class="btn primary" id="doneBtn" type="button">Done</button></div>
@@ -192,10 +196,15 @@ var TIERS = LOCI_WORDS.tiers;
 var GOAL = 30;
 /* The longest list ever recalled perfectly, across every session kept. */
 function best() {
-  return record().sessions.reduce(function (m, x) { return Math.max(m, (x.extra && x.extra.longestPerfect) || x.score || 0); }, 0);
+  /* In order only: the goal is a route walked place by place, and a list
+     recalled in any order is the easier task. */
+  return record().sessions.reduce(function (m, x) {
+    return x.settings && anyOrder(x.settings) ? m : Math.max(m, (x.extra && x.extra.longestPerfect) || x.score || 0);
+  }, 0);
 }
 var $ = function (id) { return document.getElementById(id); };
-var settings = Object.assign({ imagery: 5, span: 5, rate: 2.5, lists: 10, present: "screen", adaptive: true }, load(SETTINGS_KEY, {}));
+var settings = Object.assign({ imagery: 5, span: 5, rate: 2.5, lists: 10, present: "screen", adaptive: true, order: "serial" }, load(SETTINGS_KEY, {}));
+var anyOrder = function (st) { return st.order === "free"; };
 
 function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
 
@@ -243,6 +252,29 @@ function score(list, given) {
   return { marks: marks, inPlace: inPlace, inList: inList, perfect: inPlace === list.length };
 }
 
+/* In any order: each word of the list comes back or does not, wherever it
+   was written. Exact spellings are matched first, so a slip on one word
+   cannot take the place of another word typed exactly; a word counts once
+   however often it is typed, and what matches nothing is not in the list. */
+function scoreFree(list, given) {
+  var used = list.map(function () { return false; });
+  var left = given.filter(function (g) { return norm(g); });
+  [function (g, w) { return norm(g) === norm(w); }, same].forEach(function (match) {
+    left = left.filter(function (g) {
+      var k = list.findIndex(function (o, j) { return !used[j] && match(g, o.word); });
+      if (k < 0) return true;
+      used[k] = true; return false;
+    });
+  });
+  var recalled = used.filter(Boolean).length;
+  /* A word typed twice is a repeat, not a word from nowhere. */
+  var wrong = left.filter(function (g, i) {
+    return !list.some(function (o) { return same(g, o.word); }) && left.findIndex(function (h) { return norm(h) === norm(g); }) === i;
+  });
+  return { marks: used.map(function (u) { return u ? "ok" : "bad"; }), inList: recalled, recalled: recalled,
+           inPlace: score(list, given).inPlace, wrong: wrong, perfect: recalled === list.length };
+}
+
 /* ---------- the session ---------- */
 
 var S = null;           // the session in progress
@@ -265,6 +297,7 @@ function readSettings() {
   settings.lists = Math.round(num("lists", 1, 50, 10));
   settings.present = $("present").value;
   settings.adaptive = $("adaptive").value === "1";
+  settings.order = $("order").value === "free" ? "free" : "serial";
   save(SETTINGS_KEY, settings);
 }
 
@@ -293,7 +326,7 @@ function nextList() {
     if (i >= list.length) { $("word").textContent = ""; $("place").textContent = ""; return later(recall, 400); }
     var screen = S.settings.present !== "voice";
     $("word").textContent = screen ? list[i].word : "•";
-    $("place").textContent = "Place " + (i + 1) + " of " + list.length;
+    $("place").textContent = (anyOrder(S.settings) ? "Word " : "Place ") + (i + 1) + " of " + list.length;
     if (S.settings.present !== "screen") speak(list[i].word);
     later(function () { $("word").textContent = ""; }, Math.max(150, step - gap));
     later(function () { present(i + 1); }, step);
@@ -314,6 +347,9 @@ var given = [];
 function recall() {
   given = [];
   show("recall");
+  $("recallHow").textContent = anyOrder(S.settings)
+    ? "Type every word you can, in any order, pressing Enter after each; Enter on an empty line when nothing more comes. Backspace on an empty line takes the last one back."
+    : "Type each word in order and press Enter. Enter on an empty line skips a place; Backspace on an empty line takes the last one back.";
   drawSlots();
   $("answer").value = "";
   $("answer").focus();
@@ -328,12 +364,14 @@ function drawSlots() {
     d.querySelector("span").textContent = i < given.length ? (given[i] || "—") : "";
     $("slots").appendChild(d);
   }
-  $("answer").placeholder = given.length >= n ? "Enter to finish, Backspace to change" : "Place " + (given.length + 1);
+  $("answer").placeholder = given.length >= n ? "Enter to finish, Backspace to change" : (anyOrder(S.settings) ? "Word " : "Place ") + (given.length + 1);
 }
 $("answer").addEventListener("keydown", function (e) {
   if (e.key === "Enter") {
     e.preventDefault();
     if (given.length >= S.current.list.length) return judge();
+    /* In any order there is no place to skip: an empty line is all that comes back. */
+    if (anyOrder(S.settings) && !norm(this.value)) { while (given.length < S.current.list.length) given.push(""); return judge(); }
     given.push(norm(this.value) ? this.value.trim() : ""); this.value = ""; drawSlots();
   } else if (e.key === "Backspace" && this.value === "" && given.length) {
     e.preventDefault();
@@ -350,7 +388,7 @@ $("doneBtn").addEventListener("click", function () {
 /* ---------- judging, and the length of the next list ---------- */
 
 function judge() {
-  var cur = S.current, res = score(cur.list, given);
+  var free = anyOrder(S.settings), cur = S.current, res = free ? scoreFree(cur.list, given) : score(cur.list, given);
   var before = S.span;
   if (S.settings.adaptive) {
     if (res.perfect) { S.span = Math.min(40, S.span + 1); S.misses = 0; }
@@ -358,17 +396,31 @@ function judge() {
   }
   S.lists.push({ i: S.lists.length, t: cur.t, level: cur.span, stimulus: cur.list.map(function (x) { return x.word; }),
     response: given.slice(), correct: res.perfect,
-    extra: { inPlace: res.inPlace, inList: res.inList, tiers: cur.list.map(function (x) { return x.tier; }) } });
+    extra: Object.assign({ inPlace: res.inPlace, inList: res.inList, tiers: cur.list.map(function (x) { return x.tier; }) },
+             free ? { recalled: res.recalled, notInList: res.wrong } : {}) });
 
   $("fbTitle").textContent = "List " + S.lists.length + " of " + S.settings.lists;
-  $("fbLine").innerHTML = "<b>" + res.inPlace + " of " + cur.list.length + "</b> in place" +
-    (res.inList > res.inPlace ? ", " + (res.inList - res.inPlace) + " more in the list but at another place" : "") +
+  $("fbLine").innerHTML = (free
+    ? "<b>" + res.recalled + " of " + cur.list.length + "</b> recalled" +
+      (res.wrong.length ? ", " + res.wrong.length + " not in the list" : "")
+    : "<b>" + res.inPlace + " of " + cur.list.length + "</b> in place" +
+      (res.inList > res.inPlace ? ", " + (res.inList - res.inPlace) + " more in the list but at another place" : "")) +
     (S.span !== before ? " &middot; next list: <b>" + S.span + " words</b>" : "");
   var rows = $("fbRows"); rows.innerHTML = "";
   cur.list.forEach(function (it, i) {
     var tr = document.createElement("tr"); tr.className = res.marks[i];
     var mark = { ok: "✓", half: "~", bad: "✗" }[res.marks[i]];
-    [String(i + 1), it.word, given[i] || "—", mark].forEach(function (text, k) {
+    /* In any order there is no place to compare: whether the word came back. */
+    var said = free ? (res.marks[i] === "ok" ? "recalled" : "—") : given[i] || "—";
+    [String(i + 1), it.word, said, mark].forEach(function (text, k) {
+      var td = document.createElement("td"); td.textContent = text; if (k === 3) td.className = "mark"; tr.appendChild(td);
+    });
+    rows.appendChild(tr);
+  });
+  /* What came back that was never shown. */
+  if (free) res.wrong.forEach(function (w) {
+    var tr = document.createElement("tr"); tr.className = "bad";
+    ["", "—", w, "✗"].forEach(function (text, k) {
       var td = document.createElement("td"); td.textContent = text; if (k === 3) td.className = "mark"; tr.appendChild(td);
     });
     rows.appendChild(tr);
@@ -387,14 +439,16 @@ function finish(completed) {
   clockOff();
   var s = S; S = null;
   if (!s || !s.lists.length) { show("setup"); return; }
+  var free = anyOrder(s.settings);
   var words = 0, inPlace = 0, perfect = 0, longest = 0;
-  s.lists.forEach(function (l) { words += l.level; inPlace += l.extra.inPlace; if (l.correct) { perfect++; longest = Math.max(longest, l.level); } });
+  /* In any order a word counts wherever it was written; in order, only in its place. */
+  s.lists.forEach(function (l) { words += l.level; inPlace += free ? l.extra.recalled : l.extra.inPlace; if (l.correct) { perfect++; longest = Math.max(longest, l.level); } });
   var tierName = s.settings.imagery ? TIERS[s.settings.imagery].name.toLowerCase() : "mixed";
   var rec = record();
   rec.appVersion = APP_VERSION;
   rec.sessions.push({
     id: "loci-" + s.start, start: s.start, end: Date.now(), activeSeconds: Math.round(s.active / 1000), completed: completed,
-    mode: "Imagery " + (s.settings.imagery || "mixed") + (s.settings.imagery ? " (" + tierName + ")" : ""),
+    mode: "Imagery " + (s.settings.imagery || "mixed") + (s.settings.imagery ? " (" + tierName + ")" : "") + (free ? ", any order" : ""),
     modalities: s.settings.present === "both" ? ["visual", "audio"] : s.settings.present === "voice" ? ["audio"] : ["visual"],
     level: s.startSpan, levelEnd: s.span, trials: s.lists.length, correct: perfect,
     accuracy: words ? Math.round(1000 * inPlace / words) / 1000 : null, score: longest, input: "keyboard",
@@ -407,7 +461,7 @@ function finish(completed) {
   if (s.settings.adaptive) { settings.span = s.span; save(SETTINGS_KEY, settings); $("span").value = s.span; }
 
   $("kpis").innerHTML = "";
-  [["Words in place", words ? Math.round(100 * inPlace / words) + "%" : "—"], ["Perfect lists", perfect + " / " + s.lists.length],
+  [[free ? "Words recalled" : "Words in place", words ? Math.round(100 * inPlace / words) + "%" : "—"], ["Perfect lists", perfect + " / " + s.lists.length],
    ["Longest perfect", longest ? longest + " words" : "—"], ["Length", s.startSpan + " → " + s.span],
    ["Best toward " + GOAL, best() + " / " + GOAL]].forEach(function (k) {
     var d = document.createElement("div"); d.className = "kpi";
@@ -415,7 +469,7 @@ function finish(completed) {
     d.querySelector(".val").textContent = k[1]; d.querySelector(".lab").textContent = k[0];
     $("kpis").appendChild(d);
   });
-  $("sumNote").textContent = "Imagery: " + (s.settings.imagery ? s.settings.imagery + " (" + tierName + ")" : "mixed") +
+  $("sumNote").textContent = "Imagery: " + (s.settings.imagery ? s.settings.imagery + " (" + tierName + ")" : "mixed") + (free ? " · any order" : "") +
     " · " + Math.round(s.active / 60000 * 10) / 10 + " minutes" + (completed ? "" : " · ended early");
   show("summary");
   lastNote();
@@ -446,18 +500,18 @@ function drawTiers() {
 function lastNote() {
   var r = record(), last = r.sessions[r.sessions.length - 1];
   var b = best();
-  $("lastNote").textContent = (last ? "Last: " + Math.round(100 * (last.accuracy || 0)) + "% in place, longest perfect " + (last.score || 0) + " · " : "") +
+  $("lastNote").textContent = (last ? "Last: " + Math.round(100 * (last.accuracy || 0)) + (last.settings && anyOrder(last.settings) ? "% recalled" : "% in place") + ", longest perfect " + (last.score || 0) + " · " : "") +
     (b >= GOAL ? "Goal reached: " + b + " words" : "Goal: " + GOAL + " words, best " + b);
 }
 
 $("span").value = settings.span; $("rate").value = settings.rate; $("lists").value = settings.lists;
-$("present").value = settings.present; $("adaptive").value = settings.adaptive ? "1" : "0";
+$("present").value = settings.present; $("adaptive").value = settings.adaptive ? "1" : "0"; $("order").value = anyOrder(settings) ? "free" : "serial";
 $("startBtn").addEventListener("click", start);
 drawTiers();
 lastNote();
 
 /* For the tests, and nothing else. */
-window.LociSpan = { score: score, same: same, draw: draw, best: best, GOAL: GOAL };
+window.LociSpan = { score: score, scoreFree: scoreFree, same: same, draw: draw, best: best, GOAL: GOAL };
 })();
 </script>
 </body>

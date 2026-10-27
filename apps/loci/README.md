@@ -33,11 +33,15 @@ down as placing becomes automatic.
 - **Recall is typed, in order.** Enter places a word and moves on; Enter on an
   empty line skips a place; Backspace on an empty line takes the last one back.
   One slip is forgiven on words of five letters or more.
+- **Order: matters, or any order.** In any order a list is perfect when every
+  word comes back, wherever it is written; a word counts once however often it
+  is typed, words never shown are listed as such, and Enter on an empty line
+  ends the recall. The goal counts in-order lists only.
 - **Feedback per list**: each place marked ✓ (right word, right place), ~ (a
   word from the list, at another place) or ✗.
 - No word repeats within a session, so a word is never recalled from an
   earlier list's route.
-- **Goal: 30 words** recalled perfectly in one list. The setup screen and the
+- **Goal: 30 words** recalled perfectly, in order, in one list. The setup screen and the
   session summary show the best span so far against it, taken from every
   session in the record.
 

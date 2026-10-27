@@ -852,6 +852,34 @@ test("Loci Span's words: five tiers, each word in one, enough for a session with
 });
 
 /*
+ * Loci Span in any order: a word counts wherever it is written, once however
+ * often, and a word never shown counts against nothing but is named. Run on
+ * the page's own matching code, cut out of it, so the test reads what ships.
+ */
+test("Loci Span's any-order scoring ignores order, counts a word once, and names what was never shown", () => {
+  const vm = require("vm");
+  const html = readFileSync(path.join(__dirname, "..", "apps", "loci", "index.html"), "utf8");
+  const code = html.slice(html.indexOf("/* ---------- matching ---------- */"), html.indexOf("/* ---------- the session ---------- */"));
+  const L = vm.runInNewContext(code + "; ({ score: score, scoreFree: scoreFree })");
+  const list = ["dragon", "gnome", "knight", "fire"].map((word) => ({ word }));
+
+  const back = L.scoreFree(list, ["fire", "knight", "gnome", "dragon"]);
+  assert.ok(back.perfect && back.recalled === 4, "every word, written backwards, is not a perfect list");
+  assert.ok(!L.score(list, ["fire", "knight", "gnome", "dragon"]).perfect, "in order, backwards should not be perfect");
+
+  const again = L.scoreFree(list, ["fire", "fire", "fire", "pizza"]);
+  assert.strictEqual(again.recalled, 1, "a word typed three times counted more than once");
+  assert.deepStrictEqual([...again.wrong], ["pizza"], "a repeat was named as a word never shown, or the stranger was not");
+
+  /* An exact spelling is not lost to a slip that also fits it: "witer" is one
+     letter from both "water" and "wider", and typed first it would take
+     "water" from the exact "water" typed after it, which is two letters from
+     "wider" and would then find nothing. */
+  const slips = L.scoreFree([{ word: "water" }, { word: "wider" }], ["witer", "water"]);
+  assert.strictEqual(slips.recalled, 2, "a slip took the place of an exact spelling");
+});
+
+/*
  * The trainers that wear the hub's look over their own: each carries a
  * hub-skin.css, and it only works loaded last — the skin redefines the page's
  * own tokens, and a page style after it would quietly win them back. The
