@@ -19,5 +19,4 @@ jobs:
       - run: node apps/relations/test/algebra.test.js
       - run: node apps/relations/test/routes.test.js
       - run: node apps/relations/test/spaces.test.js
-      - run: node apps/ribbon/test/run.js
       - run: node sketches/fourth-axis/test/run.js

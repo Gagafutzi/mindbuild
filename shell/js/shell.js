@@ -60,10 +60,6 @@
       what: "Paced spoken arithmetic, n back, on a four-way cross" },
     { id: "vmt", name: "Veridical Mapping", path: "vmt/", colour: "#7c83f5", more: true,
       what: "Mapping one perceptual scale onto another, by eye and ear" },
-    /* Written on the Chimera harness, so it writes the Chimera record and is
-       counted with no adapter. */
-    { id: "ribbon", name: "Ribbon World", path: "ribbon/", colour: "#c9a227",
-      what: "A twisted loop and a plain one: find the rules, picture the trip, spot the impossible, judge through fog" },
     /* Written here, on the Chimera record, so counted with no adapter. */
     { id: "loci", name: "Loci Span", path: "loci/", colour: "#b6e35a",
       what: "Word span by the method of loci, from words that picture themselves to ones that leave nothing to see" },

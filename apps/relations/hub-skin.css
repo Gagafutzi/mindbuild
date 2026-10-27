@@ -7,8 +7,7 @@
    values — sage on near-black — so the trainer one click from the hub looks
    like the hub. A separate file, loaded last, so the harness and the
    trainer's own sheet stay as Chimera Hub has them.
-
-   The same file sits in apps/relations and apps/ribbon. Keep the two the same. */
+ */
 
 :root {
   --h-bg: #080d0b;
