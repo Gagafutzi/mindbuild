@@ -964,6 +964,22 @@ test("Synaesthesia's German keeps the palette and shades the umlauts off their l
     }
     assert.ok(new Set(seen).size >= 395, `${lang}: only ${new Set(seen).size} distinct phrases in 400`);
   }
+
+  /* Word mode: advanced vocabulary only, short at the start of a streak and
+     long further in — read through the mode's own call, not just the drawer. */
+  assert.ok(/mode === 'game-word'\)\s+qTyping\(drawAdvancedWord\(\)\)/.test(html), "word mode does not draw advanced vocabulary");
+  for (const lang of ["en", "de"]) {
+    const lengths = (streak) => {
+      const g = { Math, Set, SYNTH_DE: D, german: () => lang === "de", streak, LEXICON: { 5: ["x"] } };
+      vm.runInNewContext(pick("/* ---- Sentence grammar", "const RANKS").replace(/^(const|let) /gm, "var ") + "; this.draw = drawAdvancedWord; this.ADV = ADVANCED_EN;", g);
+      const words = Array.from({ length: 200 }, () => g.draw());
+      for (const w of words) assert.ok(/^[A-Za-zÄÖÜäöü]{5,16}$/.test(w), `${lang} word mode drew "${w}"`);
+      if (lang === "en") assert.ok(words.some((w) => g.ADV.includes(w)), "word mode never drew from the advanced list");
+      return words.map((w) => w.length);
+    };
+    assert.ok(Math.max(...lengths(0)) <= 7, `${lang}: a fresh streak already draws long words`);
+    assert.ok(Math.max(...lengths(30)) >= 11, `${lang}: a long streak never reaches long words`);
+  }
 });
 
 /*

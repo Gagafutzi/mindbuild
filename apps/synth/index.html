@@ -1666,6 +1666,73 @@ function drawWord(minLen, maxLen){
   if(!wordBags[key]) wordBags[key] = makeBag(wordsOfLength(n));
   return drawFrom(wordBags[key]);
 }
+/* Word mode reads advanced vocabulary only: the curated list below and every
+   word of the phrase banks, in the language set. It opens at five to seven
+   letters and lengthens with the streak, as far as sixteen. Flash and Match
+   keep the everyday words above: they are about reading at a glance, and a
+   word you have to sound out is the wrong material for that. */
+const ADVANCED_EN = ("aberration abstruse acquiesce acrimonious adumbrate alacrity ambivalent amelioration " +
+  "anachronism anathema antediluvian apocryphal approbation arcane assiduous auspicious avarice belligerent " +
+  "bombastic bucolic burgeon cacophony capricious castigate catharsis circumspect clandestine cognizant " +
+  "commensurate conflagration conundrum corroborate credulous cynosure dearth decorum deleterious demagogue " +
+  "diaphanous didactic dilettante disparate dissonance ebullient eclectic edifice effervescent egregious " +
+  "elucidate emollient enervate equivocal erudite esoteric euphemism evanescent exacerbate exculpate exigent " +
+  "expatiate extemporaneous facetious fastidious fecund felicitous fervent filigree flagrant fortuitous " +
+  "furtive garrulous gregarious hegemony heterodox hubris iconoclast idiosyncrasy ignominious impecunious " +
+  "imperturbable impetuous incongruous indefatigable ineffable inexorable ingenuous inimical insidious " +
+  "intransigent inveterate irascible juxtaposition laconic languid largesse lethargic loquacious lugubrious " +
+  "magnanimous malleable mellifluous mendacious mercurial misanthrope mnemonic munificent nebulous nefarious " +
+  "obdurate obfuscate obsequious obstreperous omniscient onerous opprobrium ostentatious palimpsest panacea " +
+  "paradigm parsimonious paucity pellucid penchant penumbra perfidious perfunctory pernicious perspicacious " +
+  "phlegmatic placate platitude plethora poignant pragmatic precocious predilection proclivity prodigious " +
+  "propitious prosaic proscribe provenance pugnacious punctilious querulous quiescent quintessential quixotic " +
+  "rancorous recalcitrant recondite redolent refulgent relegate remonstrate reprobate repudiate rhapsody " +
+  "ruminate sagacious salient sanguine sardonic scintillating sedulous sequester serendipitous solicitous " +
+  "soporific sporadic spurious stoic strident sublime supercilious superfluous surreptitious sybarite " +
+  "sycophant taciturn tantamount temerity tenacious tenuous torpor tractable transcendent trenchant " +
+  "truculent ubiquitous umbrage unctuous untenable vacillate vehement venerate veracity verisimilitude " +
+  "vicarious vicissitude vindicate virtuoso vitriolic vociferous voluble wanton zealous zenith acumen " +
+  "aesthetic allegory ambrosia antithesis aphorism archetype ascetic augury axiomatic baroque beatitude " +
+  "cadence calligraphy cartography chiaroscuro chimera cloister cognition conjecture constellation " +
+  "contrition cornucopia crescendo crucible demiurge diaspora dichotomy disquisition effulgence elegy " +
+  "emanation empyrean enigma epiphany epitome equilibrium etymology eulogy exegesis firmament halcyon " +
+  "harbinger hieroglyph homily idyll incunabula inflection lacuna leitmotif lexicon liminal litany " +
+  "luminescence maelstrom manifold marginalia metamorphosis metaphysics miasma millennium mirage monolith " +
+  "motif myriad nemesis nomenclature numinous oblivion odyssey oracle palisade pantheon paradox parable " +
+  "paragon parallax pastiche pathos penitence perihelion periphery phantasm philology pilgrimage polyphony " +
+  "portent precipice primordial prism quagmire quandary reliquary renaissance repertoire resonance " +
+  "reverberation rhetoric sanctum sarcophagus scriptorium semblance sepulchre silhouette simulacrum solace " +
+  "sonority spectre sphinx stratagem sublimation synecdoche synthesis talisman telos threnody topography " +
+  "tracery trajectory transmutation trellis triptych twilight umbra undercurrent vestige vignette vortex " +
+  "wanderlust zephyr ennui nadir ethos mythos aegis fugue qualm lucid ardour fervour sylph wraith chasm " +
+  "abyss epoch psalm runic arcana relic crypt oasis cairn dirge").split(' ');
+const advancedPool = {};
+function advancedWords(){
+  const lang = german() && D ? 'de' : 'en';
+  if(!advancedPool[lang]){
+    const all = lang === 'de'
+      ? [...SYNTH_DE.advanced, ...D.noun.map(n => n[0]), ...D.abstract.map(a => a[0]), ...D.adj, ...D.adv, ...D.weVerb]
+      : [...ADVANCED_EN, ...G.noun, ...G.adj, ...G.abstract, ...G.adv, ...G.verbTrans];
+    const byLen = {};
+    all.filter((w, i) => all.indexOf(w) === i && /^[A-Za-zÄÖÜäöü]+$/.test(w) && w.length >= 5 && w.length <= 16)
+      .forEach(w => { (byLen[w.length] = byLen[w.length] || []).push(w); });
+    advancedPool[lang] = byLen;
+  }
+  return advancedPool[lang];
+}
+function advancedCeiling(){ return Math.min(16, 7 + Math.floor(streak / 3)); }
+/* Every word that fits the current length is equally likely: a length is not
+   drawn first, or the few five-letter words would come round constantly. */
+function drawAdvancedWord(){
+  const pool = advancedWords(), top = advancedCeiling(), key = 'adv' + (german() ? 'de' : 'en') + top;
+  if(!wordBags[key]){
+    const fit = [];
+    for(let n = 5; n <= top; n++) if(pool[n]) fit.push(...pool[n]);
+    wordBags[key] = makeBag(fit);
+  }
+  return drawFrom(wordBags[key]);
+}
+
 /* Words that carry nothing — articles, prepositions, "we" — may repeat; any
    other word may not while it is among the last forty used. */
 const FUNCTION_WORDS = new Set(('the a an of and nor neither between through we in like as every while with only is ' +
@@ -1714,7 +1781,7 @@ const MODES = {
   'game-sensory':        {t:'Multi-sensory', i:'🔮', g:'core', kind:'quiz', base:500, unit:4100, unitMin:400, unitMax:14000,
                           d:'Symbol, tone and mnemonic together — best for encoding.'},
   'game-word':           {t:'Word',          i:'🧠', g:'read', kind:'typing', base:3000, unit:1400, unitMin:300, unitMax:6000,
-                          d:'Read a coded word and type it. Case matters.'},
+                          d:'Read a coded word of advanced vocabulary and type it. Case matters.'},
   'game-phrase':         {t:'Phrase',        i:'📚', g:'read', kind:'typing', base:5000, unit:1100, unitMin:300, unitMax:6000,
                           d:'Whole phrases — context starts doing the work for you.'},
   'game-flash':          {t:'Flash recall',  i:'⚡', g:'read', kind:'typing', base:2500, unit:1200, unitMin:300, unitMax:5000,
@@ -2407,7 +2474,7 @@ function nextQ(){
   if(mode === 'game-symbol-to-char')      qDecode();
   else if(mode === 'game-char-to-symbol') qFindColor();
   else if(mode === 'game-sensory')        qSensory();
-  else if(mode === 'game-word')           qTyping(drawWord(3, wordCeiling()));
+  else if(mode === 'game-word')           qTyping(drawAdvancedWord());
   else if(mode === 'game-phrase')         qTyping(drawSentence());
   else if(mode === 'game-flash')          qFlash();
   else if(mode === 'game-logic')          qLogic();

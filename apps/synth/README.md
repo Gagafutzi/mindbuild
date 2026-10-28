@@ -28,6 +28,15 @@ and a saved palette that predates the umlauts derives them from its own A, O
 and U. Words and phrases come from `words-de.js`, with nouns capitalised; there
 is no ß, which has no capital for the stats to file it under.
 
+## Word mode
+
+Advanced vocabulary only, in either language: a curated list (perspicacious,
+palimpsest, verisimilitude; Fernweh, Zwielicht, Unergründlichkeit) and every
+word of the phrase banks. Five to seven letters at the start of a streak,
+lengthening by one every three answers, as far as sixteen; every word that
+fits the current length is equally likely. Flash and Match keep everyday words:
+they train reading at a glance.
+
 ## Phrases
 
 Built from banks of advanced vocabulary (luminous, cartographer,

@@ -90,6 +90,27 @@ var SYNTH_DE = {
      some follow an article. Adjectives are stems that take the regular
      endings — none that change their stem (dunkel, hoch, edel). Verbs are
      intransitive and aligned: er schimmert, sie schimmern, er schimmerte. */
+  /* Word mode: advanced vocabulary only. These, and every word of the phrase
+     banks below, are what it draws from; nouns capitalised. */
+  advanced: ("Abenddämmerung Ahnung Allegorie Anachronismus Antithese Aphorismus Archetyp Augenblick " +
+    "Bewandtnis Dämmerung Dichotomie Eloquenz Empfindsamkeit Entfremdung Epiphanie Erkenntnis Fernweh " +
+    "Firmament Geborgenheit Gefilde Geistesgegenwart Gemächlichkeit Gleichgewicht Habseligkeiten Heiterkeit " +
+    "Herrlichkeit Inbrunst Irrlicht Kaleidoskop Kleinod Konstellation Kreuzgang Labsal Leidenschaft Leitmotiv " +
+    "Liebreiz Luftspiegelung Mannigfaltigkeit Metamorphose Morgenröte Mysterium Nimbus Obhut Odyssee Orakel " +
+    "Palimpsest Pantheon Paradigma Pilgerfahrt Polyphonie Quintessenz Refugium Reliquie Rhapsodie Sanftmut " +
+    "Schattenriss Schimmer Sinnbild Sonnenwende Stelldichein Sternschnuppe Stillleben Talisman Tausendsassa " +
+    "Tragödie Trugbild Unbeständigkeit Unergründlichkeit Vermächtnis Verwandlung Vorahnung Waldeinsamkeit " +
+    "Wanderlust Wehmut Weltschmerz Widerhall Wohlklang Zauberei Zeitgeist Zwielicht Zuneigung Labyrinthe " +
+    "Mirakel Elegie Hymne Ouvertüre Kantate Fuge Arabeske Ornament Filigran Gobelin Intarsie Lapislazuli " +
+    "Alabaster Porphyr Obsidian Bernsteinzimmer Sternenzelt Polarlicht Nordlicht Sonnenfinsternis " +
+    "abgründig beschaulich bezaubernd eigensinnig erlesen feinsinnig filigran geistreich gewissenhaft grandios " +
+    "hintersinnig idyllisch kapriziös launenhaft leidenschaftlich lieblich melancholisch mysteriös nebulös " +
+    "schwärmerisch sonderbar tiefgründig überschwänglich unbändig unvergleichlich verschmitzt vortrefflich " +
+    "weitläufig wunderlich zauberhaft Hybris Mythos Ethos Pathos Gral Hort Aura Fanal Kanon Kodex Ikone " +
+    "Idyll Muse Opus Zenit Nadir Äther Psalm Requiem Chimäre Nymphe Elysium Gloriole Emblem Elixier Amulett " +
+    "Monolith Tableau Kuppel Apsis Krypta Gruft Ruine Bastion Zinne Ballade Sonate Toccata Chiffre Rebus " +
+    "Enigma").split(' '),
+
   phrase: {
     noun: [["Kathedrale","f"],["Labyrinth","n"],["Archipel","m"],["Observatorium","n"],["Zitadelle","f"],
       ["Leuchtturm","m"],["Gletscher","m"],["Kloster","n"],["Aquädukt","n"],["Kronleuchter","m"],
