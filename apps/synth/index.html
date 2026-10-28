@@ -713,6 +713,13 @@ body.no-motion *{animation:none !important; transition:none !important}
         <button class="btn btn-sm" id="reset-timing">↺ Reset</button>
       </div>
       <div class="pref-row">
+        <div><div class="pl">Language</div><div class="pd">German adds Ä Ö Ü — each its base letter's colour a shade off, with two dots — and draws words and phrases in German. The other 36 colours stay exactly as they are.</div></div>
+        <select class="sel" id="p-lang">
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </div>
+      <div class="pref-row">
         <div><div class="pl">Session length</div><div class="pd">How many questions before the summary card.</div></div>
         <select class="sel" id="p-len">
           <option value="10">10 questions</option>
@@ -938,6 +945,7 @@ body.no-motion *{animation:none !important; transition:none !important}
 </main>
 <div id="toasts"></div>
 
+<script src="words-de.js"></script>
 <script>
 "use strict";
 
@@ -953,6 +961,21 @@ const DIGITS = '0123456789';
 const KEYS = (LETTERS + DIGITS).split('');                       // canonical stat keys
 const ALL_SYMBOLS = [...LETTERS.split(''), ...LETTERS.toLowerCase().split(''), ...DIGITS.split('')];
 
+/* German adds Ä Ö Ü. Each is its base letter a shade off (see umlautShade)
+   and drawn with two dots, as the letter is written: the colour says which
+   letter it comes from, the dots say it is the umlaut. The 36 symbols keep
+   the palette they were learned with — nothing about them changes — and the
+   three are offered only with German on. Stats for them are kept either way,
+   so switching back and forth loses nothing. */
+const UMLAUTS = 'ÄÖÜ';
+const UMLAUT_BASE = { 'Ä':'A', 'Ö':'O', 'Ü':'U' };
+const STAT_KEYS = [...KEYS, ...UMLAUTS.split('')];
+function german(){ return !!(data && data.prefs && data.prefs.lang === 'de'); }
+function letters(){ return german() ? LETTERS + UMLAUTS : LETTERS; }
+function keys(){ return [...letters().split(''), ...DIGITS.split('')]; }
+function symbols(){ const L = letters(); return [...L.split(''), ...L.toLowerCase().split(''), ...DIGITS.split('')]; }
+function isUmlaut(c){ return UMLAUT_BASE[String(c).toUpperCase()] !== undefined; }
+
 const DEFAULT_COLORS = {
   A:'255,0,0', B:'0,0,255', C:'237,125,5', D:'125,61,5', E:'36,255,0', F:'97,115,94',
   G:'19,178,0', H:'164,157,0', I:'176,111,217', J:'53,142,252', K:'184,232,139',
@@ -962,13 +985,39 @@ const DEFAULT_COLORS = {
   '1':'0,54,255','2':'255,0,0','3':'19,203,4','4':'135,9,182','5':'255,162,0',
   '6':'0,181,181','7':'117,1,125','8':'30,1,97','9':'228,255,0','0':'0,0,0'
 };
+/* The base letter's hue and saturation, lightness moved by a tenth — lighter
+   from a dark colour, darker from a light one. Not further: every way out of
+   A's red runs into M or R, which is why the dots carry the difference and
+   the colour only has to stay recognisably A's. */
+function umlautShade(rgb){
+  let [r, g, b] = rgb.split(',').map(v => +v / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  let h = 0, s = 0;
+  if(max !== min){
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h *= 60;
+  }
+  const L = l < 0.55 ? l + 0.10 : l - 0.10;
+  const k = n => (n + h / 30) % 12, a = s * Math.min(L, 1 - L);
+  const f = n => Math.round(255 * (L - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
+  return [f(0), f(8), f(4)].join(',');
+}
+UMLAUTS.split('').forEach(u => { DEFAULT_COLORS[u] = umlautShade(DEFAULT_COLORS[UMLAUT_BASE[u]]); });
+/* An umlaut not in a saved palette follows that palette's base letter. */
+function fillUmlauts(saved){
+  UMLAUTS.split('').forEach(u => { if(!saved || !(u in saved)) colors[u] = umlautShade(colors[UMLAUT_BASE[u]]); });
+}
+
 /* Names exactly as authored in the original palette table — do not "improve" these.
    Digits are deliberately unnamed there, so they show their RGB triplet instead. */
 const COLOR_NAMES = {
   A:'Red', B:'Blue', C:'Orange', D:'Brown', E:'Green', F:'Olive', G:'Dark Green',
   H:'Yellow Green', I:'Purple', J:'Light Blue', K:'Light Green', L:'Dark Purple',
   M:'Coral', N:'Lime', O:'Orange', P:'Burgundy', Q:'Pink', R:'Dark Red', S:'Indigo',
-  T:'Teal', U:'Pale Yellow', V:'Magenta', W:'Pink', X:'Greyish Pink', Y:'Yellow', Z:'Grey'
+  T:'Teal', U:'Pale Yellow', V:'Magenta', W:'Pink', X:'Greyish Pink', Y:'Yellow', Z:'Grey',
+  'Ä':'Red, lighter', 'Ö':'Orange, lighter', 'Ü':'Pale Yellow, darker'
 };
 /* Label for a symbol's colour: the author's name for letters, the raw RGB for digits. */
 function colorLabel(k){ return COLOR_NAMES[k] || colors[k] || ''; }
@@ -980,7 +1029,8 @@ const MNEMONIC = {
   U:['☂️','umbrella'], V:['🌋','volcano'], W:['🌊','wave'], X:['❌','cross'], Y:['⛵','yacht'], Z:['⚡','zap'],
   '1':['🕯️','one candle'], '2':['🦢','two swans'], '3':['🔱','trident'], '4':['🍀','four-leaf clover'],
   '5':['🖐️','five fingers'], '6':['🐚','shell'], '7':['⛏️','pickaxe'], '8':['🎱','eight ball'],
-  '9':['🎈','balloon'], '0':['🍩','donut']
+  '9':['🎈','balloon'], '0':['🍩','donut'],
+  'Ä':['🌾','Ähre, an ear of wheat'], 'Ö':['🛢️','Öl, oil'], 'Ü':['🎁','Überraschung, a surprise']
 };
 const SHAPE_NAME = { block:'Square', circle:'Circle', triangle:'Triangle', punctuation:'Glyph' };
 
@@ -1020,6 +1070,9 @@ KEYS.forEach((c, i) => {
 /* Kept because several screens still quote a frequency. */
 const FREQ = {};
 KEYS.forEach(c => { FREQ[c] = VOICE[c].freq; });
+/* An umlaut sounds as its base letter: the tones are a 6 × 6 code, and a 37th
+   would break the one dimension it never asks you to split more than six ways. */
+UMLAUTS.split('').forEach(u => { VOICE[u] = VOICE[UMLAUT_BASE[u]]; FREQ[u] = FREQ[UMLAUT_BASE[u]]; });
 
 function voiceLabel(c){
   const v = VOICE[String(c).toUpperCase()];
@@ -1480,46 +1533,113 @@ const LEXICON = {
 };
 
 /* ---- Sentence grammar -------------------------------------------------
-   The old build shipped 22 fixed phrases, so they came round constantly.
-   These banks + templates generate grammatical sentences combinatorially:
-   tens of thousands of distinct results, all real words, all readable. --- */
+   Phrases are built, not stored: banks of words and templates that combine
+   them. They used to be built from everyday words (sea, calm, silver) into
+   sixteen two-to-four-word skeletons, so however many distinct strings came
+   out, they read alike — "the" in four phrases of ten, "The X Y" again and
+   again. Now every content word is advanced vocabulary, the templates carry
+   clauses and prepositions, and no template or content word comes back
+   while it is still in recent memory (see drawSentence). No punctuation:
+   a phrase is typed back exactly, and a comma is nothing to do with colour.
+
+   German comes from words-de.js; its templates are below, with the grammar
+   — articles and adjective endings by gender and case — written out. --- */
 const G = {
-  noun: "sun moon star sky sea tree bird dog cat fish river stone cloud road house door book song fire wind rain snow boy girl child friend city town field hill lake ship train clock letter story dream night garden forest bridge key box chair table glass apple bread water horse mouse bear wolf fox owl bee path gate hand heart eye voice name light shadow wall floor roof window candle mirror flower leaf root branch feather wave shore island valley storm bell rope boat cave nest ring coat lamp".split(' '),
-  nounPl: "stars birds trees waves clouds rivers stones roads doors books songs fires winds dreams gardens forests bridges keys chairs tables apples horses wolves owls bees paths gates hands hearts eyes voices lights shadows walls windows candles mirrors flowers leaves roots branches shores islands valleys storms bells ropes boats caves nests rings lamps".split(' '),
-  adj: "red blue green dark bright small big old new cold warm soft hard quiet loud quick slow happy sad kind wild calm deep high low long short empty full clean sharp sweet strange silent golden silver heavy light young brave tired wide thin pale rough smooth still".split(' '),
-  verbS: "shines glows falls rises runs flies sings sleeps waits turns opens closes burns grows moves waves calls holds breaks bends floats drifts fades gleams sways rings".split(' '),
-  verbPast: "shone fell rose ran flew sang slept waited turned opened closed burned grew moved waved called held broke bent floated drifted faded gleamed swayed rang".split(' '),
-  verbImp: "open close hold find keep take read write watch follow trust learn build share seek carry begin listen".split(' '),
-  // verbs that take a direct object — "Listen the friend" is not English
-  verbTrans: "open close hold find keep take read write watch follow trust learn build share seek carry".split(' '),
-  // things you can plausibly own, for "your X"
-  possess: "mind heart work name book dream path voice hand day road key song plan place".split(' '),
-  abstract: "love peace hope time truth joy fear mind life work art music dream faith calm light silence".split(' '),
-  // "X as Y" only works with vivid comparison nouns
-  compare: "stone snow ice night day gold silver fire water glass iron sea steel dust".split(' '),
-  // "X in the Y" needs a place, not an object
-  place: "garden forest sea river city town field valley house sky rain snow night shadow street park".split(' '),
-  // only time/place words read correctly after "at"
-  timePlace: "night dawn dusk noon sea home rest sunset midnight last play work school".split(' '),
-  idiom: ["Keep going","Never give up","Stay strong","Be kind","Think big","Learn fast","Play hard","Dream loud","Hold on","Look again","Try once more","Start now"]
+  noun: ("cathedral labyrinth archipelago observatory citadel lighthouse glacier estuary monastery aqueduct " +
+    "chandelier tapestry manuscript compass telescope pendulum lantern harbour meridian horizon avalanche " +
+    "cartographer alchemist philosopher astronomer wanderer sentinel falcon heron leviathan orchard vineyard " +
+    "colonnade amphitheatre sanctuary catacomb minaret parapet promontory fjord savanna tundra nebula comet " +
+    "eclipse equinox solstice monsoon tempest whirlpool cascade reservoir quarry foundry conservatory " +
+    "menagerie gallery archive chronicle sonnet symphony overture requiem nocturne fresco mosaic sculpture " +
+    "obelisk mausoleum pavilion gondola caravel frigate zeppelin locomotive viaduct apothecary astrolabe sextant").split(' '),
+  nounPl: ("cathedrals labyrinths observatories citadels lighthouses glaciers monasteries aqueducts chandeliers " +
+    "tapestries manuscripts compasses telescopes pendulums lanterns harbours horizons avalanches cartographers " +
+    "alchemists philosophers astronomers wanderers sentinels falcons herons orchards vineyards colonnades " +
+    "sanctuaries catacombs minarets parapets promontories fjords nebulae comets eclipses monsoons tempests " +
+    "whirlpools cascades reservoirs galleries archives chronicles sonnets symphonies frescoes mosaics " +
+    "sculptures obelisks pavilions gondolas caravels frigates zeppelins viaducts").split(' '),
+  adj: ("luminous iridescent melancholy resplendent ephemeral labyrinthine venerable austere serene " +
+    "tempestuous sombre translucent opulent desolate verdant crystalline imperious enigmatic inscrutable " +
+    "nocturnal celestial subterranean gossamer burnished weathered forgotten unfathomable meticulous solitary " +
+    "reverent intricate ornate gilded vaulted sunken ancient distant restless tranquil incandescent " +
+    "phosphorescent majestic elusive formidable eloquent spectral vermilion obsidian immaculate").split(' '),
+  /* Intransitive, in three aligned forms: it glimmers, they glimmer, it glimmered. */
+  verbS: ("glimmers smoulders reverberates meanders dwindles flourishes crumbles shimmers endures awakens " +
+    "lingers unravels falters resonates persists wavers subsides emerges ascends recedes flickers trembles " +
+    "prevails vanishes").split(' '),
+  verbPl: ("glimmer smoulder reverberate meander dwindle flourish crumble shimmer endure awaken linger unravel " +
+    "falter resonate persist waver subside emerge ascend recede flicker tremble prevail vanish").split(' '),
+  verbPast: ("glimmered smouldered reverberated meandered dwindled flourished crumbled shimmered endured " +
+    "awakened lingered unravelled faltered resonated persisted wavered subsided emerged ascended receded " +
+    "flickered trembled prevailed vanished").split(' '),
+  /* Transitive, base form: an imperative, or after "we". */
+  verbTrans: ("contemplate illuminate decipher traverse navigate chronicle safeguard cultivate unearth reconcile " +
+    "orchestrate catalogue scrutinise reconstruct commemorate excavate").split(' '),
+  adv: ("silently imperceptibly relentlessly inexorably gracefully solemnly reluctantly perpetually " +
+    "momentarily ceaselessly tentatively deliberately wistfully serenely majestically patiently").split(' '),
+  abstract: ("serendipity equanimity perseverance solitude reverie nostalgia resilience ambiguity eloquence " +
+    "curiosity clarity providence transience sovereignty benevolence ingenuity temperance fortitude " +
+    "tranquillity sincerity audacity gratitude contemplation discernment wisdom").split(' '),
+  prep: "beneath beyond across within above along towards behind amid".split(' ')
 };
+function an(w){ return /^[aeiou]/i.test(w) ? 'an' : 'a'; }
 const SENTENCE_TEMPLATES = [
-  () => 'The ' + pick(G.noun) + ' ' + pick(G.verbS),
-  () => cap(pick(G.adj)) + ' ' + pick(G.adj) + ' ' + pick(G.noun),
-  () => cap(pick(G.abstract)) + ' and ' + pick(G.abstract),
-  () => cap(pick(G.verbTrans)) + ' your ' + pick(G.possess),
-  () => cap(pick(G.nounPl)) + ' at ' + pick(G.timePlace),
-  () => cap(pick(G.verbTrans)) + ' the ' + pick(G.noun),
-  () => 'The ' + pick(G.adj) + ' ' + pick(G.noun),
-  () => 'A ' + pick(G.adj) + ' ' + pick(G.noun),
-  () => 'The ' + pick(G.noun) + ' ' + pick(G.verbPast),
-  () => cap(pick(G.adj)) + ' ' + pick(G.nounPl),
-  () => cap(pick(G.verbImp)) + ' and ' + pick(G.verbImp),
-  () => cap(pick(G.noun)) + ' in the ' + pick(G.place),
-  () => cap(pick(G.adj)) + ' as ' + pick(G.compare),
-  () => 'Two ' + pick(G.nounPl) + ' ' + pick(G.verbPast),
+  () => 'The ' + pick(G.adj) + ' ' + pick(G.noun) + ' ' + pick(G.verbS) + ' ' + pick(G.adv),
+  () => cap(pick(G.adj)) + ' ' + pick(G.nounPl) + ' ' + pick(G.verbPl) + ' ' + pick(G.prep) + ' the ' + pick(G.noun),
   () => 'The ' + pick(G.noun) + ' of ' + pick(G.abstract),
-  () => pick(G.idiom)
+  () => cap(pick(G.verbTrans)) + ' the ' + pick(G.adj) + ' ' + pick(G.noun),
+  () => cap(pick(G.abstract)) + ' is the ' + pick(G.noun) + ' of ' + pick(G.abstract),
+  () => { const a = pick(G.adj); return cap(an(a)) + ' ' + a + ' ' + pick(G.noun) + ' ' + pick(G.verbPast) + ' ' + pick(G.prep) + ' the ' + pick(G.noun); },
+  () => 'Neither ' + pick(G.abstract) + ' nor ' + pick(G.abstract),
+  () => 'Between the ' + pick(G.noun) + ' and the ' + pick(G.noun),
+  () => cap(pick(G.adv)) + ' the ' + pick(G.nounPl) + ' ' + pick(G.verbPast),
+  () => 'The ' + pick(G.nounPl) + ' of the ' + pick(G.adj) + ' ' + pick(G.noun),
+  () => 'Through ' + pick(G.abstract) + ' we ' + pick(G.verbTrans) + ' the ' + pick(G.nounPl),
+  () => 'In the ' + pick(G.adj) + ' ' + pick(G.noun) + ' ' + pick(G.abstract) + ' ' + pick(G.verbS),
+  () => 'Nothing ' + pick(G.verbS) + ' like the ' + pick(G.adj) + ' ' + pick(G.noun),
+  () => { const n = pick(G.noun); return cap(pick(G.adj)) + ' as ' + an(n) + ' ' + n; },
+  () => 'Every ' + pick(G.noun) + ' ' + pick(G.verbS) + ' ' + pick(G.prep) + ' the ' + pick(G.adj) + ' ' + pick(G.noun),
+  () => 'The ' + pick(G.noun) + ' ' + pick(G.verbS) + ' while the ' + pick(G.nounPl) + ' ' + pick(G.verbPl),
+  () => cap(pick(G.abstract)) + ' ' + pick(G.verbS) + ' ' + pick(G.adv),
+  () => cap(pick(G.verbTrans)) + ' the ' + pick(G.nounPl) + ' with ' + pick(G.abstract),
+  () => 'Only the ' + pick(G.adj) + ' ' + pick(G.noun) + ' ' + pick(G.verbS),
+  () => { const n = pick(G.noun); return cap(an(n)) + ' ' + n + ' of ' + pick(G.adj) + ' ' + pick(G.nounPl); }
+];
+
+/* German. Nouns carry their gender; the article and the adjective ending are
+   chosen from it, by case: der/die/das with -e, ein/eine/ein with -er/-e/-es,
+   den/die/das with -en/-e/-e, dem/der/dem with -en. */
+const D = typeof SYNTH_DE !== 'undefined' ? SYNTH_DE.phrase : null;
+/* "Die Kathedrale der Gelassenheit": a feminine noun's genitive is its own form. */
+if(D) D.abstractF = D.abstract.filter(a => a[1] === 'f').map(a => a[0]);
+const DE_ART = {
+  nom:  { m:'der', f:'die', n:'das' }, acc: { m:'den', f:'die', n:'das' }, dat: { m:'dem', f:'der', n:'dem' },
+  ein:  { m:'ein', f:'eine', n:'ein' }, inDat: { m:'Im', f:'In der', n:'Im' }
+};
+const DE_END = { nom:{ m:'e', f:'e', n:'e' }, acc:{ m:'en', f:'e', n:'e' }, dat:{ m:'en', f:'en', n:'en' }, ein:{ m:'er', f:'e', n:'es' } };
+/* An article, an adjective with its ending and a noun, in one case. */
+function deNP(kase, adj){
+  const [n, g, oblique] = pick(D.noun);
+  const noun = oblique && (kase === 'acc' || kase === 'dat' || kase === 'inDat') ? oblique : n;
+  return (kase === 'inDat' ? DE_ART.inDat[g] : DE_ART[kase][g]) + (adj ? ' ' + pick(D.adj) + DE_END[kase === 'inDat' ? 'dat' : kase][g] : '') + ' ' + noun;
+}
+const SENTENCE_TEMPLATES_DE = [
+  () => cap(deNP('nom', true)) + ' ' + pick(D.verb) + ' ' + pick(D.adv),
+  () => cap(pick(D.adj)) + 'e ' + pick(D.plural) + ' ' + pick(D.verbPl) + ' ' + pick(D.prep) + ' ' + deNP('dat', false),
+  () => cap(deNP('nom', false)) + ' der ' + pick(D.abstractF),
+  () => pick(D.imp) + ' ' + deNP('acc', true),
+  () => cap(deNP('ein', true)) + ' ' + pick(D.past) + ' ' + pick(D.prep) + ' ' + deNP('dat', true),
+  () => 'Weder ' + pick(D.abstract)[0] + ' noch ' + pick(D.abstract)[0],
+  () => 'Zwischen ' + deNP('dat', false) + ' und ' + deNP('dat', false),
+  () => cap(pick(D.adv)) + ' ' + pick(D.past) + ' ' + deNP('nom', true),
+  () => 'Durch ' + pick(D.abstract)[0] + ' ' + pick(D.weVerb) + ' wir ' + deNP('acc', true),
+  () => { const [a, g] = pick(D.abstract); return deNP('inDat', true) + ' ' + pick(D.verb) + ' ' + DE_ART.nom[g] + ' ' + a; },
+  () => 'Nichts ' + pick(D.verb) + ' wie ' + deNP('nom', true),
+  () => cap(deNP('nom', false)) + ' ' + pick(D.verb) + ' ' + pick(D.prep) + ' ' + deNP('dat', true),
+  () => cap(pick(D.adj)) + ' wie ' + deNP('ein', false),
+  () => 'Nur ' + deNP('nom', true) + ' ' + pick(D.verb),
+  () => pick(D.imp) + ' die ' + pick(D.plural) + ' mit ' + pick(D.abstract)[0],
+  () => { const [a, g] = pick(D.abstract); return cap(DE_ART.nom[g]) + ' ' + a + ' ' + pick(D.verb) + ' ' + pick(D.adv); }
 ];
 function pick(a){ return a[Math.floor(Math.random() * a.length)]; }
 function cap(w){ return w.charAt(0).toUpperCase() + w.slice(1); }
@@ -1530,28 +1650,43 @@ function drawFrom(bag){
   if(!bag.rest.length) bag.rest = bag.items.slice().sort(() => Math.random() - 0.5);
   return bag.rest.pop();
 }
-let wordBags = {}, recentSentences = [];
+/* German words, bucketed by length the way LEXICON is written. */
+const LEXICON_DE = {};
+if(typeof SYNTH_DE !== 'undefined') SYNTH_DE.words.forEach(w => { (LEXICON_DE[w.length] = LEXICON_DE[w.length] || []).push(w); });
+function lexicon(){ return german() && LEXICON_DE[5] ? LEXICON_DE : LEXICON; }
+let wordBags = {}, recentSentences = [], recentTemplates = [], recentWords = [];
 /* Word length ramps with your streak so a session opens gently. */
 function wordCeiling(){ return Math.max(4, Math.min(7, 4 + Math.floor(streak / 4))); }
-function wordsOfLength(n){ return LEXICON[n] || LEXICON[5]; }
+function wordsOfLength(n){ const L = lexicon(); return L[n] || L[5]; }
 /* Word length grows with your streak, so early questions stay short. */
 function drawWord(minLen, maxLen){
-  const lens = [];
-  for(let n = minLen; n <= maxLen; n++) if(LEXICON[n]) lens.push(n);
-  const n = lens[Math.floor(Math.random() * lens.length)];
-  if(!wordBags[n]) wordBags[n] = makeBag(wordsOfLength(n));
-  return drawFrom(wordBags[n]);
+  const L = lexicon(), lens = [];
+  for(let n = minLen; n <= maxLen; n++) if(L[n]) lens.push(n);
+  const n = lens[Math.floor(Math.random() * lens.length)], key = (german() ? 'de' : 'en') + n;
+  if(!wordBags[key]) wordBags[key] = makeBag(wordsOfLength(n));
+  return drawFrom(wordBags[key]);
 }
+/* Words that carry nothing — articles, prepositions, "we" — may repeat; any
+   other word may not while it is among the last forty used. */
+const FUNCTION_WORDS = new Set(('the a an of and nor neither between through we in like as every while with only is ' +
+  'der die das den dem des ein eine einer im in und noch weder zwischen durch wir wie nichts nur mit').split(' '));
 function drawSentence(){
-  for(let tries = 0; tries < 40; tries++){
-    const s = SENTENCE_TEMPLATES[Math.floor(Math.random() * SENTENCE_TEMPLATES.length)]();
-    if(s.length < 9 || s.length > 26) continue;
-    if(recentSentences.includes(s)) continue;
-    recentSentences.push(s);
-    if(recentSentences.length > 60) recentSentences.shift();
+  const de = german() && D, T = de ? SENTENCE_TEMPLATES_DE : SENTENCE_TEMPLATES;
+  for(let tries = 0; tries < 200; tries++){
+    const t = Math.floor(Math.random() * T.length);
+    if(recentTemplates.includes(t)) continue;                      // no skeleton twice in five
+    const s = T[t]();
+    if(s.length < 16 || s.length > 46) continue;
+    const content = s.toLowerCase().split(' ').filter(w => !FUNCTION_WORDS.has(w));
+    if(recentSentences.includes(s) || content.some(w => recentWords.includes(w))) continue;
+    recentSentences.push(s); if(recentSentences.length > 60) recentSentences.shift();
+    recentTemplates.push(t); if(recentTemplates.length > Math.min(5, T.length - 1)) recentTemplates.shift();
+    recentWords.push(...content); while(recentWords.length > 40) recentWords.shift();
     return s;
   }
-  return 'The sun shines';
+  /* Everything recent: start the memory over rather than repeat a phrase. */
+  recentTemplates = []; recentWords = [];
+  return T[0]();
 }
 
 const RANKS = [
@@ -1632,7 +1767,7 @@ const DEFAULT_DATA = () => ({
   timing:{},                                   // calibrated window per mode, persisted
   toneTier:1, toneMiss:0,                      // how many timbre families Tone ID uses
   prefs:{ sound:true, volume:50, timer:true, motion:true, teach:true, sessionLen:20,
-          accTarget:0.85, outlineDark:true },
+          accTarget:0.85, outlineDark:true, lang:'en' },
   version:VERSION
 });
 
@@ -1645,7 +1780,7 @@ const $$ = sel => Array.from(document.querySelectorAll(sel));
 function load(){
   data = DEFAULT_DATA();
   try { const raw = localStorage.getItem(STORE_DATA); if(raw) Object.assign(data, JSON.parse(raw)); } catch(e){}
-  try { const raw = localStorage.getItem(STORE_COLORS); if(raw) Object.assign(colors, JSON.parse(raw)); } catch(e){}
+  try { const raw = localStorage.getItem(STORE_COLORS); if(raw){ const saved = JSON.parse(raw); Object.assign(colors, saved); fillUmlauts(saved); } } catch(e){}
   migrate();
   rebuildWeights();
 }
@@ -1665,7 +1800,7 @@ function migrate(){
 
   // Fold old lowercase / partial stat entries into canonical uppercase keys
   const next = {};
-  KEYS.forEach(k => next[k] = {c:0, w:0, rtSum:0, rtN:0, rtBest:null, last:null});
+  STAT_KEYS.forEach(k => next[k] = {c:0, w:0, rtSum:0, rtN:0, rtBest:null, last:null});
   for(const k in (data.symbolStats || {})){
     const K = String(k).toUpperCase();
     if(!next[K]) continue;
@@ -1700,7 +1835,7 @@ function importData(file){
     const when = p.exported ? p.exported.split('T')[0] : 'unknown date';
     if(!confirm('Replace your current progress with the backup from ' + when + '?\n\nThis cannot be undone.')) return;
     data = Object.assign(DEFAULT_DATA(), p.data);
-    if(p.colors) colors = Object.assign({...DEFAULT_COLORS}, p.colors);
+    if(p.colors){ colors = Object.assign({...DEFAULT_COLORS}, p.colors); fillUmlauts(p.colors); }
     migrate(); rebuildWeights(); save(); saveColors();
     applyPrefs(); updateHeader(); checkChallenge(); updateChallengeUI(); renderHome(); renderDataTab();
     toast('challenge', 'Progress restored');
@@ -1749,8 +1884,8 @@ function median(arr){
 }
 function fmtMs(ms){ return ms == null ? '—' : (ms < 1000 ? Math.round(ms) + 'ms' : (ms/1000).toFixed(2) + 's'); }
 function getShape(c){
-  if(c >= 'A' && c <= 'Z') return 'block';
-  if(c >= 'a' && c <= 'z') return 'circle';
+  if((c >= 'A' && c <= 'Z') || (c && UMLAUTS.includes(c))) return 'block';
+  if((c >= 'a' && c <= 'z') || (c && UMLAUTS.toLowerCase().includes(c))) return 'circle';
   if(c >= '0' && c <= '9') return 'triangle';
   return 'punctuation';
 }
@@ -1797,6 +1932,16 @@ function makeShape(ch, size){
     el.setAttribute('stroke-width', '4');
   }
   svg.appendChild(el);
+  /* The umlaut's two dots, in whichever ink stands off its colour. */
+  if(isUmlaut(ch)){
+    const ink = lum(col) > 0.55 ? 'rgba(0,0,0,.72)' : 'rgba(255,255,255,.9)';
+    [33, 67].forEach(cx => {
+      const d = document.createElementNS(ns, 'circle');
+      d.setAttribute('cx', String(cx)); d.setAttribute('cy', shape === 'block' ? '27' : '30'); d.setAttribute('r', '8');
+      d.setAttribute('fill', ink);
+      svg.appendChild(d);
+    });
+  }
   return svg;
 }
 
@@ -1915,11 +2060,11 @@ function baseWeight(sym){
 }
 function rebuildWeights(){
   weights = {};
-  ALL_SYMBOLS.forEach(s => { weights[s] = baseWeight(s); });
+  [...ALL_SYMBOLS, ...UMLAUTS.split(''), ...UMLAUTS.toLowerCase().split('')].forEach(s => { weights[s] = baseWeight(s); });
 }
 function pickSymbol(pool){
-  const items = (pool && pool.length ? pool : ALL_SYMBOLS).filter(s => s !== lastPicked);
-  const list  = items.length ? items : (pool && pool.length ? pool : ALL_SYMBOLS);
+  const items = (pool && pool.length ? pool : symbols()).filter(s => s !== lastPicked);
+  const list  = items.length ? items : (pool && pool.length ? pool : symbols());
   const eff = list.map(s => ({ s, w: Math.sqrt(weights[s] != null ? weights[s] : 10) }));
   const total = eff.reduce((a, x) => a + x.w, 0);
   let r = Math.random() * total;
@@ -1942,14 +2087,14 @@ function recordAnswer(sym, ok, rt){
   t.last = Date.now();
 }
 function creditWord(word){                                // words only ever add positive evidence
-  new Set(word.toUpperCase().split('').filter(c => KEYS.includes(c))).forEach(c => {
+  new Set(word.toUpperCase().split('').filter(c => STAT_KEYS.includes(c))).forEach(c => {
     const t = data.symbolStats[c];
     if(t){ t.c++; t.last = Date.now(); }
     weights[c] = Math.max(1.5, (weights[c] || 10) - 1);
   });
 }
 function needsReview(){
-  return KEYS.filter(k => {
+  return keys().filter(k => {
     const t = stat(k), n = t.c + t.w;
     if(n === 0) return true;
     if(t.c / n < 0.85) return true;
@@ -1959,15 +2104,15 @@ function needsReview(){
   });
 }
 function weakest(n){
-  return KEYS.filter(k => seenOf(k) > 0)
+  return keys().filter(k => seenOf(k) > 0)
     .sort((a, b) => (accOf(a) - accOf(b)) || ((avgRt(b) || 0) - (avgRt(a) || 0)))
     .slice(0, n);
 }
 function masteredCount(){
-  return KEYS.filter(k => { const a = accOf(k); return a != null && a >= 0.9 && seenOf(k) >= 5; }).length;
+  return keys().filter(k => { const a = accOf(k); return a != null && a >= 0.9 && seenOf(k) >= 5; }).length;
 }
 function globalMedianRt(){
-  const all = KEYS.filter(k => stat(k).rtN > 0).map(k => avgRt(k));
+  const all = keys().filter(k => stat(k).rtN > 0).map(k => avgRt(k));
   return median(all);
 }
 
@@ -2202,7 +2347,7 @@ function applyStaircase(ok){
 /* Distinct symbols in the current question. */
 function uniqueSymbols(str){
   const seen = new Set();
-  String(str).toUpperCase().split('').forEach(c => { if(/[A-Z0-9]/.test(c)) seen.add(c); });
+  String(str).toUpperCase().split('').forEach(c => { if(/[A-Z0-9ÄÖÜ]/.test(c)) seen.add(c); });
   return Array.from(seen);
 }
 /* Per-symbol cost multiplier: unseen symbols cost more than mastered ones,
@@ -2279,7 +2424,7 @@ function qDecode(){
   audio.tone(c);
   const q = $('question-container');
   q.appendChild(makeShape(c, 96));
-  buildOptions(c, ALL_SYMBOLS, 'text');
+  buildOptions(c, symbols(), 'text');
   startTimer();
 }
 function qFindColor(){
@@ -2290,7 +2435,7 @@ function qFindColor(){
   s.textContent = c;
   s.style.cssText = 'font-size:4.4rem;font-weight:750;line-height:1';
   $('question-container').appendChild(s);
-  buildOptions(c, ALL_SYMBOLS, 'shape');
+  buildOptions(c, symbols(), 'shape');
   startTimer();
 }
 function qSensory(){
@@ -2309,7 +2454,7 @@ function qSensory(){
   meta.textContent = SHAPE_NAME[getShape(c)].toUpperCase() + ' · ' + voiceLabel(u).toUpperCase();
   card.append(g, mn, meta);
   $('question-container').appendChild(card);
-  buildOptions(c, ALL_SYMBOLS, 'text');
+  buildOptions(c, symbols(), 'text');
   startTimer();
 }
 function qTyping(text){
@@ -2554,7 +2699,7 @@ const SEARCH_SIZES = [6, 12, 20];
 function qSearch(){
   const size = SEARCH_SIZES[Math.floor(Math.random() * SEARCH_SIZES.length)];
   const target = pickSymbol(focusPool);
-  const pool = ALL_SYMBOLS.filter(x => x.toUpperCase() !== target.toUpperCase());
+  const pool = symbols().filter(x => x.toUpperCase() !== target.toUpperCase());
   cur = { answer:target, meta:{ char:target, size:size, kind:'search' } };
 
   const q = $('question-container');
@@ -2880,7 +3025,7 @@ function endSession(){
     });
     $('sum-drill').onclick = () => {
       const pool = [];
-      missed.forEach(m => { pool.push(m); if(/[A-Z]/.test(m)) pool.push(m.toLowerCase()); });
+      missed.forEach(m => { pool.push(m); if(/[A-ZÄÖÜ]/.test(m)) pool.push(m.toLowerCase()); });
       openMode('game-symbol-to-char', { pool });
     };
   }
@@ -2918,7 +3063,7 @@ function startMemoryRound(){
 
   const len = memLevel + 2;
   memSeq = [];
-  for(let i = 0; i < len; i++) memSeq.push(pickSymbol(KEYS));
+  for(let i = 0; i < len; i++) memSeq.push(pickSymbol(keys()));
 
   const disp = $('mem-display');
   disp.innerHTML = '';
@@ -3064,7 +3209,7 @@ function confQuestion(syms){
 function renderLearn(){
   const strip = $('learn-strip');
   strip.innerHTML = '';
-  KEYS.forEach((k, i) => {
+  keys().forEach((k, i) => {
     const b = document.createElement('button');
     b.textContent = k;
     const col = colors[k] || '255,255,255';
@@ -3076,7 +3221,7 @@ function renderLearn(){
   renderLearnCard();
 }
 function renderLearnCard(){
-  const k = KEYS[learnIdx];
+  const k = keys()[learnIdx % keys().length];
   const col = colors[k] || '255,255,255';
   const custom = colors[k] !== DEFAULT_COLORS[k];
   const isDigit = /[0-9]/.test(k);
@@ -3107,15 +3252,15 @@ function renderLearnCard(){
   const v = VOICE[k];
   sound.innerHTML = 'Sounds <b>' + TIMBRES[v.family].name.toLowerCase() + '</b> — ' +
     TIMBRES[v.family].desc + ' — on note <b>' + DEGREE_NAMES[v.degree] + '</b>. ' +
-    '<span class="tiny muted">Shares its timbre with ' +
-    familyMembers(v.family).filter(x => x !== k).join(' ') + '</span>';
+    '<span class="tiny muted">' + (isUmlaut(k) ? 'The same tone as ' + UMLAUT_BASE[k] + ', whose colour it shares'
+      : 'Shares its timbre with ' + familyMembers(v.family).filter(x => x !== k).join(' ')) + '</span>';
   card.append(g, ch, mn, story, sound, meta);
 
   $$('#learn-strip button').forEach((b, i) => b.classList.toggle('on', i === learnIdx));
   audio.tone(k);
 }
 function learnStep(d){
-  learnIdx = (learnIdx + d + KEYS.length) % KEYS.length;
+  learnIdx = (learnIdx + d + keys().length) % keys().length;
   renderLearnCard();
 }
 
@@ -3177,7 +3322,7 @@ function renderHome(){
       b.innerHTML = '<span style="' + colStyle(k) + '">' + k + '</span>' +
         '<span class="pct">' + Math.round(accOf(k)*100) + '%</span>';
       b.title = 'Drill ' + k;
-      b.onclick = () => openMode('game-symbol-to-char', { pool:[k, /[A-Z]/.test(k) ? k.toLowerCase() : k] });
+      b.onclick = () => openMode('game-symbol-to-char', { pool:[k, /[A-ZÄÖÜ]/.test(k) ? k.toLowerCase() : k] });
       box.appendChild(b);
     });
   }
@@ -3201,7 +3346,7 @@ function buildModePicker(){
       best = n ? n + ' trials recorded' : 'Not measured yet';
     }
     else if(rec && rec.streak) best = 'Best streak ' + rec.streak + (rec.time ? ' · ' + (rec.time/1000).toFixed(2) + 's' : '');
-    else if(id === 'learn') best = KEYS.length + ' cards';
+    else if(id === 'learn') best = keys().length + ' cards';
     b.innerHTML = '<div class="mi">' + m.i + '</div><div class="mt">' + m.t + '</div>' +
                   '<div class="md">' + m.d + '</div><div class="mb">' + best + '</div>';
     b.onclick = () => openMode(id);
@@ -3225,7 +3370,7 @@ function renderProgress(){
 function buildHeatmap(){
   const c = $('heatmap');
   c.innerHTML = '';
-  KEYS.forEach(sym => {
+  keys().forEach(sym => {
     const a = accOf(sym), n = seenOf(sym);
     let bg = 'var(--surface-2)';
     if(n > 0){
@@ -3267,7 +3412,7 @@ function showSymbolDetail(sym, cell){
     '</div>' +
     '<button class="btn btn-sm" style="margin-top:14px" id="drill-sym">🎯 Drill ' + sym + '</button>';
   $('drill-sym').onclick = () => openMode('game-symbol-to-char', {
-    pool: /[A-Z]/.test(sym) ? [sym, sym.toLowerCase()] : [sym]
+    pool: /[A-ZÄÖÜ]/.test(sym) ? [sym, sym.toLowerCase()] : [sym]
   });
 }
 function buildChart(){
@@ -3378,7 +3523,7 @@ function renderSessionLog(){
   });
 }
 function renderDataTab(){
-  $('d-syms').textContent = KEYS.filter(k => seenOf(k) > 0).length + ' / 36';
+  $('d-syms').textContent = keys().filter(k => seenOf(k) > 0).length + ' / ' + keys().length;
   $('d-answers').textContent = (data.correct + data.wrong).toLocaleString();
   $('d-sessions').textContent = data.sessions.length;
   const days = Object.keys(data.activityHistory).sort();
@@ -3391,7 +3536,7 @@ function renderDataTab(){
 function buildColorConfig(){
   const c = $('color-config');
   c.innerHTML = '';
-  KEYS.forEach(k => {
+  keys().forEach(k => {
     const col = colors[k];
     const item = document.createElement('div');
     item.className = 'color-item';
@@ -3446,6 +3591,7 @@ function applyPrefs(){
   $('p-motion').checked = !!p.motion;
   $('p-outline').checked = p.outlineDark !== false;
   $('p-len').value = String(p.sessionLen);
+  $('p-lang').value = p.lang === 'de' ? 'de' : 'en';
   $('p-target').value = String(accTarget());
   const st = $('sound-toggle');
   st.textContent = p.sound ? '🔊' : '🔇';
@@ -3494,7 +3640,7 @@ function renderGuide(){
     });
     return t;
   };
-  $('guide-letters').innerHTML = ''; $('guide-letters').appendChild(table(LETTERS.split('')));
+  $('guide-letters').innerHTML = ''; $('guide-letters').appendChild(table(letters().split('')));
   // 1–9 then 0, matching the order of the original palette table
   $('guide-digits').innerHTML = '';  $('guide-digits').appendChild(table('1234567890'.split('')));
 
@@ -3529,7 +3675,7 @@ document.addEventListener('keydown', e => {
   if($('learn-panel').classList.contains('active')){
     if(e.key === 'ArrowRight'){ e.preventDefault(); learnStep(1); }
     else if(e.key === 'ArrowLeft'){ e.preventDefault(); learnStep(-1); }
-    else if(e.key === ' '){ e.preventDefault(); audio.tone(KEYS[learnIdx]); }
+    else if(e.key === ' '){ e.preventDefault(); audio.tone(keys()[learnIdx % keys().length]); }
     else if(e.key === 'Escape') exitToModes();
     return;
   }
@@ -3576,7 +3722,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('conf-start').onclick = startConfusion;
   $('learn-prev').onclick = () => learnStep(-1);
   $('learn-next').onclick = () => learnStep(1);
-  $('learn-play').onclick = () => audio.tone(KEYS[learnIdx]);
+  $('learn-play').onclick = () => audio.tone(keys()[learnIdx % keys().length]);
 
   // Tools sub-tabs
   $$('#tool-tabs button').forEach(b => b.onclick = () => {
@@ -3599,6 +3745,11 @@ document.addEventListener('DOMContentLoaded', () => {
     buildColorConfig(); renderGuide(); renderHome();   // repaint everything already on screen
   };
   $('p-len').onchange    = e => { data.prefs.sessionLen = +e.target.value; save(); };
+  $('p-lang').onchange   = e => {
+    data.prefs.lang = e.target.value === 'de' ? 'de' : 'en'; save();
+    wordBags = {}; recentSentences = []; recentTemplates = []; recentWords = []; learnIdx = 0;
+    buildColorConfig(); renderGuide(); renderHome();   // the symbol set on screen changes
+  };
   $('p-target').onchange = e => { data.prefs.accTarget = parseFloat(e.target.value); save(); };
   $('reset-timing').onclick = () => {
     data.timing = {}; save();

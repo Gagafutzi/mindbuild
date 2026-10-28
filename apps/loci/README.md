@@ -36,6 +36,10 @@ down as placing becomes automatic.
   longer ones, none on three letters or fewer; a swapped pair of letters is one
   slip. Something that spells another word from the lists is never a typo
   ("skull" for "skill"). A forgiven typo scores as right and is shown as typed.
+- **Language: English or Deutsch.** German has its own five tiers
+  (`words-de.js`), chosen for German rather than translated, shown capitalised
+  as German writes nouns and spoken in a German voice. Umlauts can be typed
+  either way: "Baer" is Bär.
 - **Order: matters, or any order.** In any order a list is perfect when every
   word comes back, wherever it is written; a word counts once however often it
   is typed, words never shown are listed as such, and Enter on an empty line

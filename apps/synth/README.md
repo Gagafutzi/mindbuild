@@ -16,6 +16,27 @@ strings. **Memory** holds a growing sequence. **Logic** continues a coloured
 sequence, **Confusions** drills only the pairs you actually mix up, and
 **Automaticity** and **Pop-out** measure whether any of it has stuck.
 
+## German
+
+Tools → Preferences → Language. German adds **Ä Ö Ü**: each takes its base
+letter's hue and saturation with the lightness moved by a tenth, and is drawn
+with two dots, as the letter is written. The colour says which letter it comes
+from and the dots say it is the umlaut; the dots are needed because every
+direction out of A's red runs into M or R. The 36 colours already learned are
+not touched, an umlaut sounds as its base letter (the tones stay a 6 × 6 code),
+and a saved palette that predates the umlauts derives them from its own A, O
+and U. Words and phrases come from `words-de.js`, with nouns capitalised; there
+is no ß, which has no capital for the stats to file it under.
+
+## Phrases
+
+Built from banks of advanced vocabulary (luminous, cartographer,
+imperceptibly; ehrwürdig, Kartograf, unmerklich) in twenty English and sixteen
+German templates, 16 to 46 characters, no punctuation. No template comes back
+within five phrases and no content word within forty words. The German
+templates choose articles and adjective endings by gender and case, and weak
+masculines take -en after den and dem.
+
 ## The two measurements
 
 Accuracy cannot tell you whether the training worked, because the adaptive timer

@@ -901,6 +901,72 @@ test("Loci Span forgives typos, swapped letters included, but not another word",
 });
 
 /*
+ * Loci Span in German: the same five tiers, each word in one, enough of each
+ * for a session; and the matcher folds umlauts, so "Baer" is Bär.
+ */
+test("Loci Span's German lists, and umlauts typed either way", () => {
+  const W = require("../apps/loci/words-de.js");
+  const where = new Map();
+  for (const level of [1, 2, 3, 4, 5]) {
+    const t = W.tiers[level];
+    assert.ok(t.words.length >= 100, `German tier ${level} has only ${t.words.length} words`);
+    for (const w of t.words) {
+      assert.ok(/^[a-zäöü]+$/.test(w), `"${w}" is not one lower-case German word without ß`);
+      assert.ok(!where.has(w), `"${w}" is in German tiers ${where.get(w)} and ${level}`);
+      where.set(w, level);
+    }
+  }
+  const vm = require("vm");
+  const html = readFileSync(path.join(__dirname, "..", "apps", "loci", "index.html"), "utf8");
+  const code = html.slice(html.indexOf("/* ---------- matching ---------- */"), html.indexOf("/* ---------- the session ---------- */"));
+  const L = vm.runInNewContext(code + "; ({ same: same })", { LOCI_WORDS: require("../apps/loci/words.js"), LOCI_WORDS_DE: W });
+  for (const [typed, word] of [["Baer", "Bär"], ["bär", "Bär"], ["Tuer", "Tür"], ["Krokodiel", "Krokodil"], ["Schmetterlnig", "Schmetterling"]]) {
+    assert.ok(L.same(typed, word), `"${typed}" is not taken as ${word}`);
+  }
+  assert.ok(!L.same("Hai", "Hut"), "a different short word was forgiven");
+});
+
+/*
+ * Synaesthesia in German: Ä Ö Ü each take their base letter's colour a shade
+ * off, the 36 colours already learned are not touched, and the German words
+ * and phrases are all writable with the symbols there are.
+ */
+test("Synaesthesia's German keeps the palette and shades the umlauts off their letters", () => {
+  const vm = require("vm");
+  const html = readFileSync(path.join(__dirname, "..", "apps", "synth", "index.html"), "utf8");
+  const pick = (from, to) => html.slice(html.indexOf(from), html.indexOf(to));
+  const ctx = { Math, Set };
+  vm.runInNewContext(pick("const LETTERS =", "/* Label for a symbol's colour") + "; this.DC = DEFAULT_COLORS; this.shade = umlautShade;", ctx);
+  const was = { A: "255,0,0", O: "255,162,0", U: "242,242,131", Z: "131,131,131", "0": "0,0,0" };
+  for (const [k, v] of Object.entries(was)) assert.strictEqual(ctx.DC[k], v, `${k} changed colour`);
+  assert.strictEqual(Object.keys(ctx.DC).length, 39, "not 36 colours and three umlauts");
+  const hue = (rgb) => { const [r, g, b] = rgb.split(",").map(Number); return Math.atan2(Math.sqrt(3) * (g - b), 2 * r - g - b); };
+  for (const [u, base] of [["Ä", "A"], ["Ö", "O"], ["Ü", "U"]]) {
+    assert.notStrictEqual(ctx.DC[u], ctx.DC[base], `${u} is ${base}'s colour exactly`);
+    assert.ok(Math.abs(hue(ctx.DC[u]) - hue(ctx.DC[base])) < 0.05, `${u} is not ${base}'s hue`);
+  }
+
+  const D = require("../apps/synth/words-de.js");
+  for (const w of D.words) assert.ok(/^[A-Za-zÄÖÜäöü]+$/.test(w), `German word "${w}" has a symbol the trainer has not got`);
+
+  /* The phrases, from the page's own grammar, in both languages. */
+  for (const lang of ["en", "de"]) {
+    const g = { Math, Set, SYNTH_DE: D, german: () => lang === "de", streak: 0, LEXICON: { 5: ["x"] } };
+    vm.runInNewContext(pick("/* ---- Sentence grammar", "const RANKS").replace(/^(const|let) /gm, "var ") + "; this.draw = drawSentence;", g);
+    const seen = [];
+    for (let i = 0; i < 400; i++) {
+      const p = g.draw();
+      assert.ok(/^[A-Za-zÄÖÜäöü ]+$/.test(p), `${lang} phrase "${p}" has a symbol the trainer has not got`);
+      assert.ok(p.length >= 16 && p.length <= 46, `${lang} phrase "${p}" is outside the length window`);
+      /* A weak masculine after den or dem takes -en: "den Kometen", not "den Komet". */
+      if (lang === "de") assert.ok(!/\b(den|dem|Im)( [a-zäöü]+)? (Komet|Obelisk|Falke|Astronom|Philosoph|Alchemist|Kartograf|Sextant)\b/.test(p), `"${p}" leaves a weak noun bare`);
+      seen.push(p);
+    }
+    assert.ok(new Set(seen).size >= 395, `${lang}: only ${new Set(seen).size} distinct phrases in 400`);
+  }
+});
+
+/*
  * The trainers that wear the hub's look over their own: each carries a
  * hub-skin.css, and it only works loaded last — the skin redefines the page's
  * own tokens, and a page style after it would quietly win them back. The

@@ -100,6 +100,10 @@
         <option value="voice">Spoken</option>
         <option value="both">Shown and spoken</option>
       </select></label>
+      <label class="f">Language<select id="lang">
+        <option value="en">English</option>
+        <option value="de">Deutsch</option>
+      </select></label>
       <label class="f">Order<select id="order">
         <option value="serial">Matters</option>
         <option value="free">Any order</option>
@@ -149,6 +153,7 @@
 </div>
 
 <script src="words.js"></script>
+<script src="words-de.js"></script>
 <!-- The hub's colour slider. Absent when the page is opened outside the
      built site, and then the stylesheet's sage simply stands. -->
 <script src="../shared/theme.js?v=1"></script>
@@ -191,7 +196,11 @@ function record() {
 
 /* ---------- words ---------- */
 
-var TIERS = LOCI_WORDS.tiers;
+/* The lists in the chosen language: the same five tiers, by how readily a word pictures itself. */
+function deutsch() { return settings.lang === "de" && typeof LOCI_WORDS_DE !== "undefined"; }
+function tiers() { return deutsch() ? LOCI_WORDS_DE.tiers : LOCI_WORDS.tiers; }
+/* German writes its nouns capitalised, and every word here is a noun. */
+function shown(w) { return deutsch() ? w.charAt(0).toUpperCase() + w.slice(1) : w; }
 /* The span being trained toward: thirty words recalled in order, in one list. */
 var GOAL = 30;
 /* The longest list ever recalled perfectly, across every session kept. */
@@ -203,7 +212,7 @@ function best() {
   }, 0);
 }
 var $ = function (id) { return document.getElementById(id); };
-var settings = Object.assign({ imagery: 5, span: 5, rate: 2.5, lists: 10, present: "screen", adaptive: true, order: "serial" }, load(SETTINGS_KEY, {}));
+var settings = Object.assign({ imagery: 5, span: 5, rate: 2.5, lists: 10, present: "screen", adaptive: true, order: "serial", lang: "en" }, load(SETTINGS_KEY, {}));
 var anyOrder = function (st) { return st.order === "free"; };
 
 function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
@@ -214,8 +223,8 @@ function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floo
 var unused = {};
 function draw(level) {
   var tier = level || 1 + Math.floor(Math.random() * 5);
-  if (!unused[tier] || !unused[tier].length) unused[tier] = shuffle(TIERS[tier].words.slice());
-  return { word: unused[tier].pop(), tier: tier };
+  if (!unused[tier] || !unused[tier].length) unused[tier] = shuffle(tiers()[tier].words.slice());
+  return { word: shown(unused[tier].pop()), tier: tier };
 }
 
 /* ---------- matching ---------- */
@@ -235,9 +244,15 @@ function distance(a, b) {
   }
   return d[a.length][b.length];
 }
-function norm(s) { return String(s || "").toLowerCase().replace(/[^a-z]/g, ""); }
+/* Umlauts as they are typed on a keyboard without them: "Baer" is Bär, and
+   so is "Bär"; ß is ss. Both sides are folded the same way before comparing. */
+function norm(s) {
+  return String(s || "").toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[^a-z]/g, "");
+}
 var VOCAB = {};
-if (typeof LOCI_WORDS !== "undefined") LOCI_WORDS.tiers.forEach(function (t) { if (t) t.words.forEach(function (w) { VOCAB[w] = true; }); });
+[typeof LOCI_WORDS !== "undefined" && LOCI_WORDS, typeof LOCI_WORDS_DE !== "undefined" && LOCI_WORDS_DE].forEach(function (lists) {
+  if (lists) lists.tiers.forEach(function (t) { if (t) t.words.forEach(function (w) { VOCAB[norm(w)] = true; }); });
+});
 function slipsAllowed(w) { return w.length >= 8 ? 2 : w.length >= 4 ? 1 : 0; }
 /** How many slips `given` is from `word`, or -1 if it is not that word. */
 function slips(given, word) {
@@ -313,6 +328,7 @@ function readSettings() {
   settings.present = $("present").value;
   settings.adaptive = $("adaptive").value === "1";
   settings.order = $("order").value === "free" ? "free" : "serial";
+  settings.lang = $("lang").value === "de" ? "de" : "en";
   save(SETTINGS_KEY, settings);
 }
 
@@ -351,7 +367,7 @@ function nextList() {
 function speak(word) {
   try {
     window.speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(word); u.rate = 0.95; u.lang = "en-US";
+    var u = new SpeechSynthesisUtterance(word); u.rate = 0.95; u.lang = deutsch() ? "de-DE" : "en-US";
     window.speechSynthesis.speak(u);
   } catch (e) {}
 }
@@ -460,12 +476,12 @@ function finish(completed) {
   var words = 0, inPlace = 0, perfect = 0, longest = 0;
   /* In any order a word counts wherever it was written; in order, only in its place. */
   s.lists.forEach(function (l) { words += l.level; inPlace += free ? l.extra.recalled : l.extra.inPlace; if (l.correct) { perfect++; longest = Math.max(longest, l.level); } });
-  var tierName = s.settings.imagery ? TIERS[s.settings.imagery].name.toLowerCase() : "mixed";
+  var tierName = s.settings.imagery ? tiers()[s.settings.imagery].name.toLowerCase() : "mixed";
   var rec = record();
   rec.appVersion = APP_VERSION;
   rec.sessions.push({
     id: "loci-" + s.start, start: s.start, end: Date.now(), activeSeconds: Math.round(s.active / 1000), completed: completed,
-    mode: "Imagery " + (s.settings.imagery || "mixed") + (s.settings.imagery ? " (" + tierName + ")" : "") + (free ? ", any order" : ""),
+    mode: "Imagery " + (s.settings.imagery || "mixed") + (s.settings.imagery ? " (" + tierName + ")" : "") + (free ? ", any order" : "") + (s.settings.lang === "de" ? ", Deutsch" : ""),
     modalities: s.settings.present === "both" ? ["visual", "audio"] : s.settings.present === "voice" ? ["audio"] : ["visual"],
     level: s.startSpan, levelEnd: s.span, trials: s.lists.length, correct: perfect,
     accuracy: words ? Math.round(1000 * inPlace / words) / 1000 : null, score: longest, input: "keyboard",
@@ -506,13 +522,13 @@ function drawTiers() {
     b.type = "button"; b.className = "tier"; b.setAttribute("aria-pressed", String(settings.imagery === lv));
     b.innerHTML = "<b></b><span></span>";
     b.querySelector("b").textContent = lv ? String(lv) : "∗";
-    b.querySelector("span").textContent = lv ? TIERS[lv].name : "Mixed";
+    b.querySelector("span").textContent = lv ? tiers()[lv].name : "Mixed";
     b.addEventListener("click", function () { settings.imagery = lv; save(SETTINGS_KEY, settings); drawTiers(); });
     box.appendChild(b);
   });
-  $("tierWhat").textContent = settings.imagery ? TIERS[settings.imagery].what + "." : "Every list mixes all five tiers.";
-  var pool = settings.imagery ? TIERS[settings.imagery].words : [].concat.apply([], TIERS.slice(1).map(function (t) { return t.words; }));
-  $("sample").textContent = shuffle(pool.slice()).slice(0, 6).join("  ·  ");
+  $("tierWhat").textContent = settings.imagery ? tiers()[settings.imagery].what + "." : "Every list mixes all five tiers.";
+  var pool = settings.imagery ? tiers()[settings.imagery].words : [].concat.apply([], tiers().slice(1).map(function (t) { return t.words; }));
+  $("sample").textContent = shuffle(pool.slice()).slice(0, 6).map(shown).join("  ·  ");
 }
 function lastNote() {
   var r = record(), last = r.sessions[r.sessions.length - 1];
@@ -523,6 +539,9 @@ function lastNote() {
 
 $("span").value = settings.span; $("rate").value = settings.rate; $("lists").value = settings.lists;
 $("present").value = settings.present; $("adaptive").value = settings.adaptive ? "1" : "0"; $("order").value = anyOrder(settings) ? "free" : "serial";
+$("lang").value = settings.lang === "de" ? "de" : "en";
+/* The sample words follow the language as soon as it is picked. */
+$("lang").addEventListener("change", function () { settings.lang = this.value === "de" ? "de" : "en"; save(SETTINGS_KEY, settings); drawTiers(); });
 $("startBtn").addEventListener("click", start);
 drawTiers();
 lastNote();
