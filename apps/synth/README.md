@@ -65,12 +65,21 @@ trials is noise.
 
 ## The timer
 
-Decoding effort scales with the number of *distinct* symbols, not word length —
-`sees` is two lookups, not four. So the window is `base + unit × demand`, where
-demand counts unique symbols weighted by how well you know each. A weighted
-staircase moves `unit` until you sit at the target accuracy; the steps satisfy
-`down/up = (1 − P)/P`, which is what makes it settle at P rather than wherever
-equal steps happen to balance.
+The window is `base + unit × demand + typing`. Demand counts every symbol,
+weighted by how well you know it; a symbol already met in the same item costs
+half, since its colour was decoded moments ago but it still has to be found and
+read in place. Typing is a fixed 220 ms per character, so `unit` stays the time
+a symbol takes to *read*. Typing modes may run to 120 s; the rest stop at 40 s.
+
+It used to count distinct symbols only (`sees` as two lookups, not four). That
+held for single words, but a 46-character phrase has barely more distinct
+letters than a long word, so long phrases timed out however well they were
+read. Moving to every symbol reset the learned unit of Word, Phrase, Flash and
+Match once; the other modes kept theirs.
+
+A weighted staircase moves `unit` until you sit at the target accuracy; the
+steps satisfy `down/up = (1 − P)/P`, which is what makes it settle at P rather
+than wherever equal steps happen to balance.
 
 ## Your data
 

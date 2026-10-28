@@ -983,6 +983,34 @@ test("Synaesthesia's German keeps the palette and shades the umlauts off their l
 });
 
 /*
+ * Synaesthesia's time window pays for every symbol, a repeat at half, and
+ * typing on top. It used to pay distinct symbols only, so a long phrase
+ * earned what a short word did and timed out however well it was read.
+ */
+test("Synaesthesia's window grows with every symbol of a phrase, not only the distinct ones", () => {
+  const vm = require("vm");
+  const html = readFileSync(path.join(__dirname, "..", "apps", "synth", "index.html"), "utf8");
+  const code = html.slice(html.indexOf("/* Every symbol in the current question"), html.indexOf("function startTimer"));
+  const g = { Math, Set, String, accOf: () => 0.8, seenOf: () => 10, cur: null, maxTime: 800,
+    modeCfg: { kind: "typing", base: 5000 } };
+  vm.runInNewContext(code.replace(/^const /gm, "var ") + "; this.win = windowFor; this.demand = itemDemand;", g);
+  const win = (text) => { g.cur = { answer: text, meta: null }; return g.win(); };
+
+  assert.ok(win("abcabc") > win("abc"), "repeating letters bought no time");
+  assert.ok(win("abcabc") - win("abc") < win("abcdef") - win("abc"), "a repeat cost as much as a new letter");
+  const phrase = "Through ingenuity we reconcile the vineyards";
+  /* Distinct letters and typing alone: what the old window paid, plus typing. Repeats must add to it. */
+  const distinct = new Set(phrase.toUpperCase().replace(/[^A-Z]/g, "")).size;
+  const alone = 5000 + 800 * distinct + phrase.length * 220;
+  assert.ok(win(phrase) > alone, `a ${phrase.length}-character phrase gets ${win(phrase)} ms, no more than its ${distinct} distinct letters and typing (${alone})`);
+  assert.ok(win(phrase) <= 120000, "the window has no ceiling");
+  /* Typing is paid only where something is typed. */
+  g.modeCfg = { kind: "quiz", base: 400 };
+  g.cur = { answer: "A", meta: { char: "A" } };
+  assert.strictEqual(g.win(), 400 + 800, "a single symbol is paid exactly one unit, no typing");
+});
+
+/*
  * The trainers that wear the hub's look over their own: each carries a
  * hub-skin.css, and it only works loaded last — the skin redefines the page's
  * own tokens, and a page style after it would quietly win them back. The

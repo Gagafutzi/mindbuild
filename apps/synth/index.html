@@ -1780,11 +1780,11 @@ const MODES = {
                           d:'See a character, pick its symbol. The reverse direction.'},
   'game-sensory':        {t:'Multi-sensory', i:'🔮', g:'core', kind:'quiz', base:500, unit:4100, unitMin:400, unitMax:14000,
                           d:'Symbol, tone and mnemonic together — best for encoding.'},
-  'game-word':           {t:'Word',          i:'🧠', g:'read', kind:'typing', base:3000, unit:1400, unitMin:300, unitMax:6000,
+  'game-word':           {t:'Word',          i:'🧠', g:'read', kind:'typing', base:3000, unit:1000, unitMin:300, unitMax:6000,
                           d:'Read a coded word of advanced vocabulary and type it. Case matters.'},
-  'game-phrase':         {t:'Phrase',        i:'📚', g:'read', kind:'typing', base:5000, unit:1100, unitMin:300, unitMax:6000,
+  'game-phrase':         {t:'Phrase',        i:'📚', g:'read', kind:'typing', base:5000, unit:800, unitMin:300, unitMax:6000,
                           d:'Whole phrases — context starts doing the work for you.'},
-  'game-flash':          {t:'Flash recall',  i:'⚡', g:'read', kind:'typing', base:2500, unit:1200, unitMin:300, unitMax:5000,
+  'game-flash':          {t:'Flash recall',  i:'⚡', g:'read', kind:'typing', base:2500, unit:900, unitMin:300, unitMax:5000,
                           d:'The word vanishes after a beat. Recall it from the after-image.'},
   'game-memory':         {t:'Memory',        i:'💭', g:'read', kind:'memory',
                           d:'Hold a growing sequence of symbols in mind, then reproduce it.'},
@@ -1861,7 +1861,13 @@ function migrate(){
   data.sessions = data.sessions || [];
   data.confusions = data.confusions || {};
   data.activityHistory = data.activityHistory || {};
-  if(data.timingScheme !== 'unit-v2'){ data.timing = {}; data.timingScheme = 'unit-v2'; }
+  if(data.timingScheme !== 'unit-v2' && data.timingScheme !== 'unit-v3') data.timing = {};
+  /* v3 pays a reading item by every symbol and adds typing on top, so what was
+     learned for the reading modes meant something else; the rest carry over. */
+  if(data.timingScheme !== 'unit-v3'){
+    if(data.timing) ['game-word', 'game-phrase', 'game-flash', 'game-match'].forEach(m => { delete data.timing[m]; });
+    data.timingScheme = 'unit-v3';
+  }
   data.timing = data.timing || {};
   data.toneTier = Math.max(1, Math.min(6, data.toneTier || 1));
 
@@ -2411,11 +2417,10 @@ function applyStaircase(ok){
   data.timing[mode] = Math.round(maxTime);
   updateModeStats();
 }
-/* Distinct symbols in the current question. */
-function uniqueSymbols(str){
-  const seen = new Set();
-  String(str).toUpperCase().split('').forEach(c => { if(/[A-Z0-9ÄÖÜ]/.test(c)) seen.add(c); });
-  return Array.from(seen);
+/* Every symbol in the current question, repeats included, case folded: a and
+   A share a colour. */
+function symbolsIn(str){
+  return String(str).toUpperCase().split('').filter(c => /[A-Z0-9ÄÖÜ]/.test(c));
 }
 /* Per-symbol cost multiplier: unseen symbols cost more than mastered ones,
    so a word full of shaky letters earns more time than its length suggests. */
@@ -2426,18 +2431,33 @@ function symbolCost(c){
   if(a >= 0.75) return 1.0;
   return 1.2;                                  // shaky — more room
 }
-/* Effective unique-symbol count driving the window. */
+/* How much there is to read, in symbols. Every symbol counts, not just the
+   distinct ones: the window used to be paid by distinct symbols alone, so a
+   46-character phrase earned about what a 15-letter word did — there are only
+   so many letters — and long phrases timed out however well they were read.
+   A repeat still has to be found in its place and read, but its colour was
+   decoded moments ago, so it costs half. */
+const REPEAT_COST = 0.5;
 function itemDemand(){
   const src = (cur.meta && cur.meta.shown) ? cur.meta.shown
             : (cur.meta && cur.meta.char)  ? cur.meta.char
             : cur.answer;
   if(!src) return 1;                           // no question yet — don't read "null" as N,U,L
-  const u = uniqueSymbols(src);
-  if(!u.length) return 1;
-  return u.reduce((sum, c) => sum + symbolCost(c), 0);
+  const seen = new Set();
+  let d = 0;
+  for(const c of symbolsIn(src)){ d += symbolCost(c) * (seen.has(c) ? REPEAT_COST : 1); seen.add(c); }
+  return d || 1;
+}
+/* Typing it back, apart from reading it: a fixed allowance per character,
+   spaces included, so the calibrated unit stays a measure of reading — the
+   time a symbol takes to decode — and is not stretched by the keyboard. */
+const TYPE_MS = 220;
+function typingAllowance(){
+  return modeCfg.kind === 'typing' && cur.answer ? String(cur.answer).length * TYPE_MS : 0;
 }
 function windowFor(){
-  return Math.min(40000, Math.max(600, modeCfg.base + maxTime * itemDemand()));
+  const cap = modeCfg.kind === 'typing' ? 120000 : 40000;
+  return Math.min(cap, Math.max(600, modeCfg.base + maxTime * itemDemand() + typingAllowance()));
 }
 function startTimer(){
   stopTimer();
