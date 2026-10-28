@@ -32,7 +32,10 @@ down as placing becomes automatic.
   misses in a row, and the next session starts where this one ended. Or fixed.
 - **Recall is typed, in order.** Enter places a word and moves on; Enter on an
   empty line skips a place; Backspace on an empty line takes the last one back.
-  One slip is forgiven on words of five letters or more.
+  Typos are forgiven: one slip on words of four to seven letters, two on
+  longer ones, none on three letters or fewer; a swapped pair of letters is one
+  slip. Something that spells another word from the lists is never a typo
+  ("skull" for "skill"). A forgiven typo scores as right and is shown as typed.
 - **Order: matters, or any order.** In any order a list is perfect when every
   word comes back, wherever it is written; a word counts once however often it
   is typed, words never shown are listed as such, and Enter on an empty line

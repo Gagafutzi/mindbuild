@@ -220,21 +220,35 @@ function draw(level) {
 
 /* ---------- matching ---------- */
 
-/* One slip forgiven on a word of five letters or more — a typo is not a
-   memory failure — and nothing on shorter ones, where one letter is often
-   another word. */
+/* A typo is not a memory failure, so a slip is forgiven: one on a word of
+   four to seven letters, two on a longer one, none on three letters or fewer,
+   where one letter is usually another word. A swapped pair of neighbours is
+   one slip, not two — "fier" is fire typed fast. What spells another word of
+   the vocabulary is never a slip: "hire" for "fire" is the wrong word,
+   remembered. */
 function distance(a, b) {
   var d = []; for (var i = 0; i <= a.length; i++) { d[i] = [i]; }
   for (var j = 1; j <= b.length; j++) d[0][j] = j;
-  for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++)
+  for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++) {
     d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+  }
   return d[a.length][b.length];
 }
 function norm(s) { return String(s || "").toLowerCase().replace(/[^a-z]/g, ""); }
-function same(given, word) {
+var VOCAB = {};
+if (typeof LOCI_WORDS !== "undefined") LOCI_WORDS.tiers.forEach(function (t) { if (t) t.words.forEach(function (w) { VOCAB[w] = true; }); });
+function slipsAllowed(w) { return w.length >= 8 ? 2 : w.length >= 4 ? 1 : 0; }
+/** How many slips `given` is from `word`, or -1 if it is not that word. */
+function slips(given, word) {
   var g = norm(given), w = norm(word);
-  return !!g && (g === w || (w.length >= 5 && distance(g, w) <= 1));
+  if (!g) return -1;
+  if (g === w) return 0;
+  if (VOCAB[g]) return -1;
+  var n = distance(g, w);
+  return n <= slipsAllowed(w) ? n : -1;
 }
+function same(given, word) { return slips(given, word) >= 0; }
 
 /* Each place: right word there; a word from the list but at another place; or
    neither. A word counts once in the second sense, so typing one word into
@@ -253,17 +267,18 @@ function score(list, given) {
 }
 
 /* In any order: each word of the list comes back or does not, wherever it
-   was written. Exact spellings are matched first, so a slip on one word
-   cannot take the place of another word typed exactly; a word counts once
-   however often it is typed, and what matches nothing is not in the list. */
+   was written. The closest matches are made first — exact spellings, then one
+   slip, then two — so a slip on one word cannot take the place of another
+   word typed better; a word counts once however often it is typed, and what
+   matches nothing is not in the list. `as` keeps what was typed for each. */
 function scoreFree(list, given) {
-  var used = list.map(function () { return false; });
+  var used = list.map(function () { return false; }), as = list.map(function () { return ""; });
   var left = given.filter(function (g) { return norm(g); });
-  [function (g, w) { return norm(g) === norm(w); }, same].forEach(function (match) {
+  [0, 1, 2].forEach(function (n) {
     left = left.filter(function (g) {
-      var k = list.findIndex(function (o, j) { return !used[j] && match(g, o.word); });
+      var k = list.findIndex(function (o, j) { return !used[j] && slips(g, o.word) === n; });
       if (k < 0) return true;
-      used[k] = true; return false;
+      used[k] = true; as[k] = g; return false;
     });
   });
   var recalled = used.filter(Boolean).length;
@@ -271,7 +286,7 @@ function scoreFree(list, given) {
   var wrong = left.filter(function (g, i) {
     return !list.some(function (o) { return same(g, o.word); }) && left.findIndex(function (h) { return norm(h) === norm(g); }) === i;
   });
-  return { marks: used.map(function (u) { return u ? "ok" : "bad"; }), inList: recalled, recalled: recalled,
+  return { marks: used.map(function (u) { return u ? "ok" : "bad"; }), inList: recalled, recalled: recalled, as: as,
            inPlace: score(list, given).inPlace, wrong: wrong, perfect: recalled === list.length };
 }
 
@@ -411,7 +426,9 @@ function judge() {
     var tr = document.createElement("tr"); tr.className = res.marks[i];
     var mark = { ok: "✓", half: "~", bad: "✗" }[res.marks[i]];
     /* In any order there is no place to compare: whether the word came back. */
-    var said = free ? (res.marks[i] === "ok" ? "recalled" : "—") : given[i] || "—";
+    /* A forgiven typo is shown as typed, so it is seen and not only scored. */
+    var typed = free ? res.as[i] : given[i], typo = res.marks[i] === "ok" && norm(typed) !== norm(it.word);
+    var said = free ? (res.marks[i] === "ok" ? (typo ? typed + " (typo)" : "recalled") : "—") : typed ? typed + (typo ? " (typo)" : "") : "—";
     [String(i + 1), it.word, said, mark].forEach(function (text, k) {
       var td = document.createElement("td"); td.textContent = text; if (k === 3) td.className = "mark"; tr.appendChild(td);
     });

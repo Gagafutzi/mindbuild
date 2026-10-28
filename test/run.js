@@ -860,7 +860,8 @@ test("Loci Span's any-order scoring ignores order, counts a word once, and names
   const vm = require("vm");
   const html = readFileSync(path.join(__dirname, "..", "apps", "loci", "index.html"), "utf8");
   const code = html.slice(html.indexOf("/* ---------- matching ---------- */"), html.indexOf("/* ---------- the session ---------- */"));
-  const L = vm.runInNewContext(code + "; ({ score: score, scoreFree: scoreFree })");
+  const L = vm.runInNewContext(code + "; ({ score: score, scoreFree: scoreFree, same: same })",
+    { LOCI_WORDS: require("../apps/loci/words.js") });
   const list = ["dragon", "gnome", "knight", "fire"].map((word) => ({ word }));
 
   const back = L.scoreFree(list, ["fire", "knight", "gnome", "dragon"]);
@@ -877,6 +878,26 @@ test("Loci Span's any-order scoring ignores order, counts a word once, and names
      "wider" and would then find nothing. */
   const slips = L.scoreFree([{ word: "water" }, { word: "wider" }], ["witer", "water"]);
   assert.strictEqual(slips.recalled, 2, "a slip took the place of an exact spelling");
+});
+
+/*
+ * Loci Span's typos: a slip is forgiven where it cannot be another word —
+ * by length, and never when what was typed is itself a word of the lists.
+ */
+test("Loci Span forgives typos, swapped letters included, but not another word", () => {
+  const vm = require("vm");
+  const html = readFileSync(path.join(__dirname, "..", "apps", "loci", "index.html"), "utf8");
+  const code = html.slice(html.indexOf("/* ---------- matching ---------- */"), html.indexOf("/* ---------- the session ---------- */"));
+  const L = vm.runInNewContext(code + "; ({ same: same, scoreFree: scoreFree })", { LOCI_WORDS: require("../apps/loci/words.js") });
+  for (const [typed, word] of [["fier", "fire"], ["Fire!", "fire"], ["dragons", "dragon"], ["lighthose", "lighthouse"], ["ligthose", "lighthouse"], ["gnmoe", "gnome"]]) {
+    assert.ok(L.same(typed, word), `"${typed}" is not forgiven as ${word}`);
+  }
+  for (const [typed, word] of [["bta", "bat"], ["skull", "skill"], ["vanity", "sanity"], ["attitude", "aptitude"], ["ligthos", "lighthouse"], ["knight", ""]]) {
+    assert.ok(!L.same(typed, word), `"${typed}" was taken for ${word}`);
+  }
+  const r = L.scoreFree([{ word: "fire" }, { word: "lighthouse" }], ["ligthose", "fier"]);
+  assert.ok(r.perfect, "two typos, in any order, did not make a perfect list");
+  assert.deepStrictEqual([...r.as], ["fier", "ligthose"], "what was typed for each word was not kept to show");
 });
 
 /*
