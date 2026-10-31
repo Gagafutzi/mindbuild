@@ -32,6 +32,33 @@ var _hashRow = REC ? REC.hashRow : hashRow;
 /** Five minutes, the point past which an item was not being worked on. */
 var MAX_ITEM_SECONDS = 300;
 
+/**
+ * The cap on one Syllogimous item: five minutes a conclusion, as the app itself
+ * counts (`itemCapSeconds` in its session utils). A staged item asks five to
+ * seven conclusions on one card; capped like one question it counted a
+ * quarter of an hour on Composed World as five minutes.
+ */
+function syllogimousCapSeconds(q) {
+  return MAX_ITEM_SECONDS * Math.max(1, Array.isArray(q.series) ? q.series.length : 0);
+}
+
+/*
+ * Composed World is played as a trainer of its own on the hub (apps/world
+ * opens Syllogimous pinned to it), so its time is its own source. From this
+ * day on only: the archive folds a day's minutes by taking the larger of what
+ * it held and what it is given, so moving earlier days' Composed World time out
+ * of Syllogimous would leave it counted under both.
+ */
+var WORLD_SOURCE = "world";
+var WORLD_TYPE = "Composed World";
+var WORLD_SPLIT_FROM = "2026-11-01";
+
+/** Every reading a result holds: itself, and any source split out of it. */
+function readingsOf(reading) {
+  if (!reading || reading.error) return [];
+  return [reading].concat(Array.isArray(reading.parts) ? reading.parts : []);
+}
+
 /* ------------------------------------------------------------------ *
  * Syllogimous                                                         *
  * ------------------------------------------------------------------ */
@@ -115,6 +142,7 @@ function readSyllogimousShaped(data, source, units) {
 
   var records = [];
   var minutes = {};
+  var worldRecords = [], worldMinutes = {};
 
   for (var i = 0; i < history.length; i++) {
     var q = history[i];
@@ -132,11 +160,14 @@ function readSyllogimousShaped(data, source, units) {
        on a day it trained for 62 — a tab left open goes in whole otherwise. */
     var seconds = 0;
     if (q.createdAt && q.answeredAt > q.createdAt) {
-      seconds = Math.min((q.answeredAt - q.createdAt) / 1000, MAX_ITEM_SECONDS);
+      seconds = Math.min((q.answeredAt - q.createdAt) / 1000, syllogimousCapSeconds(q));
     }
 
-    records.push(_makeRecord({
-      source: source,
+    var day = new Date(q.answeredAt).toISOString().slice(0, 10);
+    var own = source === "syllogimous" && q.type === WORLD_TYPE && day >= WORLD_SPLIT_FROM;
+
+    (own ? worldRecords : records).push(_makeRecord({
+      source: own ? WORLD_SOURCE : source,
       id: id,
       at: q.answeredAt,
       kind: "item",
@@ -202,11 +233,11 @@ function readSyllogimousShaped(data, source, units) {
       },
     }));
 
-    var day = new Date(q.answeredAt).toISOString().slice(0, 10);
-    minutes[day] = (minutes[day] || 0) + seconds / 60;
+    var into = own ? worldMinutes : minutes;
+    into[day] = (into[day] || 0) + seconds / 60;
   }
 
-  if (!records.length) return null;
+  if (!records.length && !worldRecords.length) return null;
 
   /*
    * Everything in the export that is not the history.
@@ -234,6 +265,7 @@ function readSyllogimousShaped(data, source, units) {
     records: records,
     minutes: minutes,
     state: Object.keys(state).length ? state : null,
+    parts: worldRecords.length ? [{ source: WORLD_SOURCE, records: worldRecords, minutes: worldMinutes, state: null }] : [],
   };
 }
 
@@ -1403,6 +1435,8 @@ function readFile(text) {
 if (typeof module !== "undefined") {
   module.exports = {
     readFile: readFile,
+    readingsOf: readingsOf,
+    WORLD_SPLIT_FROM: WORLD_SPLIT_FROM,
     readSyllogimous: readSyllogimous,
     readIsomorph: readIsomorph,
     syllogimousHistory: syllogimousHistory,

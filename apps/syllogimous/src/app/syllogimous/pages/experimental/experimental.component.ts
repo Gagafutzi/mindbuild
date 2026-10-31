@@ -48,6 +48,8 @@ export class ExperimentalComponent {
 
     get worldOn() { return this.game.worldOn; }
 
+    get worldPinned() { return this.game.worldPinned; }
+
     setWorldOn(value: boolean) {
         this.game.setWorldOn(value);
         if (value) { this.game.setStreamOn(false); this.game.setDelayOn(false); }

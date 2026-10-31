@@ -50,6 +50,7 @@ var SOURCE_NAMES = {
   synth: "Synaesthesia colours",
   relations: "Relation Algebra",
   listening: "Listening Integration",
+  world: "Composed World",
 };
 
 function sourceName(id) {
@@ -76,6 +77,7 @@ var SOURCE_COLOURS = {
   synth: "#56d4dd",
   relations: "#d2a8ff",
   listening: "#7ee787",
+  world: "#d0d7de",
 };
 
 function sourceColour(id) {
@@ -307,9 +309,16 @@ function importText(text, name) {
     return;
   }
 
-  var out = fold(archive, reading, name);
+  /* A source split out of this one (Composed World out of Syllogimous) is
+     folded as its own, as if it had come in its own file. */
+  var parts = readingsOf(reading).filter(function (r) { return r.records.length || Object.keys(r.minutes).length; });
+  var out = { added: 0, updated: 0, days: 0 };
+  parts.forEach(function (one) {
+    var r = fold(archive, one, name);
+    out.added += r.added; out.updated += r.updated; out.days += r.days;
+  });
   var saved = cacheSave(archive);
-  note(name + " → " + reading.source + ": "
+  note(name + " → " + parts.map(function (r) { return r.source; }).join(" + ") + ": "
     + out.added + " new, " + out.updated + " updated, " + out.days + " new days"
     + (saved ? "" : " (cache full — keep the archive file)"));
   markUnsaved();
@@ -520,9 +529,11 @@ function readThisBrowser() {
     // A trainer's storage is never one of our own exports; only the button
     // and a drop restore those.
     if (reading.archive) continue;
-    var r = fold(archive, reading, fresh[i].name);
-    total.added += r.added; total.updated += r.updated; total.days += r.days;
-    if ((r.added || r.updated || r.days) && from.indexOf(reading.source) < 0) from.push(reading.source);
+    readingsOf(reading).forEach(function (one) {
+      var r = fold(archive, one, fresh[i].name);
+      total.added += r.added; total.updated += r.updated; total.days += r.days;
+      if ((r.added || r.updated || r.days) && from.indexOf(one.source) < 0) from.push(one.source);
+    });
   }
   if (!from.length) { writeMemo(Object.assign(memo, seen)); return; }
 

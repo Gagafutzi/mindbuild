@@ -10,8 +10,11 @@
 
 import { EnumScreens } from "../constants/game.constants";
 import { LS_DONT_SHOW } from "../constants/local-storage.constants";
+import { WORLD_PINNED } from "./trainer.utils";
 
 export function landingScreen(): EnumScreens {
+    /* The hub's Composed World trainer starts on its item; Syllogimous's intro is not its intro. */
+    if (WORLD_PINNED) return EnumScreens.Start;
     try {
         return localStorage.getItem(LS_DONT_SHOW + EnumScreens.Intro) ? EnumScreens.Start : EnumScreens.Intro;
     } catch {

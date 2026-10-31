@@ -64,10 +64,15 @@ var Today = (function () {
     day = day || utcDay();
     var out = {};
 
+    /* A reading can hold a source split out of it — Composed World's time
+       comes inside Syllogimous's storage — so each part is counted as its own. */
     function take(reading) {
-      if (!reading || !reading.minutes) return;
-      var m = Number(reading.minutes[day]) || 0;
-      if (m > 0) out[reading.source] = (out[reading.source] || 0) + m;
+      if (!reading) return;
+      [reading].concat(reading.parts || []).forEach(function (r) {
+        if (!r || !r.minutes) return;
+        var m = Number(r.minutes[day]) || 0;
+        if (m > 0) out[r.source] = (out[r.source] || 0) + m;
+      });
     }
 
     /* Syllogimous spreads itself over many keys and is recognised by the shape

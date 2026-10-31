@@ -33,6 +33,11 @@
   var TRAINERS = [
     { id: "syllogimous", name: "Syllogimous", path: "syllogimous/", colour: "#6cb6ff",
       what: "Relational and syllogistic reasoning" },
+    /* Syllogimous's engine, opened pinned to Composed World (apps/world), and
+       counted as its own source from 2026-11-01. Silver: achromatic, so it
+       stays apart from every hue here under any colour-blindness. */
+    { id: "world", name: "Composed World", path: "world/", colour: "#d0d7de",
+      what: "Knights and knaves, then a world in stages: analogies to finish, verdicts on what was announced" },
     { id: "rnb", name: "Relational N-back", path: "rnb/", colour: "#3fb950",
       what: "N-back over relations, with a ladder" },
     { id: "precision", name: "Precision N-back", path: "precision/", colour: "#d29922",

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Composed World</title>
+<!--
+  Composed World as a trainer of its own on the hub. The engine is
+  Syllogimous's — one build, one set of generators and tests — so this page
+  only opens it pinned to Composed World (see the app's trainer.utils.ts):
+  that page load plays nothing else, leaves the player's own Syllogimous
+  settings alone, and its answers are counted as their own source, "world"
+  (see readSyllogimousShaped in the archive's adapters).
+-->
+<style>html,body{margin:0;background:#080d0b;color:#7e9a8a;font:14px ui-monospace,monospace}p{padding:24px}</style>
+<script>location.replace("../syllogimous/?trainer=world");</script>
+</head>
+<body>
+<noscript><p>Composed World needs JavaScript. <a href="../syllogimous/?trainer=world">Open it</a>.</p></noscript>
+</body>
+</html>

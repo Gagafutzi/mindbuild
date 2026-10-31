@@ -125,6 +125,45 @@ test("a chunked Syllogimous history reaches the meter", () => {
     "the meter still asked for SYL_HISTORY and saw no Syllogimous");
 });
 
+/*
+ * Composed World is a trainer of its own on the hub, played in Syllogimous's
+ * engine: its answers live in Syllogimous's history and are split out as the
+ * source "world" — from 2026-11-01 only, since the archive already folded the
+ * days before under Syllogimous and would count them twice. A staged item is
+ * capped at five minutes a conclusion, as the app counts it, not five in all.
+ */
+test("Composed World is counted as its own trainer, from the day it became one", () => {
+  const { readFile, readingsOf } = require("../apps/archive/js/adapters.js");
+  const day = "2026-11-02", t = (h) => Date.parse(`${day}T${String(h).padStart(2, "0")}:00:00Z`);
+  const world = (end, minutes) => ({ answeredAt: end, createdAt: end - minutes * 60000, answered: true,
+    type: "Composed World", series: [{}, {}, {}, {}, {}, {}] });
+  const plain = { answeredAt: t(9), createdAt: t(9) - 60000, answered: true, type: "Syllogism" };
+  const before = { ...world(Date.parse("2026-10-30T09:00:00Z"), 10) };
+  const bag = { SYL_HISTORY_IDX: JSON.stringify([0]),
+    "SYL_HISTORY_C:0": JSON.stringify([world(t(10), 12), plain, before]) };
+
+  const parts = readingsOf(readFile(JSON.stringify(bag)));
+  const by = Object.fromEntries(parts.map((r) => [r.source, r]));
+  assert.deepStrictEqual(parts.map((r) => r.source).sort(), ["syllogimous", "world"], "no world source split out");
+  assert.strictEqual(Math.round(by.world.minutes[day]), 12, "a 12-minute staged item was not counted whole");
+  assert.strictEqual(Math.round(by.syllogimous.minutes[day]), 1, "Syllogimous kept the Composed World time");
+  assert.ok(by.world.records.every((r) => r.source === "world"), "a world record kept Syllogimous's name");
+  assert.strictEqual(Math.round(by.syllogimous.minutes["2026-10-30"]), 10, "a day before the split moved out of Syllogimous");
+
+  /* And the meter, which is what the tile shows. */
+  reset();
+  Object.assign(store, bag);
+  const today = Today.minutesOn(day);
+  assert.strictEqual(Math.round(today.world), 12, "the meter does not show Composed World");
+  assert.strictEqual(Math.round(today.syllogimous), 1, "the meter counts Composed World under Syllogimous too");
+
+  /* The tile opens Syllogimous pinned, and the launcher says so. */
+  const launcher = readFileSync(path.join(__dirname, "..", "apps", "world", "index.html"), "utf8");
+  assert.ok(/location\.replace\("\.\.\/syllogimous\/\?trainer=world"\)/.test(launcher), "the launcher does not open Syllogimous pinned");
+  const pin = readFileSync(path.join(__dirname, "..", "apps", "syllogimous", "src", "app", "syllogimous", "utils", "trainer.utils.ts"), "utf8");
+  assert.ok(pin.includes("trainer=world"), "Syllogimous does not read the pin the launcher sends");
+});
+
 test("Isomorph reaches the meter, and does not arrive as Syllogimous", () => {
   reset();
   const q = (at) => ({ answeredAt: at, createdAt: at - 30000, answered: true,

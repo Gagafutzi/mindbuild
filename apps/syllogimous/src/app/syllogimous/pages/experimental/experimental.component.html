@@ -5,13 +5,17 @@
     <app-collapsible heading="Composed World">
         <div class="d-grid" style="gap: 0.75rem;">
             <label class="flag">
-                <input type="checkbox" class="form-check-input"
+                <input type="checkbox" class="form-check-input" [disabled]="worldPinned"
                        [checked]="worldOn" (change)="setWorldOn($any($event.target).checked)">
                 <span>Composed World
                     <small class="d-block text-muted">
                         One card in stages: which question tells what an open speaker is,
                         then who is a knight; then, knaves' words gone, analogies to finish,
                         to judge and to build. Unscored; counts towards the daily goal.
+                    </small>
+                    <small class="d-block text-muted" *ngIf="worldPinned">
+                        This page is the hub's Composed World trainer, so it is always on
+                        here. Size and Easy below apply to it.
                     </small>
                 </span>
             </label>

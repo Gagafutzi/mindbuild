@@ -66,8 +66,10 @@ var Share = (function () {
     bags(storage).forEach(function (bag) {
       var reading;
       try { reading = readFile(JSON.stringify(bag)); } catch (e) { reading = null; }
-      if (!reading || reading.error || !reading.records) return;
-      reading.records.forEach(function (r) { answers.push(answer(r)); });
+      if (!reading || reading.error) return;
+      [reading].concat(reading.parts || []).forEach(function (part) {
+        (part.records || []).forEach(function (r) { answers.push(answer(r)); });
+      });
     });
     return Kit.makeFile(answers, { tool: "mindbuild", storage: storage, now: now }).file;
   }

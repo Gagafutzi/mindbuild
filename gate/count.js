@@ -55,8 +55,11 @@ for (const name of files) {
   try {
     reading = readFile(fs.readFileSync(path.join(dir, name), "utf8"));
   } catch (e) { continue; }
-  if (!reading || reading.error || !reading.minutes) continue;
-  offer(reading.source, Number(reading.minutes[day]) || 0);
+  if (!reading || reading.error) continue;
+  /* Composed World's time is split out of Syllogimous's storage as a part of its own. */
+  for (const part of [reading].concat(reading.parts || [])) {
+    if (part.minutes) offer(part.source, Number(part.minutes[day]) || 0);
+  }
 }
 
 /* The archive is not a source any adapter reports and could not be counted

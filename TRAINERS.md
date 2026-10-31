@@ -38,6 +38,19 @@ into one that is not on the page.
   mental models (Johnson-Laird), conceptual spaces (Gärdenfors) — the reading
   list in `apps/syllogimous/READING.md` † goes through each.
 
+### Composed World
+**Task.** One item in stages. Speakers make claims; find which question tells
+what an open speaker is, then who is a knight and who a knave. With the knaves'
+words gone, the knights' words make a world of moving, sized, nested things
+seen from where each speaker stands: finish analogies across it, a part at a
+time with the earlier parts to be remembered, then judge claims after
+transformations are announced. Easy: three things, fewer axes and speakers,
+the world shown whole, true or false only.
+**Loads.** Logical deduction about speakers, then relational integration across
+several axes, frames of reference and time, with recall of what was taken away.
+**Research.** As for Syllogimous, whose engine it is (`apps/world` opens it
+pinned to this mode); knights and knaves after Smullyan.
+
 ### Relational N-back
 **Task.** An n-back where the streams are judged as relations — which way did
 the position move, did the tone rise — rather than "same as n ago?". A

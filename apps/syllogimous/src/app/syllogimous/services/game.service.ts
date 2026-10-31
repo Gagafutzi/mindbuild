@@ -90,6 +90,7 @@ import { createRcc8 } from "../generators/rcc8";
 import { createConcaveRegions } from "../generators/concave-regions";
 import { createWorldlines } from "../generators/worldlines";
 import { createComposedWorld } from "../generators/composed-world";
+import { WORLD_PINNED } from "../utils/trainer.utils";
 import { itemCapSeconds } from "../utils/session.utils";
 import { createAnchorSpace, createAnchorSpaceV2 } from "../generators/anchor";
 import { createArrangement } from "../generators/arrangement";
@@ -758,6 +759,9 @@ export class GameService implements GeneratorContext {
          * item, so mixing it into the ordinary draw would mean the same mode
          * arriving as two different tasks.
          */
+        /* Opened as the hub's Composed World trainer: nothing else, whatever else is switched on. */
+        if (this.worldPinned) return this.asMinimal(createComposedWorld(this, this.worldPremises, this.worldEasy));
+
         if (this.delayOn) return this.asMinimal(this.createDelayLine());
 
         /* Composed World is played this way only: a staged item of five to
@@ -1614,11 +1618,16 @@ export class GameService implements GeneratorContext {
 
     /* ---------------- composed world ---------------- */
 
+    /** This page was opened as the hub's Composed World trainer (see trainer.utils). */
+    get worldPinned(): boolean { return WORLD_PINNED; }
+
     get worldOn(): boolean {
+        if (this.worldPinned) return true;
         try { return localStorage.getItem(LS_WORLD) === "1"; } catch { return false; }
     }
 
     setWorldOn(on: boolean) {
+        if (this.worldPinned) return;      // the trainer's own page; the player's setting stays as it was
         try {
             if (on) localStorage.setItem(LS_WORLD, "1");
             else localStorage.removeItem(LS_WORLD);
