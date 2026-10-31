@@ -1408,6 +1408,18 @@ export class GameService implements GeneratorContext {
      * verdict is one word.
      */
     /**
+     * The next hint on the claim on screen, and a note of it against that
+     * claim, so the history knows which answers were helped.
+     */
+    showHint() {
+        const q = this.question;
+        if (!q || q.hintsShown >= (q.hints?.length ?? 0)) return;
+        q.hintsShown++;
+        q.hintsUsed = q.hintsUsed ?? [];
+        q.hintsUsed[q.seriesAt] = q.hintsShown;
+    }
+
+    /**
      * Seconds handed back for answering a claim of a series.
      *
      * Five unless it is set otherwise. Enough to read the next claim against

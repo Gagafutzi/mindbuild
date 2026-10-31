@@ -96,6 +96,9 @@ function advanceClaim(q: Question) {
     // A claim that brought its own derivation is a claim the item's own would
     // have described wrongly.
     if (next.explanation) q.explanation = [...next.explanation];
+    /* Hints belong to the claim: the last claim's would be about another question. */
+    q.hints = next.hints ? [...next.hints] : [];
+    q.hintsShown = 0;
     /*
      * Where the claim replaces the premises, the part being asked about is what
      * changed and the part that cost the reading did not — a map's examples, a

@@ -381,6 +381,24 @@
         </div>
 
         <!--
+          Hints, on request and one at a time: the method, what to look at,
+          then the first result, never the step that decides the answer. Only
+          items that carry them show the button (Composed World). Outside both
+          view containers, like the builder, so every answer mode shows them.
+        -->
+        <!-- Sized inline: game.component.css is at its budget. -->
+        <div class="mt-2" style="font-size: .8rem; line-height: 1.45;" *ngIf="game.question.hints?.length">
+            <div class="mb-1" *ngFor="let h of game.question.hints.slice(0, game.question.hintsShown); let i = index">
+                <span class="text-muted">Hint {{ i + 1 }}.&nbsp;</span><span [innerHTML]="h"></span>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    *ngIf="game.question.hintsShown < game.question.hints.length"
+                    (click)="game.showHint()">
+                Hint {{ game.question.hintsShown + 1 }} of {{ game.question.hints.length }}
+            </button>
+        </div>
+
+        <!--
           The builder sits outside both view containers. It is the answer, not
           the material, so it belongs with the answer controls — and inside the
           all-at-once container it was `d-none` in carousel mode, which left

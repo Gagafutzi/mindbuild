@@ -16,6 +16,7 @@ import { allStorageKeys } from "../src/app/syllogimous/constants/local-storage.c
 import { ORDERED_QUESTION_TYPES } from "../src/app/syllogimous/constants/game.constants";
 import { EnumQuestionType } from "../src/app/syllogimous/constants/question.constants";
 import { ThemeService } from "../src/app/syllogimous/services/theme.service";
+import { GUIDES } from "../src/app/syllogimous/constants/guides.constants";
 
 function fresh() {
     localStorage.clear();
@@ -215,6 +216,8 @@ test("no mode ships without an explanation", () => {
         "src/app/syllogimous/pages/tutorial/tutorial-generic/tutorial-generic.component.ts",
         "utf8");
     const blurbs = new Set([...src.matchAll(/^    "([^"]+)":/gm)].map(m => m[1]));
+    /* A mode too large for a paragraph has a guide in sections instead, read by the same component. */
+    for (const t of Object.keys(GUIDES)) blurbs.add(t);
 
     const own = readdirSync("src/app/syllogimous/pages/tutorial")
         .filter(entry => !entry.includes("."));

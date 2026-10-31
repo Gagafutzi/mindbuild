@@ -38,6 +38,7 @@ import "./customise.test";
 import "./history-store.test";
 import "./save-data.test";
 import "./map.test";
+import "./world-help.test";
 import "./web.test";
 import "./coldstart.test";
 import "./indeterminacy.test";

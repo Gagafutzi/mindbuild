@@ -92,7 +92,17 @@ export interface RenderedAsk {
     correctChoice: number;
     selectAnswer: number[];
     explanation: string[];
+    /**
+     * Help asked for one step at a time, each further toward the answer than
+     * the last and none of them the step that decides it: the method, then
+     * what to look at, then the first result — never the one that settles the
+     * question, which is what the explanation is for afterwards.
+     */
+    hints: string[];
 }
+
+/** Readings of who is what, as hints list them: "Ash knight, Bee knave". */
+const readingWords = (w: Wording, t: boolean[]) => t.map((k, i) => `${subj(w.speakers[i])} ${hi(k ? "knight" : "knave")}`).join(", ");
 
 /** How each speaker was unmasked, in the order the reading found them. */
 export function unmaskingLines(rec: Reconstruction, w: Wording): string[] {
@@ -209,6 +219,13 @@ export function renderQuestion(item: StagedItem, w: Wording): RenderedAsk {
         choices: opts.map(o => questionWords(w, o.fact)),
         selectAnswer: opts.map((o, i) => (o.tells ? i : -1)).filter(i => i >= 0),
         explanation: opts.map(o => `"${describeFact(w, o.fact)}?": ${says(o.fact)}`),
+        /* One that does not tell, worked through, only where more than one does not: with one, it would name the rest. */
+        hints: [
+            `A question tells what ${who} is only if the words make it true in every reading they leave, or false in every one: then nothing but ${who}'s kind can change the answer.`,
+            `The words leave ${open.map(t => readingWords(w, t)).join("; or ")}.`,
+            ...(opts.filter(o => !o.tells).length >= 2
+                ? [`For example, "${describeFact(w, opts.find(o => !o.tells)!.fact)}?": ${says(opts.find(o => !o.tells)!.fact)}.`] : []),
+        ],
     };
 }
 
@@ -271,7 +288,7 @@ export function renderPremises(statements: Statement[], w: Wording, wide = false
 export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer }, w: Wording): RenderedAsk {
     const axes = rec.world.axes, { things, speakers, colors } = w, q = stage.ask, answer = stage.answer;
     const name = (x: number) => (x === POST ? POST_NAME : subj(things[x]));
-    const out: RenderedAsk = { prompt: "", conclusion: "", choices: [], correctChoice: -1, selectAnswer: [], explanation: [] };
+    const out: RenderedAsk = { prompt: "", conclusion: "", choices: [], correctChoice: -1, selectAnswer: [], explanation: [], hints: [] };
 
     if (q.kind === "speakers") {
         const kindOf = (i: number) => (rec.types[i] ? "knight" : "knave");
@@ -279,6 +296,7 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
         out.choices = q.options!.map(i => subj(speakers[i]));
         out.correctChoice = q.options!.indexOf(answer as number);
         out.explanation.push(`${subj(speakers[q.x])} is a ${kindOf(q.x)} and ${subj(speakers[q.y])} a ${kindOf(q.y)}, so ${subj(speakers[q.z])}, a ${kindOf(q.z)}, goes with ${subj(speakers[answer as number])}, a ${kindOf(answer as number)}`);
+        out.hints.push(`In kind, two speakers are either the same or opposite. Take who is a knight from the second stage, see which ${subj(speakers[q.x])} and ${subj(speakers[q.y])} are, then find who stands to ${subj(speakers[q.z])} the same way.`);
         return out;
     }
 
@@ -319,6 +337,11 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
             /* The list is where P ends up from the fourth thing, not the pair's relation: said so, or it read as the latter. */
             `so ${hi("P")} is ${name(q.z)} moved as ${name(q.y)} lies from ${name(q.x)}: ${d.map((v, i) => clause(w, i, v)).join(", ")} from ${name(q.w!)}`,
             `${where(q.z, q.h2, q.s2)}; ${where(q.w!, q.h2, q.s2)}`);
+        /* The places on both sides, never the step from one to the other: that step is the answer. */
+        out.hints.push(
+            `${hi("P")} is ${name(q.z)} moved by the step that takes ${name(q.x)} to ${name(q.y)}: find that step at ${clock(q.h1)}${side1}, apply it to ${name(q.z)} at ${clock(q.h2)}${side2}, and say where ${hi("P")} lands from ${name(q.w!)}.`,
+            `From ${POST_NAME}, ${where(q.x, q.h1, q.s1)}; ${where(q.y, q.h1, q.s1)}.`,
+            `And ${where(q.z, q.h2, q.s2)}; ${where(q.w!, q.h2, q.s2)}.`);
         return out;
     }
     if (q.kind === "which") {
@@ -348,13 +371,30 @@ export function renderAsk(rec: Reconstruction, stage: { ask: Ask; answer: Answer
            how the mapping modes word their own rule, and minimal mode reads it so. */
         out.conclusion = `${head.replace(/ to$/, " stands to")} ${name(q.w!)} at ${clock(q.h2)}${side2}`;
     }
-    out.explanation.push(`at ${clock(q.h1)}${sideWords(rec, q.s1)}, ${name(q.x)} is ${relText(q.x, q.y, q.h1, q.s1)}`);
+    const first = `at ${clock(q.h1)}${sideWords(rec, q.s1)}, ${name(q.x)} is ${relText(q.x, q.y, q.h1, q.s1)}`;
+    const openLine = out.explanation[0];
+    out.explanation.push(first);
     const among = q.kind === "judge" ? [q.w!] : q.options!;
     for (const o of among) out.explanation.push(`at ${clock(q.h2)}${sideWords(rec, q.s2)}, ${name(q.z)} is ${relText(q.z, o, q.h2, q.s2)}`);
     /* Places at the first hour, the bodies the first relation was read off. */
     const where = (x: number, h: number, s?: number) => `${name(x)}: ${at(x, h, s).pos.map((v, i) => clause(w, i, v)).join(", ")}`
         + (at(x, h, s).size.some(l => l > 1) ? ` (${at(x, h, s).size.map((l, i) => (l > 1 ? hi(`${l} long ${axisWord(axes[i])}`, colors[i]) : "")).filter(Boolean).join(", ")})` : "");
-    out.explanation.push(`from ${POST_NAME} at ${clock(q.h1)}${sideWords(rec, q.s1)} — ${[q.x, q.y].map(x => where(x, q.h1, q.s1)).join("; ")}`);
+    const places = `from ${POST_NAME} at ${clock(q.h1)}${sideWords(rec, q.s1)} — ${[q.x, q.y].map(x => where(x, q.h1, q.s1)).join("; ")}`;
+    out.explanation.push(places);
+    /*
+     * The first side of the analogy, worked out, and never the second: the
+     * second is where the answer is. The open length, on an open card, is said
+     * before the relation, since every candidate has to be tried against each
+     * value it could take.
+     */
+    const then = q.kind === "judge"
+        ? `Now check whether ${name(q.z)} stands to ${name(q.w!)} that way at ${clock(q.h2)}${side2}.`
+        : `Now find which ${q.kind === "which" ? "one" : "of them"} ${name(q.z)} stands to that way at ${clock(q.h2)}${side2}, bringing each to that hour too.`;
+    out.hints.push(
+        `First work out how ${name(q.x)} stands to ${name(q.y)} on ${on} at ${clock(q.h1)}${side1}: bring each to that hour from the hour its place is given, by its pace and every event on the way.`,
+        `${places.charAt(0).toUpperCase()}${places.slice(1)}.`,
+        ...(q.kind === "could" && openLine ? [`${openLine.charAt(0).toUpperCase()}${openLine.slice(1)}.`] : []),
+        `${first.charAt(0).toUpperCase()}${first.slice(1)}. ${then}`);
     return out;
 }
 
@@ -395,7 +435,26 @@ export function renderTypes(item: StagedItem, w: Wording): RenderedAsk {
             : item.types.map((t, i) => (t ? i : -1)).filter(i => i >= 0),
         /* Closed on the verdict, which names only the speakers asked about. */
         explanation: [...guessLines(item, w), typesLine(item.types, w)],
+        hints: typesHints(item, w),
     };
+}
+
+/**
+ * Toward who is a knight, without saying: the method, one clash the words
+ * hold, then the readings they leave — listed in a fixed order, not the true
+ * one first as the explanation lists it, or the order would be the answer.
+ */
+function typesHints(item: StagedItem, w: Wording): string[] {
+    const answer = item.asking.answer, words = item.words.filter(s => s !== answer);
+    const all = item.types.map((_, i) => i);
+    const readings = Array.from({ length: 1 << all.length }, (_, m) => all.map(i => (m & (1 << i)) !== 0))
+        .filter(t => !wordBreach(item.card.axes, item.card.things, words, t));
+    const lines = guessLines(item, w), clash = lines.findIndex(l => l.startsWith("The words leave"));
+    return [
+        `Look for words that can't both be true, or can't both be false: each such pair rules readings out. A speaker's own two words, and two speakers' words about the same thing, are where to look.`,
+        ...(clash > 0 ? [`${lines[0].charAt(0).toUpperCase()}${lines[0].slice(1)}.`] : []),
+        `The words alone leave ${readings.map(t => readingWords(w, t)).join("; or ")}. The asked speaker's answer is what decides between them.`,
+    ];
 }
 
 /** "So Ash and Cog are knights, and Bee is a knave." */

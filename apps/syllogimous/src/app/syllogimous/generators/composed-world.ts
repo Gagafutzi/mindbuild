@@ -125,10 +125,10 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
 
     const series: SeriesClaim[] = [
         { text: "", isValid: true, answerMode: "select", choices: asking.choices, selectAnswer: asking.selectAnswer,
-            prompt: asking.prompt, explanation: asking.explanation, premises: first },
+            prompt: asking.prompt, explanation: asking.explanation, hints: asking.hints, premises: first },
         { text: "", isValid: true, answerMode: "select", choices: ticks.choices, selectAnswer: ticks.selectAnswer,
-            prompt: ticks.prompt, explanation: ticks.explanation, premises: [...first, answerLine(item, w)] },
-        ...finishes.map((f, i): SeriesClaim => ({ ...(part(item.analogies[i]) ? { premises: part(item.analogies[i])! } : {}), ...(f.construct
+            prompt: ticks.prompt, explanation: ticks.explanation, hints: ticks.hints, premises: [...first, answerLine(item, w)] },
+        ...finishes.map((f, i): SeriesClaim => ({ ...(part(item.analogies[i]) ? { premises: part(item.analogies[i])! } : {}), hints: f.hints, ...(f.construct
             ? { text: "", isValid: true, answerMode: "construct", construct: f.construct, prompt: f.prompt, explanation: f.explanation }
             /* Easy asks the world true or false from the start. */
             : item.analogies[i].kind.answerMode === "boolean"
@@ -137,8 +137,8 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
             ? { text: "", isValid: true, answerMode: "select", choices: f.choices, selectAnswer: f.selectAnswer, prompt: f.prompt, explanation: f.explanation }
             : { text: "", isValid: true, answerMode: "choice", choices: f.choices, correctChoice: f.correctChoice, prompt: f.prompt, explanation: f.explanation }) })),
         ...verdicts.map((v, i): SeriesClaim => ({ text: v.conclusion, isValid: item.judgements[i].answer === true,
-            answerMode: "boolean", explanation: v.explanation, ...(i === 0 ? { premises: announced } : {}) })),
-        ...(closing ? [{ text: "", isValid: true, answerMode: "construct", construct: closing.construct!, prompt: closing.prompt, explanation: closing.explanation } as SeriesClaim] : []),
+            answerMode: "boolean", explanation: v.explanation, hints: v.hints, ...(i === 0 ? { premises: announced } : {}) })),
+        ...(closing ? [{ text: "", isValid: true, answerMode: "construct", construct: closing.construct!, prompt: closing.prompt, explanation: closing.explanation, hints: closing.hints } as SeriesClaim] : []),
     ];
 
     const question = new Question(type);
@@ -146,6 +146,7 @@ export function createComposedWorld(ctx: GeneratorContext, numOfPremises: number
     question.setup = [];
     question.premises = first;
     question.explanation = asking.explanation;
+    question.hints = [...asking.hints];
     question.answerMode = "select";
     question.choices = asking.choices;
     question.selectAnswer = asking.selectAnswer;

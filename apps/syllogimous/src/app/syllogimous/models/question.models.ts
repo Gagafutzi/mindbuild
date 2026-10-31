@@ -63,6 +63,8 @@ export interface SeriesClaim {
      * derivation, because it is confidently about the wrong pair of objects.
      */
     explanation?: string[];
+    /** Help for this claim, revealed one step at a time on request (see `RenderedAsk.hints`). */
+    hints?: string[];
     /**
      * A screen with nothing to answer: read the set and carry it forward.
      *
@@ -609,6 +611,11 @@ export class Question {
     seriesFocusPremise = -1;
     /** What was answered for each, in order. Absent means never reached. */
     seriesAnswers: Array<boolean | undefined> = [];
+    /** The claim on screen's hints, and how many of them are showing. */
+    hints: string[] = [];
+    hintsShown = 0;
+    /** How many hints were taken on each claim, kept with the answer so a hinted answer is known as one. */
+    hintsUsed: number[] = [];
 
     positions: Record<string, number> = {};
 
