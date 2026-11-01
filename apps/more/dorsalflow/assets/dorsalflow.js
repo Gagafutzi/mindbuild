@@ -15466,7 +15466,7 @@ const Ei = ee(d0),
                           ],
                         }),
                         avCard("av-flow", "Mixed Discrimination", "Sight and sound at once: a Gabor drifts and a sound sweeps through pink static in the same half second. Did they move the same way or opposite ways? Headphones needed.", e.currentMixedLevel || 1, i),
-                        avCard("av-two-step", "Mixed Memory", "The same two movements one after the other, sight then sound or sound then sight, with a gap to hold the first across. Same way or opposite? Headphones needed.", e.currentMixedMemLevel || 1, i),
+                        avCard("av-two-step", "Mixed Memory", "Several sight-and-sound pairs in a row, each same way or opposite: hold the run, then answer it in order. Every pair counts on its own. Headphones needed.", e.currentMixedMemLevel || 1, i),
                       ],
                     }),
                   ],
@@ -17341,10 +17341,12 @@ const AfHeadphones = ({ className: e }) =>
      • Mixed Discrimination ("av-flow"): a Gabor drifts left or right while a
        sound sweeps left or right across the head, both in the same half
        second. Did they go the same way, or opposite ways?
-     • Mixed Memory ("av-two-step"): the same two movements one after the
-       other, in either order — sight then sound, or sound then sight — with
-       a gap between. The first has to be held across the gap and the change
-       of sense before it can be compared.
+     • Mixed Memory ("av-two-step"): several such pairs in a row — sight and
+       sound together each time, a short gap between — and then the whole run
+       of same-or-opposite answered from memory, in order. How many pairs is
+       the player's (2-8, on the start screen). Each pair is a trial of its own
+       to the staircase and the session: scored as one, a run of four with one
+       slip counted as nothing right.
 
    The two directions are drawn independently, so Same and Opposite are each
    right half the time, and neither movement alone says which. One staircase
@@ -17354,7 +17356,17 @@ const AfHeadphones = ({ className: e }) =>
    Pink static runs under the whole session (startBed), at the level table's
    noise figure, so the ear never hears a sweep begin out of silence. */
 const AV_PINK = 2,
-  AV_GAP_MS = 600;
+  AV_GAP_MS = 600,
+  /* Between the pairs of a Mixed Memory run. */
+  AV_PAIR_GAP_MS = 500,
+  AV_MEM_KEY = "mindbuild.dorsalflow.avMemPairs";
+/** Pairs per Mixed Memory trial: the player's, 2 to 8, three until set. */
+function avMemPairs() {
+  try {
+    const n = Number(localStorage.getItem(AV_MEM_KEY));
+    return n >= 2 && n <= 8 ? Math.round(n) : 3;
+  } catch { return 3; }
+}
 function avConditions() {
   return Mi().map((c) => {
     const b = AF_BANDS.find((x) => x.key === c.testSpatialFreqCpd) || AF_BANDS[0];
@@ -17383,7 +17395,11 @@ const AvSession = ({
       [ans, setAns] = T.useState("same"),
       [fb, setFb] = T.useState(null),
       [hit, setHit] = T.useState(null),
-      [order, setOrder] = T.useState(["visual", "audio"]),
+      [pairs, setPairs] = T.useState(avMemPairs),
+      seq = T.useRef([]),
+      [given, setGiven] = T.useState([]),
+      [marks, setMarks] = T.useState(null),
+      [at, setAt] = T.useState(0),
       visDir = T.useRef("left"),
       t0 = T.useRef(0),
       raf = T.useRef(0),
@@ -17420,31 +17436,34 @@ const AvSession = ({
     const J = T.useCallback(() => {
       clear();
       eng.current.bedSrc || eng.current.startBed(AV_PINK, afNoiseRms(lvl));
-      const V = Math.random() < 0.5 ? "left" : "right",
-        A = Math.random() < 0.5 ? "left" : "right",
-        ord = Math.random() < 0.5 ? ["visual", "audio"] : ["audio", "visual"];
-      (setAns(V === A ? "same" : "opposite"), setFb(null), setHit(null), setOrder(ord));
+      const draw = () => Math.random() < 0.5 ? "left" : "right",
+        V = draw(),
+        A = draw();
+      (setAns(V === A ? "same" : "opposite"), setFb(null), setHit(null), setMarks(null), setGiven([]));
       const sound = (dir) =>
           eng.current.play({ condition: g.condition, level: lvl, contrast: g.currentContrast, direction: dir, noBed: !0 }).offsetMs,
-        sight = () => {
-          ((visDir.current = V), (t0.current = performance.now()), setPh("visual"));
+        sight = (dir) => {
+          ((visDir.current = dir), (t0.current = performance.now()), setPh("visual"));
+        },
+        /* One pair: the sweep scheduled, the Gabor started so both end together. */
+        pair = (v, a, then) => {
+          setPh("pre");
+          const end = sound(a);
+          (later(() => sight(v), Math.max(0, end - Ea)), later(then, end + 20));
         };
       if (!mem) {
-        setPh("pre");
-        const end = sound(A);
-        (later(sight, Math.max(0, end - Ea)),
-          later(() => setPh((F) => (F === "visual" ? "waiting_response" : F)), end + 20));
+        pair(V, A, () => setPh((F) => (F === "visual" ? "waiting_response" : F)));
         return;
       }
-      const step = (k, next) => {
-        if (ord[k] === "visual") (sight(), later(next, Ea));
-        else (setPh("audio"), later(next, sound(A) + 20));
+      /* A run: each pair drawn on its own, so Same and Opposite stay even at every place in it. */
+      const run = Array.from({ length: pairs }, () => [draw(), draw()]);
+      seq.current = run.map(([v, a]) => (v === a ? "same" : "opposite"));
+      const play = (k) => {
+        if (k >= run.length) return setPh("waiting_response");
+        (setAt(k), pair(run[k][0], run[k][1], () => (setPh("gap"), later(() => play(k + 1), AV_PAIR_GAP_MS))));
       };
-      step(0, () => {
-        (setPh("gap"),
-          later(() => step(1, () => setPh("waiting_response")), AV_GAP_MS));
-      });
-    }, [g, lvl, mem]);
+      play(0);
+    }, [g, lvl, mem, pairs]);
     T.useEffect(() => {
       let dead = !1;
       const F = (R) => {
@@ -17528,8 +17547,34 @@ const AvSession = ({
       P = T.useCallback(
         (p) => {
           if (ph !== "waiting_response") return;
-          (clear(), setPh("idle"), setHit(p));
-          const { updatedState: M, isCorrect: F } = Pi(g, ans, p);
+          let M, F;
+          if (mem) {
+            /* The run is answered in order, one pair at a time. */
+            const next = [...given, p];
+            if ((setGiven(next), setHit(p), next.length < seq.current.length)) return;
+            (clear(), setPh("idle"));
+            /*
+             * Each pair a trial of its own. All of a run was shown at one
+             * contrast, so each is recorded at it, though the staircase moves
+             * between them as it would between trials; a block that completes
+             * part way leaves the rest of the run scored but not stepped.
+             */
+            const shown = g.currentContrast, right = seq.current.map((a, k) => next[k] === a);
+            M = g;
+            for (let k = 0; k < seq.current.length && !M.isComplete; k++) {
+              M = Pi(M, seq.current[k], next[k]).updatedState;
+              M.history[M.history.length - 1] = { ...M.history[M.history.length - 1], contrast: shown };
+            }
+            if (M.isComplete) {
+              const thr = Df(M.history, M.currentContrast);
+              M = { ...M, finalThreshold: thr, contrastSensitivity: thr > 0 ? 1 / thr : null };
+            }
+            F = right.every(Boolean);
+            setMarks(right);
+          } else {
+            (clear(), setPh("idle"), setHit(p));
+            ({ updatedState: M, isCorrect: F } = Pi(g, ans, p));
+          }
           if ((setFb(F ? "correct" : "incorrect"), F || Bn.playErrorTone(), M.isComplete)) {
             y.current.push({ ..._i(M), bandName: M.condition.bandName });
             const I = c + 1;
@@ -17542,13 +17587,14 @@ const AvSession = ({
             } else fin(y.current);
           } else v(M);
         },
-        [ph, ans, g, c, o, fin],
+        [ph, ans, g, c, o, fin, mem, given],
       );
     T.useEffect(() => {
       if (N || d || ph !== "idle" || intro || document.hidden) return;
-      const p = window.setTimeout(J, 450);
+      /* Longer after a run, so its marks can be read. */
+      const p = window.setTimeout(J, mem ? 1400 : 450);
       return () => clearTimeout(p);
-    }, [g, d, ph, N, J, intro]);
+    }, [g, d, ph, N, J, intro, mem]);
     T.useEffect(() => {
       const p = (M) => {
         if (N) return;
@@ -17565,18 +17611,15 @@ const AvSession = ({
       );
     }, [P, J, N, intro]);
     const live = ph === "waiting_response" && !d,
-      sense = (m) => (m === "visual" ? "sight" : "sound"),
       prompt =
         ph === "pre" || ph === "visual" || ph === "audio" || ph === "gap"
           ? mem
-            ? ph === "gap"
-              ? "Hold it…"
-              : ph === "visual"
-                ? "Watch…"
-                : "Listen…"
+            ? `Pair ${at + 1} of ${pairs}: watch and listen…`
             : "Watch and listen…"
           : ph === "waiting_response"
-            ? "Same way, or opposite?"
+            ? mem
+              ? `Pair ${given.length + 1} of ${pairs}: same way, or opposite?`
+              : "Same way, or opposite?"
             : ph === "paused"
               ? "Paused"
               : " ";
@@ -17606,7 +17649,7 @@ const AvSession = ({
                   mem &&
                     r.jsxs("div", {
                       className: "af-hud__sub",
-                      children: ["This trial: ", sense(order[0]), " then ", sense(order[1])],
+                      children: [pairs, " pairs a trial, each scored on its own"],
                     }),
                 ],
               }),
@@ -17659,9 +17702,32 @@ const AvSession = ({
                     }),
                     r.jsx("p", {
                       children: mem
-                        ? "A Gabor drifts left or right, and a sound sweeps left or right — one after the other, in either order, with a short gap. Hold the first while the second plays."
+                        ? "A Gabor drifts left or right while, at the same moment, a sound sweeps left or right — several times in a row, with a short gap between. Hold each pair's same-or-opposite until the run ends, then answer them in order."
                         : "A Gabor drifts left or right while, at the same moment, a sound sweeps left or right across your head.",
                     }),
+                    mem &&
+                      r.jsxs("div", {
+                        className: "flex items-center justify-between gap-2",
+                        children: [
+                          r.jsx("strong", { children: "Pairs per trial" }),
+                          r.jsxs("div", {
+                            className: "flex items-center gap-2",
+                            children: [
+                              r.jsx("button", {
+                                onClick: () => setPairs((x) => { const v = Math.max(2, x - 1); try { localStorage.setItem(AV_MEM_KEY, String(v)); } catch {} return v; }),
+                                className: "af-btn af-btn--ghost",
+                                children: "−",
+                              }),
+                              r.jsx("strong", { className: "font-mono", children: pairs }),
+                              r.jsx("button", {
+                                onClick: () => setPairs((x) => { const v = Math.min(8, x + 1); try { localStorage.setItem(AV_MEM_KEY, String(v)); } catch {} return v; }),
+                                className: "af-btn af-btn--ghost",
+                                children: "+",
+                              }),
+                            ],
+                          }),
+                        ],
+                      }),
                     r.jsxs("p", {
                       children: [
                         "Answer whether they moved the ",
@@ -17687,10 +17753,17 @@ const AvSession = ({
             children: [
               r.jsxs("div", {
                 className: "af-feedback",
-                children: [
-                  fb === "correct" && r.jsx("span", { className: "af-ok", children: "✓ Correct" }),
-                  fb === "incorrect" && r.jsx("span", { className: "af-bad", children: "✗ Error" }),
-                ],
+                children: mem && marks
+                  ? [r.jsxs("span", {
+                      className: marks.every(Boolean) ? "af-ok" : "af-bad",
+                      children: [marks.map((m) => (m ? "✓" : "✗")).join(" "), " — ", marks.filter(Boolean).length, " of ", marks.length],
+                    })]
+                  : mem && ph === "waiting_response" && given.length
+                    ? [r.jsx("span", { className: "af-dim", children: given.map((x) => (x === "same" ? "Same" : "Opposite")).join(", ") })]
+                    : [
+                        fb === "correct" && r.jsx("span", { className: "af-ok", children: "✓ Correct" }),
+                        fb === "incorrect" && r.jsx("span", { className: "af-bad", children: "✗ Error" }),
+                      ],
               }),
               r.jsxs("div", {
                 className: "af-answers__row",

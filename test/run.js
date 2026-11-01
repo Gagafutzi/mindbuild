@@ -1087,6 +1087,33 @@ test("DorsalFlow's visual staircase stays at or under 0.45% and settles near 65%
 });
 
 /*
+ * Mixed Memory: a run of sight-and-sound pairs, every pair its own trial. The
+ * run's scoring loop is cut out of the bundle and replayed on the bundle's own
+ * staircase: four pairs answered right, wrong, right, wrong from 5% contrast
+ * step four times (3.70, 4.52, 4.52, 5.51) where one verdict for the run would
+ * have stepped once, to 6.10.
+ */
+test("DorsalFlow's Mixed Memory scores each pair of a run as its own trial", () => {
+  const vm = require("vm");
+  const src = readFileSync(path.join(__dirname, "..", "apps", "more", "dorsalflow", "assets", "dorsalflow.js"), "utf8");
+  assert.ok(/Array\.from\(\{ length: pairs \}/.test(src), "a Mixed Memory trial is not a run of the chosen number of pairs");
+  const loop = src.slice(src.indexOf("            M = g;\n            for (let k = 0;"), src.indexOf("            F = right.every(Boolean);"));
+  assert.ok(loop.length > 0, "the per-pair scoring loop is gone");
+  const consts = src.slice(src.indexOf("  Lf = 1.35,"), src.indexOf("function Hn(e, t)")).replace(/^  Lf/, "var Lf");
+  const rest = src.slice(src.indexOf("function Hn(e, t)"));
+  const df = rest.slice(rest.indexOf("function Df(e, t)"));
+  const ctx = { Math };
+  vm.runInNewContext("var wu = 0.05;\n" + consts + "\n" + rest.slice(0, rest.indexOf("function Df(e, t)"))
+    + df.slice(0, df.indexOf("\n}\n") + 3) + `
+    this.score = function (seq, next) { var g = Hn({}); var seqRef = { current: seq }; var M;
+      var shown = g.currentContrast; ${loop.replace(/seq\.current/g, "seqRef.current")} return M; };`, ctx);
+  const M = ctx.score(["same", "same", "opposite", "same"], ["same", "opposite", "opposite", "opposite"]);
+  assert.strictEqual(M.totalTrials, 4, `a run of four counted as ${M.totalTrials} trials`);
+  assert.strictEqual(M.currentContrast.toFixed(4), "0.0551", `four pairs did not step four times (${(M.currentContrast * 100).toFixed(2)}%)`);
+  assert.ok(M.history.every((h) => h.contrast === 0.05), "a pair is recorded at a contrast it was not shown at");
+});
+
+/*
  * And its backgrounds: always fine grain, which blends with the Gabor where a
  * coarse one never does, and moving static unless a program asks otherwise.
  */

@@ -175,9 +175,10 @@ training more than doubled word-list recall in naive adults (Dresler et al.
 **Task.** Detect motion direction in visual noise, or — as AudioFlow — by ear.
 Two mixed programs put the senses together: in Mixed Discrimination a Gabor
 drifts while a sound sweeps through pink static, and you answer whether they
-went the same way or opposite ways; Mixed Memory plays them one after the
-other, in either order, so the first must be held across the gap and the
-change of sense.
+went the same way or opposite ways; Mixed Memory plays a run of such pairs
+(2–8, set on its start screen), and the run's same-or-opposite answers are
+given afterwards from memory, in order — each pair scored as a trial of its
+own.
 **Visual programs, as set here** (edits to the bundled build, not upstream):
 blocks start at 0.45% contrast and never go above it; the staircase is
 weighted to settle at about 65% correct (Kaernbach 1991), below the conscious
