@@ -1050,6 +1050,57 @@ test("Synaesthesia's window grows with every symbol of a phrase, not only the di
 });
 
 /*
+ * DorsalFlow's visual programs, set by the player's thresholds: blocks start at
+ * 0.45% contrast and never go above it, and the staircase settles below
+ * awareness, at about 65% correct. Run on the bundle's own staircase code
+ * against a model observer, with a seeded draw so the test cannot flake.
+ */
+test("DorsalFlow's visual staircase stays at or under 0.45% and settles near 65% correct", () => {
+  const vm = require("vm");
+  const src = readFileSync(path.join(__dirname, "..", "apps", "more", "dorsalflow", "assets", "dorsalflow.js"), "utf8");
+  /* Both visual programs start each block on it (the writer), and the staircase reads it (the reader). */
+  assert.strictEqual((src.match(/Hn\(o\[0\], VISUAL_STAIRCASE\)/g) || []).length, 2, "a visual program starts without the visual staircase");
+  assert.strictEqual((src.match(/Hn\([A-Z], VISUAL_STAIRCASE\)/g) || []).length, 2, "a visual program's next block drops the visual staircase");
+  const consts = src.slice(src.indexOf("  Lf = 1.35,"), src.indexOf("function Hn(e, t)")).replace(/^  Lf/, "var Lf");
+  const rest = src.slice(src.indexOf("function Hn(e, t)"));
+  const df = rest.slice(rest.indexOf("function Df(e, t)"));
+  const ctx = { Math };
+  vm.runInNewContext("var wu = 0.05;\n" + consts + "\n" + rest.slice(0, rest.indexOf("function Df(e, t)"))
+    + df.slice(0, df.indexOf("\n}\n") + 3) + "; this.Hn = Hn; this.Pi = Pi; this.V = VISUAL_STAIRCASE;", ctx);
+
+  let seed = 7;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const pc = (c) => 0.5 + 0.5 * (1 - Math.exp(-Math.pow(c / 0.0028, 2.2)));   // aware near 0.4%, above chance to ~0.15%
+  let top = 0, n = 0, right = 0;
+  for (let b = 0; b < 400; b++) {
+    let st = ctx.Hn({}, ctx.V);
+    while (!st.isComplete) {
+      top = Math.max(top, st.currentContrast);
+      const ok = rand() < pc(st.currentContrast);
+      st = ctx.Pi(st, "L", ok ? "L" : "R").updatedState;
+      if (st.totalTrials > 3) { n++; right += ok ? 1 : 0; }
+    }
+  }
+  assert.ok(top <= 0.0045 + 1e-12, `the staircase went to ${(top * 100).toFixed(3)}% contrast`);
+  const acc = right / n;
+  assert.ok(acc > 0.6 && acc < 0.72, `it settled at ${(acc * 100).toFixed(1)}% correct, not below awareness near 65%`);
+});
+
+/*
+ * And its backgrounds: always fine grain, which blends with the Gabor where a
+ * coarse one never does, and moving static unless a program asks otherwise.
+ */
+test("DorsalFlow's backgrounds are fine-grained moving static", () => {
+  const src = readFileSync(path.join(__dirname, "..", "apps", "more", "dorsalflow", "assets", "dorsalflow.js"), "utf8");
+  const vm = require("vm");
+  const grains = vm.runInNewContext("(" + src.slice(src.indexOf("  ef = [1, 2, 3, 4, 5]") + "  ef = ".length, src.indexOf("  Xe = [")).replace(/,\s*$/, "") + ")");
+  assert.strictEqual(grains.length, 5, "a session no longer has five passes a frequency");
+  assert.ok(grains.every((g) => g.scale === 1), "a block draws a grain coarser than 1px");
+  assert.ok(/backgroundType: b = "dynamic-noise"/.test(src), "the default background is not moving static");
+  assert.strictEqual((src.match(/const D = Math\.max\(1, Math\.min\(8, v\)\)/g) || []).length, 0, "a noise background still takes the program's grain");
+});
+
+/*
  * The trainers that wear the hub's look over their own: each carries a
  * hub-skin.css, and it only works loaded last — the skin redefines the page's
  * own tokens, and a page style after it would quietly win them back. The

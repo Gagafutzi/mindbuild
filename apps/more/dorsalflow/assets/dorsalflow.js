@@ -9145,7 +9145,7 @@ function Ta() {
     apertureShape: "elliptical-gabor",
     level: 1,
     name: "Custom Protocol",
-    backgroundType: "broadband-noise",
+    backgroundType: "dynamic-noise",
     completionRule: "fixed-trials",
     aoreEnabled: !0,
     aoreMode: "oblique-alternating",
@@ -9179,13 +9179,14 @@ function Zh(e) {
   } catch {}
 }
 const Jh = [0.25, 0.5, 1, 2],
-  ef = [
-    { name: "Fine Grain (1px)", scale: 1 },
-    { name: "Standard Grain (2px)", scale: 2 },
-    { name: "Medium Noise (3px)", scale: 3 },
-    { name: "Coarse Grain (4px)", scale: 4 },
-    { name: "Broadband Snow (5px)", scale: 5 },
-  ],
+  /*
+   * Mindbuild edit, not upstream: the background is always fine grain. A
+   * coarse grain (3-5px) is nothing like the Gabor's bars and never blends
+   * with them, so it masks nothing and only changes how the screen looks.
+   * The five passes per frequency stay, so a session keeps its 20 blocks,
+   * each now at 1px.
+   */
+  ef = [1, 2, 3, 4, 5].map((k) => ({ name: "Fine Grain (1px)", scale: 1, pass: k })),
   Xe = [
     {
       level: 1,
@@ -9334,7 +9335,7 @@ function Mi() {
   for (const n of Jh)
     for (const s of ef)
       e.push({
-        id: `df-cond-${n}cpd-noise-s${s.scale}`,
+        id: `df-cond-${n}cpd-noise-s${s.scale}-p${s.pass}`,
         testSpatialFreqCpd: n,
         noiseGrainScale: s.scale,
         noiseGrainName: s.name,
@@ -9385,7 +9386,8 @@ class nl {
         noiseGrainScale: v = 2,
         customSpeedHz: y,
         customBackgroundContrast: N,
-        backgroundType: b = "broadband-noise",
+        /* Moving static by default (Mindbuild edit): fresh noise every frame, like real static. */
+        backgroundType: b = "dynamic-noise",
         backgroundOrientationDeg: k = 90,
         showFixation: z,
       } = t,
@@ -9402,10 +9404,29 @@ class nl {
     if (b === "uniform-gray" || j <= 0.001)
       ((d.fillStyle = `rgb(${S}, ${S}, ${S})`), d.fillRect(0, 0, u, f));
     else if (b === "dynamic-noise") {
-      const D = Math.max(1, Math.min(8, v));
-      (this.updateNoiseBackground(u, f, S, j, D),
+      /*
+       * Fine grain always (see ef), and a different frame of static each
+       * time, drawn from twelve made once a block: generating a full screen
+       * of noise every frame took long enough to unsettle the drift timing.
+       * Never the same frame twice running.
+       */
+      const D = 1,
+        Z = `${u}_${f}_${j}_${D}`;
+      if (this.staticKey !== Z || !this.staticFrames) {
+        this.staticFrames = [];
+        for (let k = 0; k < 12; k++) {
+          this.updateNoiseBackground(u, f, S, j, D);
+          const F = document.createElement("canvas");
+          ((F.width = u), (F.height = f), F.getContext("2d").drawImage(this.noiseCanvas, 0, 0));
+          this.staticFrames.push(F);
+        }
+        ((this.staticKey = Z), (this.lastNoiseKey = ""));
+      }
+      let k = Math.floor(Math.random() * this.staticFrames.length);
+      (k === this.staticLast && (k = (k + 1) % this.staticFrames.length),
+        (this.staticLast = k),
         (d.imageSmoothingEnabled = !1),
-        d.drawImage(this.noiseCanvas, 0, 0, u, f));
+        d.drawImage(this.staticFrames[k], 0, 0, u, f));
     } else if (b === "cross-oriented-grating") {
       const D = a.level || 1,
         Z = 0.5 + ((D - 1) / 19) * 2,
@@ -9424,7 +9445,8 @@ class nl {
         d.drawImage(this.crossStripCanvas, 0, 0, 1, q, -q / 2, -q / 2, q, q),
         d.restore());
     } else {
-      const D = Math.max(1, Math.min(8, v)),
+      /* Fine grain always (see ef), whatever grain a program asks for. */
+      const D = 1,
         Z = `${u}_${f}_${j}_${D}`;
       ((this.lastNoiseKey !== Z ||
         this.noiseCanvas.width !== u ||
@@ -10669,7 +10691,7 @@ const Ei = ee(d0),
       {
         type: "dynamic-noise",
         title: "Dynamic Flicker Noise",
-        desc: "Active frame-by-frame TV snow mask for temporal stress testing.",
+        desc: "Active frame-by-frame TV snow, fine grain. The default.",
         icon: r.jsx(Os, { className: "h-4 w-4 text-yellow-400" }),
       },
       {
@@ -15606,7 +15628,22 @@ const Ei = ee(d0),
   Lf = 1.35,
   Fl = 1.22,
   sc = 0.001,
-  lc = 0.5;
+  lc = 0.5,
+  /*
+   * The visual programs (Motion Discrimination, 2-Step Direction Memory), set
+   * by the player's own thresholds. Mindbuild edit, not upstream: conscious
+   * recognition of the flow sits at 0.39-0.41% contrast, nothing above 0.45%
+   * teaches anything, and discrimination stays above chance down to about
+   * 0.15-0.2%, below awareness. So a block starts at 0.45% and never goes above
+   * it, and the staircase is weighted to settle at 65% correct (Kaernbach
+   * 1991): an error steps up WU, a correct answer steps down WD, with
+   * log WU / log WD = 0.65 / 0.35. A 3-down/1-up rule can only aim at 79%,
+   * which is the edge of awareness rather than below it. The weighted rule
+   * reverses often, so a block runs to 12 reversals or its 22 trials.
+   */
+  WD = 1.12,
+  WU = Math.pow(1.12, 0.65 / 0.35),
+  VISUAL_STAIRCASE = { initialContrast: 0.0045, ceiling: 0.0045, weighted: !0, minReversals: 12 };
 function Hn(e, t) {
   return {
     condition: e,
@@ -15621,6 +15658,8 @@ function Hn(e, t) {
     minReversals: (t == null ? void 0 : t.minReversals) ?? 5,
     completionRule:
       (t == null ? void 0 : t.completionRule) ?? "adaptive-reversals",
+    weighted: !!(t == null ? void 0 : t.weighted),
+    ceiling: (t == null ? void 0 : t.ceiling) ?? lc,
     isComplete: !1,
     finalThreshold: null,
     contrastSensitivity: null,
@@ -15635,6 +15674,18 @@ function Pi(e, t, n) {
     o = e.reversals,
     c = e.lastDirection,
     h = !1;
+  if (e.weighted) {
+    /* Fast descent to the first error, then the weighted rule (see VISUAL_STAIRCASE). */
+    const top = e.ceiling ?? lc;
+    !i
+      ? s
+        ? ((l = Math.max(sc, e.currentContrast / Lf)), (c = "down"))
+        : ((i = !0), (l = Math.min(top, e.currentContrast * WU)), (c = "up"), (o += 1), (h = !0))
+      : s
+        ? ((l = Math.max(sc, e.currentContrast / WD)), c === "up" && ((o += 1), (h = !0)), (c = "down"))
+        : ((l = Math.min(top, e.currentContrast * WU)), c === "down" && ((o += 1), (h = !0)), (c = "up"));
+    a = 0;
+  } else
   i
     ? s
       ? ((a += 1),
@@ -17764,7 +17815,7 @@ const Rf = ({
       i = Xe.find((p) => p.level === e) || Xe[0],
       o = T.useRef(Mi()).current,
       [c, h] = T.useState(0),
-      [g, v] = T.useState(() => Hn(o[0])),
+      [g, v] = T.useState(() => Hn(o[0], VISUAL_STAIRCASE)),
       y = T.useRef([]),
       [N, b] = T.useState(!1),
       [k, z] = T.useState(null),
@@ -17888,7 +17939,7 @@ const Rf = ({
             if (R < o.length) {
               const I = o[R];
               h(R);
-              const A = Hn(I);
+              const A = Hn(I, VISUAL_STAIRCASE);
               (v(A),
                 u({
                   blockNumber: R + 1,
@@ -18250,7 +18301,7 @@ const Rf = ({
       i = Xe.find((F) => F.level === e) || Xe[0],
       o = T.useRef(Mi()).current,
       [c, h] = T.useState(0),
-      [g, v] = T.useState(() => Hn(o[0])),
+      [g, v] = T.useState(() => Hn(o[0], VISUAL_STAIRCASE)),
       y = T.useRef([]),
       [N, b] = T.useState(!1),
       [k, z] = T.useState(null),
@@ -18384,7 +18435,7 @@ const Rf = ({
             if (Y < o.length) {
               const G = o[Y];
               h(Y);
-              const U = Hn(G);
+              const U = Hn(G, VISUAL_STAIRCASE);
               (v(U),
                 u({
                   blockNumber: Y + 1,
