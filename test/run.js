@@ -1156,6 +1156,190 @@ test("every skinned trainer loads its hub skin after its own styles, and the hub
   }
 });
 
+/*
+ * The more dorsal programs (more/dorsalflow/programs): the arithmetic each
+ * program stands on, run from the very engine.js the page loads, with a
+ * seeded draw so nothing here can flake.
+ */
+const plusEngine = () => {
+  delete require.cache[require.resolve("../apps/more/dorsalflow/programs/engine.js")];
+  return require("../apps/more/dorsalflow/programs/engine.js");
+};
+const seeded = (s) => () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
+
+test("the programs' staircase settles at its target, moves the right way and stays in bounds", () => {
+  const E = plusEngine(), rand = seeded(11);
+  for (const target of [0.75, 0.65]) {
+    /* A model observer whose accuracy grows with the value: threshold near 0.2. */
+    const pc = (v) => 0.5 + 0.5 * (1 - Math.exp(-Math.pow(v / 0.2, 2)));
+    let n = 0, right = 0, logs = 0;
+    for (let b = 0; b < 200; b++) {
+      const st = new E.Staircase({ start: 0.8, min: 0.01, max: 1, harder: -1, target, step: 0.15 });
+      for (let t = 0; t < 80; t++) {
+        const ok = rand() < pc(st.value);
+        st.update(ok);
+        if (t >= 20) { n++; right += ok ? 1 : 0; }
+      }
+      logs += Math.log(st.threshold());
+    }
+    /* Where this observer is right `target` of the time. */
+    const th = Math.exp(logs / 200), want = 0.2 * Math.sqrt(-Math.log(2 - 2 * target));
+    assert.ok(Math.abs(Math.log(th / want)) < 0.3, `thresholds average ${th.toFixed(3)}, not near the observer's ${want.toFixed(3)}`);
+    assert.ok(Math.abs(right / n - target) < 0.03, `aimed at ${target}, settled at ${(right / n).toFixed(3)}`);
+  }
+  /* A right answer makes it harder: smaller where small is hard, larger where large is. */
+  const down = new E.Staircase({ start: 1, min: 0.01, max: 2, harder: -1 }); down.update(true);
+  assert.ok(down.value < 1, "a right answer did not make a 'smaller is harder' staircase smaller");
+  const up = new E.Staircase({ start: 5, min: 1, max: 30, harder: 1 }); up.update(true);
+  assert.ok(up.value > 5, "a right answer did not make a 'larger is harder' staircase larger");
+  up.update(false); up.update(false);
+  assert.ok(up.value < 5 * Math.exp(0.24) && up.value >= 1, "errors did not bring a 'larger is harder' staircase back down");
+  const pinned = new E.Staircase({ start: 0.9, min: 0.5, max: 1, harder: -1 });
+  for (let i = 0; i < 20; i++) pinned.update(false);
+  assert.strictEqual(pinned.value, 1, "the staircase went past its ceiling");
+  for (let i = 0; i < 60; i++) pinned.update(true);
+  assert.strictEqual(pinned.value, 0.5, "the staircase went past its floor");
+});
+
+test("global motion: the coherent share is the setting, and only it carries the direction", () => {
+  const E = plusEngine(), rand = seeded(3);
+  for (const c of [0.05, 0.3, 0.8]) {
+    const dots = E.makeDots(400, 200, rand);
+    let signal = 0, frames = 200, dx = 0, kept = 0;
+    for (let f = 0; f < frames; f++) {
+      const before = dots.map((d) => [d.x, d.age]);
+      signal += E.stepDots(dots, { coherence: c, direction: 0, speed: 2, radius: 200, lifetime: 6 }, rand);
+      /* Net drift of the dots that neither wrapped nor were reborn this frame. */
+      dots.forEach((d, i) => { const m = d.x - before[i][0]; if (Math.abs(m) <= 2 + 1e-9) { dx += m; kept++; } });
+    }
+    const share = signal / (frames * dots.length);
+    assert.ok(Math.abs(share - c) < 0.02, `coherence ${c} moved ${share.toFixed(3)} of the dots together`);
+    const drift = dx / kept;
+    assert.ok(Math.abs(drift - 2 * c) < 0.1, `coherence ${c} drifted ${drift.toFixed(3)} px a frame, not ${2 * c}`);
+  }
+  const dots = E.makeDots(300, 100, rand);
+  for (let f = 0; f < 100; f++) E.stepDots(dots, { coherence: 0.5, direction: 1, speed: 5, radius: 100, lifetime: 6 }, rand);
+  assert.ok(dots.every((d) => Math.hypot(d.x, d.y) <= 100 + 1e-9), "a dot left the aperture");
+});
+
+test("the useful field of view: eight places, clear of the triangles, timed in whole frames", () => {
+  const E = plusEngine(), ecc = 300, places = E.ufovPlaces(ecc), distr = E.ufovDistractors(ecc);
+  assert.strictEqual(places.length, 8);
+  places.forEach((p, k) => {
+    assert.strictEqual(p.k, k);
+    assert.ok(Math.abs(Math.hypot(p.x, p.y) - ecc) < 1e-9, `place ${k + 1} is off the ring`);
+    places.forEach((q, j) => { if (j !== k) assert.ok(Math.hypot(p.x - q.x, p.y - q.y) > 0.7 * ecc, "two places crowd each other"); });
+    assert.ok(distr.every((d) => Math.hypot(d.x - p.x, d.y - p.y) > 0.15 * ecc), `a triangle sits on place ${k + 1}`);
+  });
+  assert.ok(Math.abs(places[0].y) < 1e-9 && places[0].x > 0, "place 1 is not to the right");
+  assert.ok(places[2].y < 0, "place 3 is not above (y grows downward on the screen)");
+  assert.strictEqual(distr.length, 40);
+  assert.strictEqual(E.framesFor(50, 1000 / 60), 3);
+  assert.strictEqual(E.framesFor(1, 1000 / 60), 1, "a display shorter than a frame must still be one frame");
+  assert.strictEqual(E.framesFor(300, 1000 / 120), 36);
+});
+
+test("heading: flow dots stream away from the focus, noise dots at the same speed any way", () => {
+  const E = plusEngine(), rand = seeded(5), foe = 40;
+  const dots = Array.from({ length: 500 }, () => ({ x: (rand() - 0.5) * 300, y: (rand() - 0.5) * 300, age: 0 }));
+  const before = dots.map((d) => ({ x: d.x, y: d.y }));
+  E.stepFlow(dots, { foe, rate: 0.02, noise: 0, radius: 1e6, lifetime: 100 }, rand);
+  dots.forEach((d, i) => {
+    const rx = before[i].x - foe, ry = before[i].y, mx = d.x - before[i].x, my = d.y - before[i].y;
+    assert.ok(Math.abs(mx * ry - my * rx) < 1e-6 && mx * rx + my * ry >= 0, "a flow dot did not move straight out from the focus");
+    assert.ok(Math.abs(Math.hypot(mx, my) - 0.02 * Math.hypot(rx, ry)) < 1e-9, "a flow dot's speed does not grow with distance");
+  });
+  const noisy = before.map((d) => ({ x: d.x, y: d.y, age: 0 }));
+  E.stepFlow(noisy, { foe, rate: 0.02, noise: 1, radius: 1e6, lifetime: 100 }, rand);
+  let out = 0, ux = 0, uy = 0;
+  noisy.forEach((d, i) => {
+    const rx = before[i].x - foe, ry = before[i].y, mx = d.x - before[i].x, my = d.y - before[i].y;
+    assert.ok(Math.abs(Math.hypot(mx, my) - 0.02 * Math.hypot(rx, ry)) < 1e-9, "a noise dot's speed gives it away");
+    if (mx * rx + my * ry > 0) out++;
+    const m = Math.hypot(mx, my); ux += mx / m; uy += my / m;
+  });
+  assert.ok(Math.hypot(ux, uy) / 500 < 0.12, "noise dots lean one way");
+  assert.ok(out > 200 && out < 300, `noise dots went outward ${out} times in 500: they are not random`);
+});
+
+test("speed: the pair differs by the Weber fraction, and neither base nor duration gives it away", () => {
+  const E = plusEngine(), rand = seeded(9);
+  let first = 0;
+  const bases = [];
+  for (let i = 0; i < 400; i++) {
+    const p = E.speedPair(0.2, rand), f = p.speeds[p.faster], s = p.speeds[1 - p.faster];
+    assert.ok(Math.abs(f / s - 1.2) < 1e-9, `the speeds are ${f / s} apart, not 1.2`);
+    p.durations.forEach((d) => assert.ok(d >= 320 && d <= 480, `a duration of ${d} ms`));
+    if (p.faster === 0) first++;
+    bases.push(Math.sqrt(f * s));
+  }
+  assert.ok(first > 160 && first < 240, `the first was faster ${first} times in 400`);
+  assert.ok(Math.min(...bases) < 3.5 && Math.max(...bases) > 7.5, "the base speed does not rove");
+});
+
+test("tracking: discs stay in the box and never overlap", () => {
+  const E = plusEngine(), rand = seeded(13), size = 12, w = 400, h = 400;
+  const discs = E.makeDiscs(8, w, h, size, rand);
+  assert.strictEqual(discs.length, 8);
+  let closest = Infinity;
+  for (let f = 0; f < 3000; f++) {
+    E.stepDiscs(discs, { speed: 4, size, w, h }, rand);
+    discs.forEach((d) => assert.ok(d.x >= size - 1e-9 && d.x <= w - size + 1e-9 && d.y >= size - 1e-9 && d.y <= h - size + 1e-9, "a disc left the box"));
+    for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) closest = Math.min(closest, Math.hypot(discs[i].x - discs[j].x, discs[i].y - discs[j].y));
+  }
+  assert.ok(closest > 1.6 * size, `two discs came within ${closest.toFixed(1)} px, overlapping`);
+});
+
+test("the walker: mirrored by facing, built like a body, and its noise moves like its joints", () => {
+  const E = plusEngine(), rand = seeded(17);
+  let shin = 0, forearm = 0;
+  for (let i = 0; i < 100; i++) {
+    const r = E.walker(i / 100, 1), l = E.walker(i / 100, -1);
+    E.JOINTS.forEach((j) => {
+      assert.ok(Math.abs(r[j].x + l[j].x) < 1e-12 && Math.abs(r[j].y - l[j].y) < 1e-12, `${j} is not mirrored`);
+    });
+    assert.ok(r.head.y < r.shoulderL.y && r.shoulderL.y < r.hipL.y && r.hipL.y < r.kneeL.y && r.kneeL.y < r.ankleL.y, "the body is out of order");
+    shin += r.ankleL.x - r.kneeL.x; forearm += r.wristL.x - r.elbowL.x;
+  }
+  /* What facing is: the shins trail the knees and the forearms swing ahead of the elbows. */
+  assert.ok(shin < -1 && forearm > 1, "the walker's facing is not in how its limbs bend");
+  const noise = E.makeNoiseDots(50, 1.6, rand);
+  noise.forEach((d) => {
+    const at0 = E.noiseDotAt(d, 0);
+    assert.ok(Math.abs(at0.x - d.x) < 1e-12 && Math.abs(at0.y - d.y) < 1e-12, "a noise dot does not start where it was placed");
+    const t = 0.37, a = E.walker((d.phase + t) % 1, d.facing)[d.joint], b = E.walker(d.phase, d.facing)[d.joint], p = E.noiseDotAt(d, t);
+    assert.ok(Math.abs(p.x - d.x - (a.x - b.x)) < 1e-12 && Math.abs(p.y - d.y - (a.y - b.y)) < 1e-12, "a noise dot does not move as its joint does");
+  });
+  assert.ok(new Set(noise.map((d) => d.facing)).size === 2, "the noise all faces one way, which would give the walker away");
+});
+
+test("time to contact: the disc's size says exactly when it arrives", () => {
+  const E = plusEngine();
+  assert.strictEqual(E.loomSize(10, 2000, 0), 10);
+  for (const t of [0, 400, 1200, 1900]) {
+    const h = 1e-3, s = E.loomSize(10, 2000, t), rate = (E.loomSize(10, 2000, t + h) - E.loomSize(10, 2000, t - h)) / (2 * h);
+    assert.ok(Math.abs(s / rate - (2000 - t)) < 1e-3 * (2000 - t), `tau at ${t} ms is ${s / rate}, not ${2000 - t}`);
+  }
+});
+
+test("the programs page is reached from DorsalFlow and runs on its own engine", () => {
+  const base = path.join(__dirname, "..", "apps", "more", "dorsalflow");
+  const bundle = readFileSync(path.join(base, "assets", "dorsalflow.js"), "utf8");
+  assert.ok(/programsCard\(\),/.test(bundle) && /href: "programs\/"/.test(bundle), "DorsalFlow's dashboard does not link the programs");
+  const html = readFileSync(path.join(base, "programs", "index.html"), "utf8");
+  const engine = html.indexOf('<script src="engine.js">'), programs = html.indexOf('<script src="programs.js">');
+  assert.ok(engine > 0 && programs > engine, "programs.js must load after engine.js");
+  assert.ok(/HubTheme\.follow\(/.test(html), "the programs page does not follow the hub's colour");
+  const src = readFileSync(path.join(base, "programs", "programs.js"), "utf8");
+  for (const id of ["coherence", "ufov", "flow", "speed", "mot", "walker", "contact"]) {
+    assert.ok(src.includes(`id: "${id}"`), `the ${id} program is missing`);
+  }
+  /* The session record's writer and its readers agree on the key and the fields. */
+  assert.ok(/STORE = "dorsalflow_programs_v1"/.test(src));
+  for (const f of ["program", "threshold", "right", "items", "trials"]) assert.ok(new RegExp(`\\b${f}: `).test(src), `sessions are saved without ${f}`);
+  assert.ok(/s\.right \/ Math\.max\(1, s\.items\)/.test(src) && /p\.show\(s\.threshold\)/.test(src), "the history does not read what the session saved");
+});
+
 /* ------------------------------------------------------------------ */
 
 for (const [name, fn] of cases) {

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>More dorsal programs — DorsalFlow</title>
+<style>
+  :root {
+    --bg: #080d0b; --panel: #0f1713; --panel-hi: #1a2821; --line: rgba(143, 189, 164, .22);
+    --ink: #c9e0d3; --ink-strong: #e6f4ec; --dim: #7e9a8a; --accent: #8fbda4; --ok: #a9d2bb; --bad: #e08a7c;
+    --mono: ui-monospace, "JetBrains Mono", "IBM Plex Mono", "SF Mono", SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  }
+  * { box-sizing: border-box; border-radius: 0; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--mono); }
+  button, input, select { font-family: inherit; }
+  a { color: var(--accent); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-strong); margin: 0 0 4px; }
+  h2 { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 28px 0 10px; font-weight: 600; }
+  .muted { color: var(--dim); } .small { font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; }
+  .card { background: var(--panel); box-shadow: 0 0 0 1px var(--line); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .card h3 { margin: 0; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-strong); }
+  .card .tag { font-size: 11px; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+  .card p { margin: 0; color: var(--ink); font-size: 13px; flex: 1; }
+  .btn { background: var(--panel-hi); color: var(--ink-strong); border: 1px solid var(--line); padding: 8px 14px; cursor: pointer;
+         letter-spacing: .1em; text-transform: uppercase; font-size: 12px; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #08100c; border-color: var(--accent); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 11px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .panel { background: var(--panel); border: 1px solid var(--line); padding: 18px; }
+  .intro p { margin: 0 0 10px; }
+  label.opt { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+
+  /* The stage: the whole window, mid-grey, with the HUD and answers over it. */
+  #stage { position: fixed; inset: 0; background: #808080; display: none; }
+  #stage canvas { position: absolute; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .hud { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px;
+         background: rgba(8, 13, 11, .78); border-bottom: 1px solid var(--line); font-size: 12px; }
+  .hud b { color: var(--ink-strong); }
+  .answers { position: absolute; left: 0; right: 0; bottom: 18px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 0 12px; }
+  .answers .btn { min-width: 140px; padding: 12px 16px; background: rgba(15, 23, 19, .92); }
+  .feedback { position: absolute; left: 0; right: 0; bottom: 84px; text-align: center; font-size: 14px; min-height: 22px; }
+  .feedback .ok { color: var(--ok); background: rgba(8, 13, 11, .85); padding: 4px 10px; }
+  .feedback .bad { color: var(--bad); background: rgba(8, 13, 11, .85); padding: 4px 10px; }
+  .prompt { position: absolute; left: 0; right: 0; top: 52px; text-align: center; font-size: 13px; color: #0b0f0d; }
+</style>
+</head>
+<body>
+<div class="wrap" id="home">
+  <div class="row" style="justify-content: space-between">
+    <div>
+      <h1>More dorsal programs</h1>
+      <div class="muted small">The rest of the dorsal pathway, one function each. DorsalFlow trains seeing a faint drift; these train what is built on it.</div>
+    </div>
+    <a class="btn" href="../">← DorsalFlow</a>
+  </div>
+  <h2>Programs</h2>
+  <div class="grid" id="cards"></div>
+  <h2>Recent sessions</h2>
+  <div class="panel"><table><thead><tr><th>When</th><th>Program</th><th>Threshold</th><th>Correct</th><th>Trials</th></tr></thead><tbody id="history"></tbody></table></div>
+  <p class="muted small">Sizes use DorsalFlow's screen calibration (pixels per degree); calibrate there for exact degrees.</p>
+</div>
+
+<div class="wrap" id="intro" hidden>
+  <div class="panel intro">
+    <h1 id="introTitle"></h1>
+    <div class="muted small" id="introTag" style="margin-bottom: 12px"></div>
+    <div id="introText"></div>
+    <div id="introOpts"></div>
+    <div class="row" style="margin-top: 14px">
+      <button class="btn primary" id="startBtn" type="button">Start</button>
+      <button class="btn" id="backBtn" type="button">Back</button>
+      <span class="muted small" id="introLast"></span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="summary" hidden>
+  <div class="panel">
+    <h1 id="sumTitle"></h1>
+    <table style="margin-top: 12px"><tbody id="sumRows"></tbody></table>
+    <div class="row" style="margin-top: 14px">
+      <button class="btn primary" id="againBtn" type="button">Again</button>
+      <button class="btn" id="homeBtn" type="button">Programs</button>
+    </div>
+  </div>
+</div>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div class="hud"><span id="hudLeft"></span><span id="hudRight"></span><button class="btn" id="quitBtn" type="button" style="padding: 2px 10px">End</button></div>
+  <div class="prompt" id="prompt"></div>
+  <div class="feedback" id="feedback"></div>
+  <div class="answers" id="answers"></div>
+</div>
+
+<script src="../../../shared/theme.js?v=1"></script>
+<script>
+if (window.HubTheme) HubTheme.follow(document.documentElement, function (p) {
+  var T = HubTheme;
+  return {
+    "--bg": T.hex(p.bg), "--panel": T.hex(p.panel), "--panel-hi": T.hex(p.panelHi), "--line": T.rgba(p.accent, .22),
+    "--ink": T.hex(p.ink), "--ink-strong": T.hex(p.inkStrong), "--dim": T.hex(p.dim), "--accent": T.hex(p.accent), "--ok": T.hex(p.ok),
+  };
+});
+</script>
+<script src="engine.js"></script>
+<script src="programs.js"></script>
+</body>
+</html>

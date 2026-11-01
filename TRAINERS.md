@@ -189,6 +189,31 @@ with the Gabor.
 **Research** (†, in the page): contrast sensitivity (Campbell & Robson 1968),
 psychophysical thresholds (Pelli 1985), perceptual learning and noise exclusion
 (Lu & Dosher 1999). Targets dorsal-stream motion sensitivity.
+**More dorsal programs** (`more/dorsalflow/programs/`, linked from the
+dashboard): seven programs for what the dorsal stream builds on seeing motion.
+Each runs one adaptive staircase (75% correct), sizes its stimuli in degrees
+through DorsalFlow's screen calibration and times them in measured frames.
+- Global motion: the share of coherent dots needed to tell left from right,
+  the classic MT measure (Newsome & Paré 1988).
+- Useful field of view: a car or truck at the centre plus a car at one of
+  eight places, among triangles, then masked. The display time is the
+  staircase, down to one frame, and the centre and periphery are scored apart.
+  This is the speed-of-processing task from the ACTIVE trial (Ball et al.
+  2002).
+- Heading from optic flow: the offset of the focus of expansion
+  (Warren & Hannon 1988).
+- Speed discrimination: the Weber fraction between two bursts. The base speed
+  and the durations rove, so only speed answers (McKee 1981).
+- Multiple object tracking: 4 of 8 discs. The speed is the staircase and each
+  pick counts on its own (Pylyshyn & Storm 1988).
+- Biological motion: which way a point-light walker faces (Johansson 1973;
+  Cutting 1978) among scrambled-walker noise dots. The staircase is the number
+  of noise dots.
+- Time to contact: a looming disc vanishes, and you judge whether a flash came
+  before or after it would have arrived (Lee 1976). The staircase is the gap.
+
+Sessions are kept under `dorsalflow_programs_v1`. Their arithmetic is in
+`programs/engine.js`, which `test/run.js` tests.
 
 ### Controlled Hallucination — not counted yet
 **Task.** Induce visual hallucinations (Ganzfeld, flicker, bistable figures)

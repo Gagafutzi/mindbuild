@@ -15467,6 +15467,7 @@ const Ei = ee(d0),
                         }),
                         avCard("av-flow", "Mixed Discrimination", "Sight and sound at once: a Gabor drifts and a sound sweeps through pink static in the same half second. Did they move the same way or opposite ways? Headphones needed.", e.currentMixedLevel || 1, i),
                         avCard("av-two-step", "Mixed Memory", "Several sight-and-sound pairs in a row, each same way or opposite: hold the run, then answer it in order. Every pair counts on its own. Headphones needed.", e.currentMixedMemLevel || 1, i),
+                        programsCard(),
                       ],
                     }),
                   ],
@@ -17831,6 +17832,29 @@ const AvSession = ({
   };
 /* One card on the dashboard per mixed program, and one tab in the level
    matrix: written once here rather than twice in the dashboard's markup. */
+/* The rest of the dorsal pathway lives on its own page, programs/: global motion, the useful field of
+   view, heading, speed, tracking, biological motion and time to contact. */
+function programsCard() {
+  return r.jsxs("div", {
+    className:
+      "rounded-2xl border border-slate-800 bg-slate-900/70 p-5 space-y-4 hover:border-slate-700 transition-all flex flex-col justify-between",
+    children: [
+      r.jsxs("div", {
+        children: [
+          r.jsx("span", { className: "text-[10px] font-mono text-slate-500", children: "7 PROGRAMS" }),
+          r.jsx("h4", { className: "mt-3 text-base font-bold text-white", children: "More dorsal programs" }),
+          r.jsx("p", { className: "mt-1 text-xs text-slate-400 leading-relaxed", children: "Global motion, useful field of view, heading from optic flow, speed, multiple object tracking, biological motion and time to contact: what the dorsal stream builds on seeing motion." }),
+        ],
+      }),
+      r.jsxs("a", {
+        href: "programs/",
+        className:
+          "av-launch flex items-center justify-center gap-2 rounded-xl py-3 text-xs sm:text-sm font-bold text-white active:scale-95 transition-all shadow-lg",
+        children: [r.jsx("span", { children: "Open the programs" }), r.jsx(an, { className: "h-3.5 w-3.5" })],
+      }),
+    ],
+  });
+}
 function avCard(id, title, text, level, launch) {
   return r.jsxs("div", {
     className:
