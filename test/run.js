@@ -1051,11 +1051,11 @@ test("Synaesthesia's window grows with every symbol of a phrase, not only the di
 
 /*
  * DorsalFlow's visual programs, set by the player's thresholds: blocks start at
- * 0.45% contrast and never go above it, and the staircase settles below
+ * 0.5% contrast and never go above it, and the staircase settles below
  * awareness, at about 65% correct. Run on the bundle's own staircase code
  * against a model observer, with a seeded draw so the test cannot flake.
  */
-test("DorsalFlow's visual staircase stays at or under 0.45% and settles near 65% correct", () => {
+test("DorsalFlow's visual staircase stays at or under 0.5% and settles near 65% correct", () => {
   const vm = require("vm");
   const src = readFileSync(path.join(__dirname, "..", "apps", "more", "dorsalflow", "assets", "dorsalflow.js"), "utf8");
   /* Both visual programs start each block on it (the writer), and the staircase reads it (the reader). */
@@ -1081,7 +1081,7 @@ test("DorsalFlow's visual staircase stays at or under 0.45% and settles near 65%
       if (st.totalTrials > 3) { n++; right += ok ? 1 : 0; }
     }
   }
-  assert.ok(top <= 0.0045 + 1e-12, `the staircase went to ${(top * 100).toFixed(3)}% contrast`);
+  assert.ok(top <= 0.005 + 1e-12, `the staircase went to ${(top * 100).toFixed(3)}% contrast`);
   const acc = right / n;
   assert.ok(acc > 0.6 && acc < 0.72, `it settled at ${(acc * 100).toFixed(1)}% correct, not below awareness near 65%`);
 });

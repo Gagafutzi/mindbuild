@@ -15632,10 +15632,10 @@ const Ei = ee(d0),
   /*
    * The visual programs (Motion Discrimination, 2-Step Direction Memory), set
    * by the player's own thresholds. Mindbuild edit, not upstream: conscious
-   * recognition of the flow sits at 0.39-0.41% contrast, nothing above 0.45%
-   * teaches anything, and discrimination stays above chance down to about
-   * 0.15-0.2%, below awareness. So a block starts at 0.45% and never goes above
-   * it, and the staircase is weighted to settle at 65% correct (Kaernbach
+   * recognition of the flow sits at 0.39-0.41% contrast, and discrimination
+   * stays above chance down to about 0.15-0.2%, below awareness. A block
+   * starts at 0.5% and never goes above it (0.45% until the moving fine
+   * static made every level harder), and the staircase is weighted to settle at 65% correct (Kaernbach
    * 1991): an error steps up WU, a correct answer steps down WD, with
    * log WU / log WD = 0.65 / 0.35. A 3-down/1-up rule can only aim at 79%,
    * which is the edge of awareness rather than below it. The weighted rule
@@ -15643,7 +15643,7 @@ const Ei = ee(d0),
    */
   WD = 1.12,
   WU = Math.pow(1.12, 0.65 / 0.35),
-  VISUAL_STAIRCASE = { initialContrast: 0.0045, ceiling: 0.0045, weighted: !0, minReversals: 12 };
+  VISUAL_STAIRCASE = { initialContrast: 0.005, ceiling: 0.005, weighted: !0, minReversals: 12 };
 function Hn(e, t) {
   return {
     condition: e,

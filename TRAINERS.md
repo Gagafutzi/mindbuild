@@ -180,7 +180,7 @@ went the same way or opposite ways; Mixed Memory plays a run of such pairs
 given afterwards from memory, in order — each pair scored as a trial of its
 own.
 **Visual programs, as set here** (edits to the bundled build, not upstream):
-blocks start at 0.45% contrast and never go above it; the staircase is
+blocks start at 0.5% contrast and never go above it; the staircase is
 weighted to settle at about 65% correct (Kaernbach 1991), below the conscious
 boundary near 0.4% and in the range where discrimination is still above chance
 (about 0.15–0.39%); a block runs to 12 reversals or 22 trials. The background
