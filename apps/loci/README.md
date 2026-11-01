@@ -47,10 +47,13 @@ down as placing becomes automatic.
 - **Feedback per list**: each place marked ✓ (right word, right place), ~ (a
   word from the list, at another place) or ✗.
 - No word repeats within a session, so a word is never recalled from an
-  earlier list's route.
-- **Goal: 30 words** recalled perfectly, in order, in one list. The setup screen and the
-  session summary show the best span so far against it, taken from every
-  session in the record.
+  earlier list's route. When the chosen tier runs out (about 120 words, two
+  lists of fifty), the nearest tier with words left lends them.
+- Lists run up to 60 words.
+- **Goal: 50 words** recalled perfectly, in order, in one list, at 3 seconds a
+  word or faster. The setup screen and the session summary show the best span
+  so far at that pace, taken from every session in the record (and the best
+  at any pace, when it is longer).
 
 ## Record
 

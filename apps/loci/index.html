@@ -92,7 +92,7 @@
 
     <h2 style="margin-top:18px">Session</h2>
     <div class="grid">
-      <label class="f">Words per list<input id="span" type="number" min="2" max="40" value="5"></label>
+      <label class="f">Words per list<input id="span" type="number" min="2" max="60" value="5"></label>
       <label class="f">Seconds per word<input id="rate" type="number" min="0.5" max="10" step="0.5" value="2.5"></label>
       <label class="f">Lists<input id="lists" type="number" min="1" max="50" value="10"></label>
       <label class="f">Words are<select id="present">
@@ -201,14 +201,19 @@ function deutsch() { return settings.lang === "de" && typeof LOCI_WORDS_DE !== "
 function tiers() { return deutsch() ? LOCI_WORDS_DE.tiers : LOCI_WORDS.tiers; }
 /* German writes its nouns capitalised, and every word here is a noun. */
 function shown(w) { return deutsch() ? w.charAt(0).toUpperCase() + w.slice(1) : w; }
-/* The span being trained toward: thirty words recalled in order, in one list. */
-var GOAL = 30;
-/* The longest list ever recalled perfectly, across every session kept. */
-function best() {
+/* The span being trained toward: fifty words recalled in order, in one list,
+   at three seconds a word or faster. The pace is half the goal: fifty words
+   at ten seconds each is a different and much easier task. */
+var GOAL = 50, GOAL_RATE = 3;
+/* The longest list ever recalled perfectly, across every session kept; at the
+   goal's pace or faster unless `anyPace`. */
+function best(anyPace) {
   /* In order only: the goal is a route walked place by place, and a list
      recalled in any order is the easier task. */
   return record().sessions.reduce(function (m, x) {
-    return x.settings && anyOrder(x.settings) ? m : Math.max(m, (x.extra && x.extra.longestPerfect) || x.score || 0);
+    if (x.settings && anyOrder(x.settings)) return m;
+    if (!anyPace && !(x.settings && x.settings.rate <= GOAL_RATE)) return m;
+    return Math.max(m, (x.extra && x.extra.longestPerfect) || x.score || 0);
   }, 0);
 }
 var $ = function (id) { return document.getElementById(id); };
@@ -219,11 +224,17 @@ function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floo
 
 /* Words not yet used this session, so a list never repeats one from earlier in
    the sitting: a word already placed somewhere would be recalled from there.
-   A tier runs out only past a hundred words, and then starts over. */
-var unused = {};
+   A tier holds about 120 words, two lists of fifty; when the chosen tier runs
+   out, the nearest tier with words left lends them, and only when every tier
+   is spent does the whole vocabulary start over. */
+var unused = null;
 function draw(level) {
-  var tier = level || 1 + Math.floor(Math.random() * 5);
-  if (!unused[tier] || !unused[tier].length) unused[tier] = shuffle(tiers()[tier].words.slice());
+  if (!unused || [1, 2, 3, 4, 5].every(function (t) { return !unused[t].length; })) {
+    unused = {}; [1, 2, 3, 4, 5].forEach(function (t) { unused[t] = shuffle(tiers()[t].words.slice()); });
+  }
+  var want = level || 1 + Math.floor(Math.random() * 5);
+  var tier = [0, -1, 1, -2, 2, -3, 3, -4, 4].map(function (d) { return want + d; })
+    .filter(function (t) { return t >= 1 && t <= 5 && unused[t].length; })[0];
   return { word: shown(unused[tier].pop()), tier: tier };
 }
 
@@ -322,7 +333,7 @@ function show(id) { ["setup", "run", "recall", "feedback", "summary"].forEach(fu
 
 function readSettings() {
   var num = function (id, lo, hi, d) { var v = Number($(id).value); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
-  settings.span = Math.round(num("span", 2, 40, 5));
+  settings.span = Math.round(num("span", 2, 60, 5));
   settings.rate = num("rate", 0.5, 10, 2.5);
   settings.lists = Math.round(num("lists", 1, 50, 10));
   settings.present = $("present").value;
@@ -334,7 +345,7 @@ function readSettings() {
 
 function start() {
   readSettings();
-  unused = {};
+  unused = null;
   S = { start: Date.now(), active: 0, runningSince: null, span: settings.span, startSpan: settings.span,
         misses: 0, lists: [], settings: JSON.parse(JSON.stringify(settings)) };
   clockOn();
@@ -422,7 +433,7 @@ function judge() {
   var free = anyOrder(S.settings), cur = S.current, res = free ? scoreFree(cur.list, given) : score(cur.list, given);
   var before = S.span;
   if (S.settings.adaptive) {
-    if (res.perfect) { S.span = Math.min(40, S.span + 1); S.misses = 0; }
+    if (res.perfect) { S.span = Math.min(60, S.span + 1); S.misses = 0; }
     else if (++S.misses >= 2) { S.span = Math.max(2, S.span - 1); S.misses = 0; }
   }
   S.lists.push({ i: S.lists.length, t: cur.t, level: cur.span, stimulus: cur.list.map(function (x) { return x.word; }),
@@ -496,7 +507,7 @@ function finish(completed) {
   $("kpis").innerHTML = "";
   [[free ? "Words recalled" : "Words in place", words ? Math.round(100 * inPlace / words) + "%" : "—"], ["Perfect lists", perfect + " / " + s.lists.length],
    ["Longest perfect", longest ? longest + " words" : "—"], ["Length", s.startSpan + " → " + s.span],
-   ["Best toward " + GOAL, best() + " / " + GOAL]].forEach(function (k) {
+   ["Best toward " + GOAL + " at " + GOAL_RATE + " s", best() + " / " + GOAL]].forEach(function (k) {
     var d = document.createElement("div"); d.className = "kpi";
     d.innerHTML = '<div class="val"></div><div class="lab"></div>';
     d.querySelector(".val").textContent = k[1]; d.querySelector(".lab").textContent = k[0];
@@ -534,7 +545,8 @@ function lastNote() {
   var r = record(), last = r.sessions[r.sessions.length - 1];
   var b = best();
   $("lastNote").textContent = (last ? "Last: " + Math.round(100 * (last.accuracy || 0)) + (last.settings && anyOrder(last.settings) ? "% recalled" : "% in place") + ", longest perfect " + (last.score || 0) + " · " : "") +
-    (b >= GOAL ? "Goal reached: " + b + " words" : "Goal: " + GOAL + " words, best " + b);
+    (b >= GOAL ? "Goal reached: " + b + " words at " + GOAL_RATE + " s or faster"
+      : "Goal: " + GOAL + " words at " + GOAL_RATE + " s a word or faster, best " + b + (best(true) > b ? " (" + best(true) + " at any pace)" : ""));
 }
 
 $("span").value = settings.span; $("rate").value = settings.rate; $("lists").value = settings.lists;

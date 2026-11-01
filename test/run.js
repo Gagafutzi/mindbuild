@@ -1340,6 +1340,45 @@ test("the programs page is reached from DorsalFlow and runs on its own engine", 
   assert.ok(/s\.right \/ Math\.max\(1, s\.items\)/.test(src) && /p\.show\(s\.threshold\)/.test(src), "the history does not read what the session saved");
 });
 
+/*
+ * Loci Span's goal is a length at a pace: fifty words, in order, at three
+ * seconds a word or faster. A list at five seconds or in any order counts
+ * toward nothing but the "any pace" figure. And a session of fifty-word lists
+ * drawn from one tier never repeats a word: the tier borrows before it starts over.
+ */
+test("Loci Span's goal counts only in-order lists at the goal's pace, and long lists never repeat a word", () => {
+  const vm = require("vm");
+  const html = readFileSync(path.join(__dirname, "..", "apps", "loci", "index.html"), "utf8");
+  const code = html.slice(html.indexOf("function deutsch()"), html.indexOf("/* ---------- matching ---------- */"));
+  const sessions = [];
+  const L = vm.runInNewContext(code.replace(/var \$ = function[^\n]*\n/, "").replace(/var settings = [^\n]*\n/, "var settings = { lang: 'en' };\n")
+    + "; ({ best: best, draw: draw, GOAL: GOAL, GOAL_RATE: GOAL_RATE, reset: function () { unused = null; } })",
+    { LOCI_WORDS: require("../apps/loci/words.js"), Math, record: () => ({ sessions }) });
+  assert.strictEqual(L.GOAL, 50); assert.strictEqual(L.GOAL_RATE, 3);
+  sessions.push({ settings: { rate: 5, order: "serial" }, extra: { longestPerfect: 30 } });
+  sessions.push({ settings: { rate: 2.5, order: "free" }, extra: { longestPerfect: 40 } });
+  assert.strictEqual(L.best(), 0, "a slow list or an any-order list counted toward the goal");
+  assert.strictEqual(L.best(true), 30, "the any-pace best does not count in-order lists at any pace");
+  sessions.push({ settings: { rate: 3, order: "serial" }, extra: { longestPerfect: 22 } });
+  assert.strictEqual(L.best(), 22, "a list at exactly the goal's pace did not count");
+
+  for (const level of [0, 1, 3, 5]) {
+    L.reset();
+    const seen = new Set();
+    for (let i = 0; i < 600; i++) {
+      const w = L.draw(level).word;
+      assert.ok(!seen.has(w), `"${w}" came back after ${i} words from tier ${level || "mixed"}`);
+      seen.add(w);
+    }
+  }
+  L.reset();
+  const tiers = new Map(require("../apps/loci/words.js").tiers.slice(1).flatMap((t) => t.words.map((w) => [w, t.level])));
+  const first = Array.from({ length: 100 }, () => L.draw(4));
+  assert.ok(first.every((d) => d.tier === 4 && tiers.get(d.word) === 4), "a tier borrowed while it still had words");
+  const next = Array.from({ length: 60 }, () => L.draw(4));
+  assert.ok(next.every((d) => tiers.get(d.word) === d.tier && Math.abs(d.tier - 4) <= 1), "a spent tier did not borrow from its neighbours");
+});
+
 /* ------------------------------------------------------------------ */
 
 for (const [name, fn] of cases) {
