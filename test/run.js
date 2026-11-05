@@ -1493,6 +1493,48 @@ test("DorsalFlow's rotation saves every mode at once without losing a level step
   assert.strictEqual(D.ROT_MIN_BLOCK, 6);
 });
 
+/*
+ * Relational n-back's spoken letters. The first set had F, L and X — "eh-f",
+ * "eh-l", "eh-ks" — which synthetic speech says as one vowel with a faint end:
+ * heard as one letter at three pitches. And the clips were trimmed into the
+ * sound, so some came out as no letter at all.
+ */
+test("Relational n-back's spoken letters: every voice says every letter, and no two differ only at the end", () => {
+  const dir = path.join(__dirname, "..", "apps", "rnb");
+  const constants = readFileSync(path.join(dir, "js", "constants.js"), "utf8");
+  const keys = JSON.parse(constants.match(/const LETTER_KEYS = (\[[^\]]*\]);/)[1].replace(/'/g, '"'));
+  const voices = Object.keys(new Function(constants.match(/const LETTER_VOICES = (\{[^}]*\});/)[0] + "; return LETTER_VOICES;")());
+  const audio = new Function(readFileSync(path.join(dir, "js", "letter-audio.js"), "utf8") + "; return LETTER_AUDIO;")();
+  assert.strictEqual(keys.length, 8);
+  assert.deepStrictEqual(Object.keys(audio).sort(), voices.slice().sort(), "a voice offered has no clips, or clips have no voice");
+  const seen = new Set();
+  for (const v of voices) {
+    assert.deepStrictEqual(Object.keys(audio[v]).sort(), keys.slice().sort(), `${v} does not say exactly the letters in play`);
+    for (const L of keys) {
+      const b = Buffer.from(audio[v][L], "base64");
+      assert.ok(b.slice(0, 3).toString() === "ID3" || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0), `${v}/${L} is not an MP3`);
+      assert.ok(!seen.has(audio[v][L]), `${v}/${L} is another clip's copy`);
+      seen.add(audio[v][L]);
+    }
+  }
+  /* How flite says each letter on its own (flite -ps): onset, vowel, syllables. */
+  const say = {
+    A: ["", "ey", 1], B: ["b", "iy", 1], C: ["s", "iy", 1], D: ["d", "iy", 1], E: ["", "iy", 1], F: ["", "eh", 1],
+    G: ["jh", "iy", 1], H: ["", "ey", 1], I: ["", "ay", 1], J: ["jh", "ey", 1], K: ["k", "ey", 1], L: ["", "eh", 1],
+    M: ["", "eh", 1], N: ["", "eh", 1], O: ["", "ow", 1], P: ["p", "iy", 1], Q: ["k y", "uw", 1], R: ["", "aa", 1],
+    S: ["", "eh", 1], T: ["t", "iy", 1], U: ["y", "uw", 1], V: ["v", "iy", 1], W: ["d", "ah", 3], X: ["", "eh", 1],
+    Y: ["w", "ay", 1], Z: ["z", "iy", 1],
+  };
+  for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) {
+    const a = say[keys[i]], b = say[keys[j]];
+    assert.ok(!(a[2] === 1 && b[2] === 1 && a[0] === b[0] && a[1] === b[1]),
+      `${keys[i]} and ${keys[j]} are one vowel with nothing before it to tell them apart`);
+  }
+  /* The renderer trims silence only, and the Synthetic voice has its high frequencies. */
+  const render = readFileSync(path.join(dir, "tools", "render-letters.mjs"), "utf8");
+  assert.ok(/v > peak - 45/.test(render) && /kal: "kal16"/.test(render), "the renderer cuts into the sound again, or renders the 8 kHz voice");
+});
+
 /* ------------------------------------------------------------------ */
 
 for (const [name, fn] of cases) {

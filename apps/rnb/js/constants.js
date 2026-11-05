@@ -561,10 +561,19 @@ const STREAMS = {
 };
 const STREAM_KEYS = Object.keys(STREAMS);
 
-/* Eight letters, not twenty-six, and chosen to spread across both the onset and the
-   vowel: the alphabet's own rhyme groups (B/C/D/E/G/P/T/V/Z, and A/H/J/K) would turn
-   an identity judgement into a listening test. */
-const LETTER_KEYS = ['A', 'F', 'L', 'O', 'Q', 'R', 'X', 'Y'];
+/* Eight letters, not twenty-six, chosen by how they sound in these voices rather
+   than on paper. The first set (A F L O Q R X Y) had F, L and X: "eh-f", "eh-l",
+   "eh-ks", one vowel told apart only by a faint last consonant, which synthetic
+   speech barely says — heard as one letter at three pitches.
+
+   The rule now: no two letters share a vowel unless something before it tells
+   them apart. Among the sets that keep it, this one has the largest smallest
+   distance between any two letters (MFCC, dynamic time warping, the worst of the
+   four voices): C "see", H "aitch", J "jay", O "oh", S "ess", U "you",
+   W "double-you", Y "why". Every vowel is its own, but for H and J, which differ
+   at both ends, and U and W, one syllable against three. tools/render-letters.mjs
+   renders them. */
+const LETTER_KEYS = ['C', 'H', 'J', 'O', 'S', 'U', 'W', 'Y'];
 const LETTER_VOICES = { slt: 'Female', rms: 'Male', awb: 'Male, Scottish', kal: 'Synthetic' };
 
 /* Extra scoring buckets that aren't user-configurable streams. */
