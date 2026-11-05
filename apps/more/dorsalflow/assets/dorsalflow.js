@@ -15467,6 +15467,7 @@ const Ei = ee(d0),
                         }),
                         avCard("av-flow", "Mixed Discrimination", "Sight and sound at once: a Gabor drifts and a sound sweeps through pink static in the same half second. Did they move the same way or opposite ways? Headphones needed.", e.currentMixedLevel || 1, i),
                         avCard("av-two-step", "Mixed Memory", "Several sight-and-sound pairs in a row, each same way or opposite: hold the run, then answer it in order. Every pair counts on its own. Headphones needed.", e.currentMixedMemLevel || 1, i),
+                        rotationCard(i),
                         programsCard(),
                       ],
                     }),
@@ -15645,6 +15646,113 @@ const Ei = ee(d0),
   WD = 1.12,
   WU = Math.pow(1.12, 0.65 / 0.35),
   VISUAL_STAIRCASE = { initialContrast: 0.005, ceiling: 0.005, weighted: !0, minReversals: 12 };
+/*
+ * THE ROTATION (RotationSession, below the sessions): the five modes in turns
+ * of a few trials each, every mode picking up exactly where it stopped. Mindbuild
+ * edit, not upstream.
+ *
+ * The point is time at the right difficulty. A mode's own session restarts
+ * every block's staircase at the easy end (0.5% for sight, 5% for sound) and
+ * spends its first trials walking down to the player's level; in the rotation
+ * no trial is spent that way:
+ *   - between turns a mode keeps its staircase as it stood, mid-block, so a
+ *     turn resumes at the contrast the last one ended on;
+ *   - a new block starts at the player's last threshold for that condition
+ *     (this rotation's, else the most recent session's, by condition, then by
+ *     band), past the fast first descent, and the staircase moves on from
+ *     there by its usual rule, so each mode still aims at its own target
+ *     (65% for sight, below awareness; 79% for sound and the mixed modes);
+ *   - and between rotations each mode keeps its place in its list of
+ *     conditions, so every band and grain is reached in turn rather than the
+ *     first few again each time.
+ */
+const ROT_KEY = "mindbuild.dorsalflow.rotation",
+  ROT_MODES = [
+    { id: "motion", name: "Motion Discrimination" },
+    { id: "two-step-direction", name: "2-Step Direction Memory" },
+    { id: "audio-flow", name: "AudioFlow" },
+    { id: "av-flow", name: "Mixed Discrimination" },
+    { id: "av-two-step", name: "Mixed Memory" },
+  ],
+  /* A block cut off by the end of a rotation counts if it ran this long. */
+  ROT_MIN_BLOCK = 6;
+function rotLoad() {
+  let x = null;
+  try {
+    x = JSON.parse(localStorage.getItem(ROT_KEY));
+  } catch {}
+  x = x && typeof x === "object" ? x : {};
+  const modes = Array.isArray(x.modes) ? x.modes.filter((m) => ROT_MODES.some((d) => d.id === m)) : [];
+  return {
+    modes: modes.length ? modes : ROT_MODES.map((m) => m.id),
+    budget: Math.round(Math.min(40, Math.max(4, Number(x.budget) || 10))),
+    at: x.at && typeof x.at === "object" ? x.at : {},
+  };
+}
+function rotSave(x) {
+  try {
+    localStorage.setItem(ROT_KEY, JSON.stringify(x));
+  } catch {}
+}
+function rotConditions(mode) {
+  return mode === "audio-flow" ? afConditions() : AV_LEVEL_KEY[mode] ? avConditions() : Mi();
+}
+/** Where a block's staircase starts: the player's own last threshold on that condition. */
+function rotSeed(mode, sessions) {
+  return (cond, results) => {
+    const pools = [results.slice().reverse()].concat(
+      sessions.filter((x) => x.mode === mode).reverse().map((x) => (x.results || []).slice().reverse()),
+    );
+    for (const pool of pools)
+      for (const same of [(r) => r.conditionId === cond.id, (r) => r.testSpatialFreqCpd === cond.testSpatialFreqCpd]) {
+        const hit = pool.find(same);
+        if (hit && hit.contrastThreshold > 0) return hit.contrastThreshold;
+      }
+    return 0;
+  };
+}
+function rotStart(rot, cond, base, results) {
+  const st = Hn(cond, base),
+    seed = rot.seed(cond, results);
+  return seed > 0
+    ? { ...st, currentContrast: Math.min(st.ceiling, Math.max(sc, seed)), hasHadFirstError: !0 }
+    : st;
+}
+/** A session's opening state: from the rotation's last turn of this mode, or a fresh first block. */
+function rotInit(rot, o, base) {
+  if (!rot) return { c: 0, g: Hn(o[0], base), results: [] };
+  const r0 = rot.resume || {},
+    c = Math.min(r0.c || 0, o.length - 1),
+    results = (r0.results || []).slice();
+  return { c, g: r0.g || rotStart(rot, o[c], base, results), results };
+}
+/** Count `n` staircase trials into this turn; true once the turn is spent. */
+function rotSpent(rot, turn, n) {
+  if (!rot) return !1;
+  turn.current += n;
+  rot.count(n);
+  return turn.current >= rot.budget;
+}
+/** A session's record, as each mode's own summary builds it. */
+function dfRecord(mode, level, results) {
+  const two = results.filter((H) => H.testSpatialFreqCpd === 2),
+    passed = (two.length > 0 ? two.reduce((H, B) => H + B.contrastThreshold, 0) / two.length : 0.05) <= Ti,
+    cs = {};
+  [0.25, 0.5, 1, 2].forEach((H) => {
+    const B = results.filter((Y) => Y.testSpatialFreqCpd === H);
+    cs[H] = B.length ? B.reduce((Y, G) => Y + G.contrastSensitivity, 0) / B.length : 0;
+  });
+  return {
+    id: `session-${mode}-${Date.now()}`,
+    date: new Date().toISOString(),
+    mode,
+    complexityLevel: level,
+    results,
+    meanCSByFreq: cs,
+    passedLevel: passed,
+    rotation: !0,
+  };
+}
 function Hn(e, t) {
   return {
     condition: e,
@@ -16950,13 +17058,16 @@ const AfHeadphones = ({ className: e }) =>
         r.jsx("path", { d: "M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" }),
       ],
     }),
-  AfSession = ({ complexityLevel: e, onFinishSession: n, onExit: s }) => {
+  AfSession = ({ complexityLevel: e, onFinishSession: n, onExit: s, rotation: rot }) => {
     const l = T.useRef(null),
       i = T.useMemo(() => afLevel(e), [e]),
       o = T.useRef(afConditions()).current,
-      [c, h] = T.useState(0),
-      [g, v] = T.useState(() => Hn(o[0])),
-      y = T.useRef([]),
+      rot0 = T.useMemo(() => rotInit(rot, o), []),
+      turn = T.useRef(0),
+      [gone, setGone] = T.useState(!1),
+      [c, h] = T.useState(rot0.c),
+      [g, v] = T.useState(rot0.g),
+      y = T.useRef(rot0.results),
       [N, b] = T.useState(!1),
       [k, z] = T.useState(null),
       [d, u] = T.useState(null),
@@ -16972,7 +17083,7 @@ const AfHeadphones = ({ className: e }) =>
         R.current && (clearTimeout(R.current), (R.current = null)));
     };
     T.useEffect(() => () => (clear(), l.current.close()), []);
-    const intro = w === "idle" && c === 0 && g.totalTrials === 0,
+    const intro = !rot && w === "idle" && c === 0 && g.totalTrials === 0,
       J = T.useCallback(() => {
       clear();
       const p = Math.random() < 0.5 ? "left" : "right";
@@ -17036,13 +17147,17 @@ const AfHeadphones = ({ className: e }) =>
         [e, n],
       ),
       E = T.useCallback(() => {
-        (clear(), l.current.stop(), y.current.length > 0 && !N && se(y.current), s());
-      }, [se, N, s]),
+        (clear(), l.current.stop(),
+          rot
+            ? rot.onEnd({ c, g, results: y.current })
+            : (y.current.length > 0 && !N && se(y.current), s()));
+      }, [se, N, s, rot, c, g]),
       P = T.useCallback(
         (p) => {
           if (w !== "presenting" && w !== "waiting_response") return;
           (clear(), l.current.stop(), S("idle"), W(p));
-          const { updatedState: M, isCorrect: F } = Pi(g, j, p);
+          const { updatedState: M, isCorrect: F } = Pi(g, j, p),
+            out = rotSpent(rot, turn, 1);
           if (
             (D(F ? "correct" : "incorrect"),
             F || Bn.playErrorTone(),
@@ -17052,23 +17167,31 @@ const AfHeadphones = ({ className: e }) =>
             y.current.push(_);
             const I = c + 1;
             if (I < o.length) {
-              const A = o[I];
+              const A = o[I],
+                G = rot ? rotStart(rot, A, void 0, y.current) : Hn(A);
               (h(I),
-                v(Hn(A)),
+                v(G),
                 u({ blockNumber: I + 1, band: A.bandName, noise: A.noiseGrainName }),
-                (Q.current = window.setTimeout(() => u(null), 1100)));
+                (Q.current = window.setTimeout(() => u(null), 1100)),
+                out &&
+                  (setGone(!0),
+                  (R.current = window.setTimeout(() => rot.onYield({ c: I, g: G, results: y.current }), 1100))));
             } else se(y.current);
-          } else v(M);
+          } else
+            (v(M),
+              out &&
+                (setGone(!0),
+                (R.current = window.setTimeout(() => rot.onYield({ c, g: M, results: y.current }), 450))));
         },
-        [w, j, g, c, o, se],
+        [w, j, g, c, o, se, rot],
       );
     /* The next trial waits for the staircase's new state to land, so it is
        played at the level the answer just set. */
     T.useEffect(() => {
-      if (N || d || w !== "idle" || intro || document.hidden) return;
+      if (N || d || w !== "idle" || intro || gone || document.hidden) return;
       const p = window.setTimeout(J, 450);
       return () => clearTimeout(p);
-    }, [g, d, w, N, J, intro]);
+    }, [g, d, w, N, J, intro, gone]);
     T.useEffect(() => {
       const p = (M) => {
         N ||
@@ -17183,7 +17306,7 @@ const AfHeadphones = ({ className: e }) =>
                 }),
                 r.jsx("span", {
                   className: "af-chip",
-                  children: "Independent Staircase • Resetting to 5.0%",
+                  children: rot ? "Next block starts at your last threshold" : "Independent Staircase • Resetting to 5.0%",
                 }),
               ],
             }),
@@ -17380,15 +17503,19 @@ const AvSession = ({
     memory: mem,
     onFinishSession: n,
     onExit: s,
+    rotation: rot,
   }) => {
     const cv = T.useRef(null),
       vis = T.useRef(new nl()),
       eng = T.useRef(null),
       lvl = T.useMemo(() => afLevel(e), [e]),
       o = T.useRef(avConditions()).current,
-      [c, h] = T.useState(0),
-      [g, v] = T.useState(() => Hn(o[0])),
-      y = T.useRef([]),
+      rot0 = T.useMemo(() => rotInit(rot, o), []),
+      turn = T.useRef(0),
+      [gone, setGone] = T.useState(!1),
+      [c, h] = T.useState(rot0.c),
+      [g, v] = T.useState(rot0.g),
+      y = T.useRef(rot0.results),
       [N, b] = T.useState(!1),
       [k, z] = T.useState(null),
       [d, u] = T.useState(null),
@@ -17430,7 +17557,7 @@ const AvSession = ({
         () => window.removeEventListener("resize", F)
       );
     }, []);
-    const intro = ph === "idle" && c === 0 && g.totalTrials === 0;
+    const intro = !rot && ph === "idle" && c === 0 && g.totalTrials === 0;
     /* One trial. The visual half is drawn by the render loop below whenever
        the phase is "visual"; the audio half is scheduled on the engine, and
        the phase timers follow the engine's own clock. */
@@ -17543,8 +17670,10 @@ const AvSession = ({
       ),
       quit = T.useCallback(() => {
         (clear(), eng.current.stop(), eng.current.stopBed(),
-          y.current.length > 0 && !N && fin(y.current), s());
-      }, [fin, N, s]),
+          rot
+            ? rot.onEnd({ c, g, results: y.current })
+            : (y.current.length > 0 && !N && fin(y.current), s()));
+      }, [fin, N, s, rot, c, g]),
       P = T.useCallback(
         (p) => {
           if (ph !== "waiting_response") return;
@@ -17576,26 +17705,32 @@ const AvSession = ({
             (clear(), setPh("idle"), setHit(p));
             ({ updatedState: M, isCorrect: F } = Pi(g, ans, p));
           }
+          /* A run of Mixed Memory is as many trials as it has pairs. */
+          const out = rotSpent(rot, turn, mem ? seq.current.length : 1),
+            rest = mem ? 1400 : 450;
           if ((setFb(F ? "correct" : "incorrect"), F || Bn.playErrorTone(), M.isComplete)) {
             y.current.push({ ..._i(M), bandName: M.condition.bandName });
             const I = c + 1;
             if (I < o.length) {
-              const A = o[I];
+              const A = o[I],
+                G = rot ? rotStart(rot, A, void 0, y.current) : Hn(A);
               (h(I),
-                v(Hn(A)),
+                v(G),
                 u({ blockNumber: I + 1, band: A.bandName, noise: A.noiseGrainName, freq: A.testSpatialFreqCpd }),
-                later(() => u(null), 1100));
+                later(() => u(null), 1100),
+                out && (setGone(!0), later(() => rot.onYield({ c: I, g: G, results: y.current }), Math.max(1100, rest))));
             } else fin(y.current);
-          } else v(M);
+          } else
+            (v(M), out && (setGone(!0), later(() => rot.onYield({ c, g: M, results: y.current }), rest)));
         },
-        [ph, ans, g, c, o, fin, mem, given],
+        [ph, ans, g, c, o, fin, mem, given, rot],
       );
     T.useEffect(() => {
-      if (N || d || ph !== "idle" || intro || document.hidden) return;
+      if (N || d || ph !== "idle" || intro || gone || document.hidden) return;
       /* Longer after a run, so its marks can be read. */
       const p = window.setTimeout(J, mem ? 1400 : 450);
       return () => clearTimeout(p);
-    }, [g, d, ph, N, J, intro, mem]);
+    }, [g, d, ph, N, J, intro, mem, gone]);
     T.useEffect(() => {
       const p = (M) => {
         if (N) return;
@@ -17676,7 +17811,7 @@ const AvSession = ({
                 r.jsx("span", { className: "af-kicker av-kicker", children: "Block Complete" }),
                 r.jsxs("h3", { className: "af-h3", children: ["Block ", d.blockNumber, " of ", o.length] }),
                 r.jsxs("p", { className: "af-mono", children: [d.freq, " cpd + ", d.band, " • ", d.noise] }),
-                r.jsx("span", { className: "af-chip", children: "Independent Staircase • Resetting to 5.0%" }),
+                r.jsx("span", { className: "af-chip", children: rot ? "Next block starts at your last threshold" : "Independent Staircase • Resetting to 5.0%" }),
               ],
             }),
           }),
@@ -17832,6 +17967,265 @@ const AvSession = ({
   };
 /* One card on the dashboard per mixed program, and one tab in the level
    matrix: written once here rather than twice in the dashboard's markup. */
+/** The player's progress after one session's record: a passed level steps that mode up. */
+function nextProgress(t, f) {
+  let x = t.currentMotionLevel,
+    w = t.currentTwoStepLevel,
+    A = t.currentAudioLevel || 1,
+    AV = {},
+    S = t.replicationsAtCurrentLevel;
+  f.passedLevel
+    ? (f.mode === "two-step-direction"
+        ? (w = Math.min(20, t.currentTwoStepLevel + 1))
+        : f.mode === "audio-flow"
+          ? (A = Math.min(20, A + 1))
+          : AV_LEVEL_KEY[f.mode]
+            ? (AV[AV_LEVEL_KEY[f.mode]] = Math.min(20, (t[AV_LEVEL_KEY[f.mode]] || 1) + 1))
+            : (x = Math.min(20, t.currentMotionLevel + 1)),
+      (S = 0))
+    : (S += 1);
+  return {
+    ...t,
+    currentMotionLevel: x,
+    currentTwoStepLevel: w,
+    currentAudioLevel: A,
+    ...AV,
+    replicationsAtCurrentLevel: S,
+  };
+}
+/*
+ * The rotation's screens: choose the modes and the turn's length, then each
+ * mode in turn, with a moment between turns to see what comes next. Ending it
+ * keeps every mode's finished blocks as a session of that mode, the block in
+ * progress too if it ran ROT_MIN_BLOCK trials, and remembers where in its
+ * conditions each mode stopped. See ROT_KEY for why it is built this way.
+ */
+function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinish: fin1, onFinishMany: finAll, onExit: leave }) {
+  const saved = T.useMemo(rotLoad, []),
+    [modes, setModes] = T.useState(saved.modes),
+    [budget, setBudget] = T.useState(saved.budget),
+    [phase, setPhase] = T.useState("setup"),
+    [k, setK] = T.useState(0),
+    [sum, setSum] = T.useState(null),
+    snaps = T.useRef({}),
+    counts = T.useRef({}),
+    t0 = T.useRef(0),
+    order = ROT_MODES.filter((m) => modes.includes(m.id)),
+    cur = order.length ? order[k % order.length] : null,
+    level = (id) =>
+      id === "motion"
+        ? P0.currentMotionLevel
+        : id === "two-step-direction"
+          ? P0.currentTwoStepLevel
+          : id === "audio-flow"
+            ? P0.currentAudioLevel || 1
+            : P0[AV_LEVEL_KEY[id]] || 1,
+    next = () => (setK((x) => x + 1), setPhase("between")),
+    start = () => {
+      const at = rotLoad().at;
+      (rotSave({ modes, budget, at }), (snaps.current = {}), (counts.current = {}));
+      (order.forEach((m) => {
+        ((snaps.current[m.id] = { c: (at[m.id] && at[m.id].c) || 0, g: null, results: [] }), (counts.current[m.id] = 0));
+      }),
+        (t0.current = Date.now()),
+        setK(0),
+        setPhase("between"));
+    },
+    end = () => {
+      const at = { ...rotLoad().at },
+        recs = [],
+        rows = [];
+      (order.forEach((m) => {
+        const sn = snaps.current[m.id];
+        if (!sn) return;
+        const res = sn.results.slice(),
+          n = rotConditions(m.id).length;
+        let c = sn.c;
+        if (sn.g && sn.g.totalTrials >= ROT_MIN_BLOCK) {
+          const thr = Df(sn.g.history, sn.g.currentContrast);
+          (res.push({
+            ..._i({ ...sn.g, finalThreshold: thr, contrastSensitivity: thr > 0 ? 1 / thr : null }),
+            ...(sn.g.condition.bandName ? { bandName: sn.g.condition.bandName } : {}),
+          }),
+            (c += 1));
+        }
+        ((at[m.id] = { c: c >= n ? 0 : c }), res.length && recs.push(dfRecord(m.id, level(m.id), res)));
+        const thr = res.length ? Math.exp(res.reduce((a, x) => a + Math.log(x.contrastThreshold), 0) / res.length) : null;
+        rows.push({ name: m.name, trials: counts.current[m.id] || 0, blocks: res.length, thr });
+      }),
+        rotSave({ modes, budget, at }),
+        recs.length && finAll(recs),
+        setSum({ rows, minutes: (Date.now() - t0.current) / 60000 }),
+        setPhase("done"));
+    };
+  /* Between turns: what comes next, for a moment, then it starts. */
+  T.useEffect(() => {
+    if (phase !== "between") return;
+    const p = window.setTimeout(() => setPhase("run"), 1600),
+      key = (e) => {
+        e.key === " " ? (e.preventDefault(), setPhase("run")) : e.key === "Escape" && (e.preventDefault(), end());
+      };
+    return (
+      window.addEventListener("keydown", key),
+      () => (clearTimeout(p), window.removeEventListener("keydown", key))
+    );
+  }, [phase, k]);
+  if (phase === "setup")
+    return r.jsx("div", {
+      className: "af-overlay rot-page",
+      children: r.jsxs("div", {
+        className: "af-card rot-card",
+        children: [
+          r.jsx("span", { className: "af-kicker", children: "Rotation" }),
+          r.jsx("h2", { className: "af-h2", children: "Every mode, in turns" }),
+          r.jsx("p", {
+            className: "af-dim",
+            children:
+              "Each mode for a few trials, then the next. Every mode picks up exactly where it stopped, at your level, and each new block starts at your last threshold, so no trial is spent walking down from easy.",
+          }),
+          r.jsx("div", {
+            className: "rot-modes",
+            children: ROT_MODES.map((m) =>
+              r.jsxs(
+                "label",
+                {
+                  className: "rot-mode",
+                  children: [
+                    r.jsx("input", {
+                      type: "checkbox",
+                      checked: modes.includes(m.id),
+                      onChange: (ev) =>
+                        setModes((x) =>
+                          ev.target.checked ? ROT_MODES.map((d) => d.id).filter((id) => id === m.id || x.includes(id)) : x.filter((id) => id !== m.id),
+                        ),
+                    }),
+                    r.jsx("span", { children: m.name }),
+                    r.jsxs("span", { className: "rot-level", children: ["Level ", level(m.id)] }),
+                  ],
+                },
+                m.id,
+              ),
+            ),
+          }),
+          r.jsxs("label", {
+            className: "rot-budget",
+            children: [
+              r.jsx("span", { children: "Trials per turn" }),
+              r.jsx("input", {
+                type: "number",
+                min: 4,
+                max: 40,
+                value: budget,
+                onChange: (ev) => setBudget(Math.round(Math.min(40, Math.max(4, Number(ev.target.value) || 10)))),
+              }),
+            ],
+          }),
+          r.jsx("p", { className: "af-dim rot-note", children: "AudioFlow and the mixed modes need headphones. A run of Mixed Memory counts as many trials as it has pairs." }),
+          r.jsx("button", { className: "af-btn af-btn--go", disabled: !order.length, onClick: start, children: "Start the rotation" }),
+          r.jsx("button", { className: "af-btn af-btn--ghost rot-back", onClick: leave, children: "Back" }),
+        ],
+      }),
+    });
+  if (phase === "done")
+    return r.jsx("div", {
+      className: "af-overlay rot-page",
+      children: r.jsxs("div", {
+        className: "af-card rot-card",
+        children: [
+          r.jsx("span", { className: "af-kicker", children: "Rotation" }),
+          r.jsx("h2", { className: "af-h2", children: "Rotation complete" }),
+          r.jsx("table", {
+            className: "rot-table",
+            children: r.jsxs("tbody", {
+              children: [
+                r.jsxs("tr", { children: [r.jsx("th", { children: "Mode" }), r.jsx("th", { children: "Trials" }), r.jsx("th", { children: "Blocks" }), r.jsx("th", { children: "Threshold" })] }),
+                ...sum.rows.map((x) =>
+                  r.jsxs(
+                    "tr",
+                    {
+                      children: [
+                        r.jsx("td", { children: x.name }),
+                        r.jsx("td", { children: x.trials }),
+                        r.jsx("td", { children: x.blocks }),
+                        r.jsx("td", { children: x.thr ? (x.thr * 100).toFixed(2) + "%" : "—" }),
+                      ],
+                    },
+                    x.name,
+                  ),
+                ),
+              ],
+            }),
+          }),
+          r.jsx("p", { className: "af-dim rot-note", children: Math.round(sum.minutes * 10) / 10 + " min. Each mode's finished blocks are saved as a session of that mode." }),
+          r.jsx("button", { className: "af-btn af-btn--go", onClick: () => setPhase("setup"), children: "Another rotation" }),
+          r.jsx("button", { className: "af-btn af-btn--ghost rot-back", onClick: leave, children: "Dashboard" }),
+        ],
+      }),
+    });
+  if (phase === "between")
+    return r.jsx("div", {
+      className: "af-overlay rot-page",
+      children: r.jsxs("div", {
+        className: "af-card af-card--small rot-card",
+        children: [
+          r.jsxs("span", { className: "af-kicker", children: ["Rotation · turn ", k + 1] }),
+          r.jsx("h3", { className: "af-h3", children: cur.name }),
+          r.jsxs("p", { className: "af-dim", children: [budget, " trials · Level ", level(cur.id)] }),
+          r.jsx("p", { className: "af-dim rot-note", children: "Starting… (Space now, Escape to end)" }),
+          r.jsx("button", { className: "af-btn af-btn--ghost rot-back", onClick: end, children: "End rotation" }),
+        ],
+      }),
+    });
+  const rot = {
+      budget,
+      resume: snaps.current[cur.id],
+      seed: rotSeed(cur.id, S0),
+      count: (n) => (counts.current[cur.id] = (counts.current[cur.id] || 0) + n),
+      onYield: (sn) => ((snaps.current[cur.id] = sn), next()),
+      onEnd: (sn) => ((snaps.current[cur.id] = sn), end()),
+    },
+    /* A mode that finishes its whole list of conditions mid-rotation is saved
+       as it would be on its own, and starts its list again next turn. */
+    done = (f) => (fin1(f), (snaps.current[cur.id] = { c: 0, g: null, results: [] }), next()),
+    common = { key: "turn-" + k, complexityLevel: level(cur.id), onFinishSession: done, onExit: end, rotation: rot },
+    body =
+      cur.id === "motion"
+        ? r.jsx(Rf, { ...common, calibration: cal, replicationsCount: P0.replicationsAtCurrentLevel })
+        : cur.id === "two-step-direction"
+          ? r.jsx(Af, { ...common, calibration: cal })
+          : cur.id === "audio-flow"
+            ? r.jsx(AfSession, common)
+            : r.jsx(AvSession, { ...common, calibration: cal, memory: cur.id === "av-two-step" });
+  return r.jsxs("div", {
+    children: [body, r.jsxs("div", { className: "rot-banner", children: ["Rotation · turn ", k + 1, " · ", cur.name] })],
+  });
+}
+/* A dashboard card for the rotation. */
+function rotationCard(launch) {
+  return r.jsxs("div", {
+    className:
+      "rounded-2xl border border-slate-800 bg-slate-900/70 p-5 space-y-4 hover:border-slate-700 transition-all flex flex-col justify-between",
+    children: [
+      r.jsxs("div", {
+        children: [
+          r.jsx("span", { className: "text-[10px] font-mono text-slate-500", children: "ALL MODES" }),
+          r.jsx("h4", { className: "mt-3 text-base font-bold text-white", children: "Rotation" }),
+          r.jsx("p", {
+            className: "mt-1 text-xs text-slate-400 leading-relaxed",
+            children:
+              "Every mode in turns of a few trials. Each one resumes exactly where it stopped, and each block starts at your last threshold, so the session is spent at your level rather than walking down to it.",
+          }),
+        ],
+      }),
+      r.jsxs("button", {
+        onClick: () => launch("rotation"),
+        className:
+          "av-launch flex items-center justify-center gap-2 rounded-xl py-3 text-xs sm:text-sm font-bold text-white active:scale-95 transition-all shadow-lg",
+        children: [r.jsx(cn, { className: "h-4 w-4 fill-white" }), r.jsx("span", { children: "Start a rotation" }), r.jsx(an, { className: "h-3.5 w-3.5" })],
+      }),
+    ],
+  });
+}
 /* The rest of the dorsal pathway lives on its own page, programs/: global motion, the useful field of
    view, heading, speed, tracking, biological motion and time to contact. */
 function programsCard() {
@@ -17906,14 +18300,17 @@ const Rf = ({
     calibration: t,
     onFinishSession: n,
     onExit: s,
+    rotation: rot,
   }) => {
     const l = T.useRef(null),
       a = T.useRef(new nl()),
       i = Xe.find((p) => p.level === e) || Xe[0],
       o = T.useRef(Mi()).current,
-      [c, h] = T.useState(0),
-      [g, v] = T.useState(() => Hn(o[0], VISUAL_STAIRCASE)),
-      y = T.useRef([]),
+      rot0 = T.useMemo(() => rotInit(rot, o, VISUAL_STAIRCASE), []),
+      turn = T.useRef(0),
+      [c, h] = T.useState(rot0.c),
+      [g, v] = T.useState(rot0.g),
+      y = T.useRef(rot0.results),
       [N, b] = T.useState(!1),
       [k, z] = T.useState(null),
       [d, u] = T.useState(null),
@@ -18018,13 +18415,16 @@ const Rf = ({
         [e, n],
       ),
       E = T.useCallback(() => {
-        (y.current.length > 0 && !N && se(y.current), s());
-      }, [se, N, s]),
+        rot
+          ? (Q.current && clearTimeout(Q.current), rot.onEnd({ c, g, results: y.current }))
+          : (y.current.length > 0 && !N && se(y.current), s());
+      }, [se, N, s, rot, c, g]),
       P = T.useCallback(
         (p) => {
           if (w !== "presenting" && w !== "waiting_response") return;
           (S("idle"), W(p));
-          const { updatedState: M, isCorrect: F } = Pi(g, j, p);
+          const { updatedState: M, isCorrect: F } = Pi(g, j, p),
+            out = rotSpent(rot, turn, 1);
           if (
             (D(F ? "correct" : "incorrect"),
             F || Bn.playErrorTone(),
@@ -18036,7 +18436,7 @@ const Rf = ({
             if (R < o.length) {
               const I = o[R];
               h(R);
-              const A = Hn(I, VISUAL_STAIRCASE);
+              const A = rot ? rotStart(rot, I, VISUAL_STAIRCASE, y.current) : Hn(I, VISUAL_STAIRCASE);
               (v(A),
                 u({
                   blockNumber: R + 1,
@@ -18044,16 +18444,16 @@ const Rf = ({
                   noise: I.noiseGrainName,
                 }),
                 (Q.current = window.setTimeout(() => {
-                  (u(null), J());
+                  (u(null), out ? rot.onYield({ c: R, g: A, results: y.current }) : J());
                 }, 1100)));
             } else se(y.current);
           } else
             (v(M),
               (Q.current = window.setTimeout(() => {
-                J();
+                out ? rot.onYield({ c, g: M, results: y.current }) : J();
               }, 350)));
         },
-        [w, j, g, c, o, J, se],
+        [w, j, g, c, o, J, se, rot],
       );
     T.useEffect(() => {
       const p = (M) => {
@@ -18072,6 +18472,12 @@ const Rf = ({
         () => window.removeEventListener("keydown", p)
       );
     }, [P, w, g, J, N]);
+    /* In the rotation a turn starts by itself: the rotation's own screen was the pause. */
+    T.useEffect(() => {
+      if (!rot) return;
+      const p = window.setTimeout(J, 700);
+      return () => clearTimeout(p);
+    }, []);
     const m = (w === "presenting" || w === "waiting_response") && !d;
     return r.jsxs("div", {
       className:
@@ -18107,7 +18513,7 @@ const Rf = ({
                   className:
                     "mt-3 inline-flex items-center gap-1.5 rounded-full bg-blue-950/80 px-3 py-1 text-[10px] font-bold text-blue-300 border border-blue-800/60 shadow-sm",
                   children: r.jsx("span", {
-                    children: "Independent Staircase • Resetting to 5.0%",
+                    children: rot ? "Next block starts at your last threshold" : "Independent Staircase • Resetting to 0.50%",
                   }),
                 }),
               ],
@@ -18141,7 +18547,8 @@ const Rf = ({
             }),
           ],
         }),
-        w === "idle" &&
+        !rot &&
+          w === "idle" &&
           c === 0 &&
           g.totalTrials === 0 &&
           r.jsx("div", {
@@ -18392,14 +18799,17 @@ const Rf = ({
     calibration: t,
     onFinishSession: n,
     onExit: s,
+    rotation: rot,
   }) => {
     const l = T.useRef(null),
       a = T.useRef(new nl()),
       i = Xe.find((F) => F.level === e) || Xe[0],
       o = T.useRef(Mi()).current,
-      [c, h] = T.useState(0),
-      [g, v] = T.useState(() => Hn(o[0], VISUAL_STAIRCASE)),
-      y = T.useRef([]),
+      rot0 = T.useMemo(() => rotInit(rot, o, VISUAL_STAIRCASE), []),
+      turn = T.useRef(0),
+      [c, h] = T.useState(rot0.c),
+      [g, v] = T.useState(rot0.g),
+      y = T.useRef(rot0.results),
       [N, b] = T.useState(!1),
       [k, z] = T.useState(null),
       [d, u] = T.useState(null),
@@ -18513,8 +18923,10 @@ const Rf = ({
         [e, n],
       ),
       m = T.useCallback(() => {
-        (y.current.length > 0 && !N && P(y.current), s());
-      }, [P, N, s]),
+        rot
+          ? (se.current && clearTimeout(se.current), rot.onEnd({ c, g, results: y.current }))
+          : (y.current.length > 0 && !N && P(y.current), s());
+      }, [P, N, s, rot, c, g]),
       p = T.useCallback(
         (F) => {
           if (j !== "waiting_response") return;
@@ -18524,7 +18936,8 @@ const Rf = ({
           D(R ? "correct" : "incorrect");
           const I = "left",
             A = R ? "left" : "right",
-            { updatedState: H } = Pi(g, I, A);
+            { updatedState: H } = Pi(g, I, A),
+            out = rotSpent(rot, turn, 1);
           if ((R || Bn.playErrorTone(), H.isComplete)) {
             const B = _i(H);
             y.current.push(B);
@@ -18532,7 +18945,7 @@ const Rf = ({
             if (Y < o.length) {
               const G = o[Y];
               h(Y);
-              const U = Hn(G, VISUAL_STAIRCASE);
+              const U = rot ? rotStart(rot, G, VISUAL_STAIRCASE, y.current) : Hn(G, VISUAL_STAIRCASE);
               (v(U),
                 u({
                   blockNumber: Y + 1,
@@ -18540,12 +18953,17 @@ const Rf = ({
                   noise: G.noiseGrainName,
                 }),
                 (se.current = window.setTimeout(() => {
-                  (u(null), E());
+                  (u(null), out ? rot.onYield({ c: Y, g: U, results: y.current }) : E());
                 }, 1100)));
             } else P(y.current);
-          } else (v(H), (se.current = window.setTimeout(() => E(), 400)));
+          } else
+            (v(H),
+              (se.current = window.setTimeout(
+                () => (out ? rot.onYield({ c, g: H, results: y.current }) : E()),
+                400,
+              )));
         },
-        [j, w, g, c, o, E, P],
+        [j, w, g, c, o, E, P, rot],
       );
     T.useEffect(() => {
       const F = (_) => {
@@ -18594,6 +19012,12 @@ const Rf = ({
         () => window.removeEventListener("keydown", F)
       );
     }, [p, j, K, g, E, N]);
+    /* In the rotation a turn starts by itself. */
+    T.useEffect(() => {
+      if (!rot) return;
+      const F = window.setTimeout(E, 700);
+      return () => clearTimeout(F);
+    }, []);
     const M = j === "waiting_response" && !d;
     return r.jsxs("div", {
       className:
@@ -18629,7 +19053,7 @@ const Rf = ({
                   className:
                     "mt-3 inline-flex items-center gap-1.5 rounded-full bg-purple-950/80 px-3 py-1 text-[10px] font-bold text-purple-300 border border-purple-800/60 shadow-sm",
                   children: r.jsx("span", {
-                    children: "Independent Staircase • Resetting to 5.0%",
+                    children: rot ? "Next block starts at your last threshold" : "Independent Staircase • Resetting to 0.50%",
                   }),
                 }),
               ],
@@ -18663,7 +19087,8 @@ const Rf = ({
             }),
           ],
         }),
-        j === "idle" &&
+        !rot &&
+          j === "idle" &&
           c === 0 &&
           g.totalTrials === 0 &&
           r.jsx("div", {
@@ -19854,37 +20279,29 @@ const Rf = ({
               ? c("two-step-direction")
               : f === "audio-flow"
                 ? c("audio-flow")
-                : AV_LEVEL_KEY[f] && c(f));
+                : f === "rotation"
+                  ? c("rotation")
+                  : AV_LEVEL_KEY[f] && c(f));
       },
       b = (f) => {
         (g("custom"), y(f), c("custom-session"));
       },
       k = (f) => {
         (Xo(f), l((C) => [...C, f]));
-        let x = t.currentMotionLevel,
-          w = t.currentTwoStepLevel,
-          A = t.currentAudioLevel || 1,
-          AV = {},
-          S = t.replicationsAtCurrentLevel;
-        f.passedLevel
-          ? (f.mode === "two-step-direction"
-              ? (w = Math.min(20, t.currentTwoStepLevel + 1))
-              : f.mode === "audio-flow"
-                ? (A = Math.min(20, A + 1))
-                : AV_LEVEL_KEY[f.mode]
-                  ? (AV[AV_LEVEL_KEY[f.mode]] = Math.min(20, (t[AV_LEVEL_KEY[f.mode]] || 1) + 1))
-                  : (x = Math.min(20, t.currentMotionLevel + 1)),
-            (S = 0))
-          : (S += 1);
-        const j = {
-          ...t,
-          currentMotionLevel: x,
-          currentTwoStepLevel: w,
-          currentAudioLevel: A,
-          ...AV,
-          replicationsAtCurrentLevel: S,
-        };
+        const j = nextProgress(t, f);
         (n(j), Yo(j));
+      },
+      /* The rotation ends with a record for each mode at once: each record's
+         level step is taken on the one before it, or all but the last would
+         be lost. */
+      kMany = (list) => {
+        let j = t;
+        (list.forEach((f) => {
+          (Xo(f), (j = nextProgress(j, f)));
+        }),
+          l((C) => [...C, ...list]),
+          n(j),
+          Yo(j));
       },
       z = (f) => {
         (Xo(f), l((x) => [...x, f]));
@@ -19913,6 +20330,15 @@ const Rf = ({
             onLaunchCustomSession: b,
             onDeleteSession: d,
             onClearSessions: u,
+          }),
+        o === "rotation" &&
+          r.jsx(RotationSession, {
+            progress: t,
+            sessions: s,
+            calibration: e,
+            onFinish: k,
+            onFinishMany: kMany,
+            onExit: () => c("dashboard"),
           }),
         o === "motion" &&
           r.jsx(Rf, {

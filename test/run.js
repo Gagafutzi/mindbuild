@@ -1059,8 +1059,10 @@ test("DorsalFlow's visual staircase stays at or under 0.5% and settles near 65% 
   const vm = require("vm");
   const src = readFileSync(path.join(__dirname, "..", "apps", "more", "dorsalflow", "assets", "dorsalflow.js"), "utf8");
   /* Both visual programs start each block on it (the writer), and the staircase reads it (the reader). */
-  assert.strictEqual((src.match(/Hn\(o\[0\], VISUAL_STAIRCASE\)/g) || []).length, 2, "a visual program starts without the visual staircase");
+  assert.strictEqual((src.match(/rotInit\(rot, o, VISUAL_STAIRCASE\)/g) || []).length, 2, "a visual program starts without the visual staircase");
+  assert.ok(/if \(!rot\) return \{ c: 0, g: Hn\(o\[0\], base\), results: \[\] \};/.test(src), "a visual program's own session no longer opens on the staircase it is given");
   assert.strictEqual((src.match(/Hn\([A-Z], VISUAL_STAIRCASE\)/g) || []).length, 2, "a visual program's next block drops the visual staircase");
+  assert.strictEqual((src.match(/rotStart\(rot, [A-Z], VISUAL_STAIRCASE, y\.current\)/g) || []).length, 2, "a visual program's next block in the rotation drops the visual staircase");
   const consts = src.slice(src.indexOf("  Lf = 1.35,"), src.indexOf("function Hn(e, t)")).replace(/^  Lf/, "var Lf");
   const rest = src.slice(src.indexOf("function Hn(e, t)"));
   const df = rest.slice(rest.indexOf("function Df(e, t)"));
@@ -1377,6 +1379,118 @@ test("Loci Span's goal counts only in-order lists at the goal's pace, and long l
   assert.ok(first.every((d) => d.tier === 4 && tiers.get(d.word) === 4), "a tier borrowed while it still had words");
   const next = Array.from({ length: 60 }, () => L.draw(4));
   assert.ok(next.every((d) => tiers.get(d.word) === d.tier && Math.abs(d.tier - 4) <= 1), "a spent tier did not borrow from its neighbours");
+});
+
+/*
+ * DorsalFlow's rotation: every mode in turns, run on the bundle's own
+ * staircase and the rotation's own helpers, cut out of the bundle.
+ */
+const dorsalRotation = () => {
+  const vm = require("vm");
+  const src = readFileSync(path.join(__dirname, "..", "apps", "more", "dorsalflow", "assets", "dorsalflow.js"), "utf8");
+  const consts = src.slice(src.indexOf("  Lf = 1.35,"), src.indexOf("function Hn(e, t)")).replace(/^  Lf/, "var Lf");
+  const rest = src.slice(src.indexOf("function Hn(e, t)"));
+  const df = rest.slice(rest.indexOf("function Df(e, t)"));
+  const next = src.slice(src.indexOf("function nextProgress(t, f)"));
+  const ctx = { Math, Date, Number, Array, JSON, Ti: 0.01, AV_LEVEL_KEY: { "av-flow": "currentMixedLevel", "av-two-step": "currentMixedMemLevel" } };
+  vm.runInNewContext("var wu = 0.05;\n" + consts + "\n" + rest.slice(0, rest.indexOf("function Df(e, t)"))
+    + df.slice(0, df.indexOf("\n}\n") + 3) + next.slice(0, next.indexOf("\n}\n") + 3)
+    + "; Object.assign(this, { Hn, Pi, Df, V: VISUAL_STAIRCASE, rotSeed, rotStart, rotInit, rotSpent, dfRecord, nextProgress, ROT_MIN_BLOCK });", ctx);
+  return { ctx, src };
+};
+
+test("DorsalFlow's rotation starts each block at the player's own last threshold, and resumes a turn as it stood", () => {
+  const { ctx: D } = dorsalRotation();
+  const cond = (id, f) => ({ id, testSpatialFreqCpd: f });
+  const sessions = [
+    { mode: "motion", results: [{ conditionId: "a", testSpatialFreqCpd: 1, contrastThreshold: 0.004 }, { conditionId: "b", testSpatialFreqCpd: 2, contrastThreshold: 0.003 }] },
+    { mode: "audio-flow", results: [{ conditionId: "c", testSpatialFreqCpd: 1, contrastThreshold: 0.02 }] },
+    { mode: "motion", results: [{ conditionId: "z", testSpatialFreqCpd: 1, contrastThreshold: 0.0035 }] },
+  ];
+  const seed = D.rotSeed("motion", sessions);
+  assert.strictEqual(seed(cond("a", 1), []), 0.0035, "the most recent session's same band does not come before an older same condition");
+  assert.strictEqual(seed(cond("b", 2), []), 0.003);
+  assert.strictEqual(seed(cond("c", 1), [{ conditionId: "x", testSpatialFreqCpd: 1, contrastThreshold: 0.0028 }]), 0.0028, "this rotation's own block does not come first");
+  assert.strictEqual(seed(cond("q", 0.5), []), 0, "a seed was invented where the player has none");
+  assert.strictEqual(D.rotSeed("audio-flow", sessions)(cond("a", 1), []), 0.02, "another mode's thresholds were used");
+
+  const rot = { seed: () => 0.003, budget: 10, count() {} };
+  const st = D.rotStart(rot, cond("a", 1), D.V, []);
+  assert.strictEqual(st.currentContrast, 0.003);
+  assert.ok(st.hasHadFirstError, "a seeded block still takes the fast first descent");
+  assert.ok(st.weighted && st.ceiling === 0.005, "a seeded visual block lost the visual staircase");
+  assert.strictEqual(D.rotStart({ ...rot, seed: () => 0.02 }, cond("a", 1), D.V, []).currentContrast, 0.005, "a seed above the ceiling was not held to it");
+  const fresh = D.rotStart({ ...rot, seed: () => 0 }, cond("a", 1), D.V, []);
+  assert.ok(fresh.currentContrast === 0.005 && !fresh.hasHadFirstError, "with no threshold it should start as its own session does");
+
+  const o = [cond("a", 0.25), cond("b", 0.5), cond("c", 1)];
+  const mid = { ...D.Hn(o[1], D.V), currentContrast: 0.0031, totalTrials: 7 };
+  const back = D.rotInit({ ...rot, resume: { c: 1, g: mid, results: [{ x: 1 }] } }, o, D.V);
+  assert.ok(back.c === 1 && back.g === mid && back.results.length === 1, "a turn does not resume the staircase as it stood");
+  const later = D.rotInit({ ...rot, resume: { c: 2, g: null, results: [] } }, o, D.V);
+  assert.ok(later.c === 2 && later.g.condition === o[2] && later.g.currentContrast === 0.003, "a new rotation does not start where the last one stopped");
+  assert.strictEqual(D.rotInit(null, o, D.V).g.currentContrast, 0.005, "a mode's own session changed");
+
+  let counted = 0;
+  const turn = { current: 0 }, r2 = { budget: 9, count: (n) => (counted += n) };
+  const spent = [];
+  for (let i = 0; i < 4; i++) spent.push(D.rotSpent(r2, turn, 3));
+  assert.deepStrictEqual(spent, [false, false, true, true], "a turn did not end on its last trial");
+  assert.strictEqual(counted, 12);
+  assert.strictEqual(D.rotSpent(null, { current: 0 }, 50), false, "a mode's own session was cut into turns");
+});
+
+test("DorsalFlow's rotation spends more of its trials at the player's level than the standard blocks do", () => {
+  const { ctx: D } = dorsalRotation();
+  let s = 21;
+  const rand = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
+  /* The observer of the staircase test: aware near 0.4%, at 65% right near 0.25%. */
+  const pc = (c) => 0.5 + 0.5 * (1 - Math.exp(-Math.pow(c / 0.0028, 2.2)));
+  const ideal = 0.0028 * Math.pow(-Math.log(0.7), 1 / 2.2);
+  const near = (c) => Math.abs(Math.log(c / ideal)) < Math.log(1.25);
+  const run = (rotation) => {
+    let at = 0, n = 0, last = 0;
+    for (let b = 0; b < 300; b++) {
+      const cond = { id: "k", testSpatialFreqCpd: 1 };
+      let st = rotation && last ? D.rotStart({ seed: () => last }, cond, D.V, []) : D.Hn(cond, D.V);
+      while (!st.isComplete) {
+        n++; if (near(st.currentContrast)) at++;
+        st = D.Pi(st, "L", rand() < pc(st.currentContrast) ? "L" : "R").updatedState;
+      }
+      last = st.finalThreshold;
+    }
+    return at / n;
+  };
+  const standard = run(false), rotation = run(true);
+  assert.ok(rotation > standard + 0.08, `trials within 25% of the ideal contrast: ${(rotation * 100).toFixed(1)}% in the rotation, ${(standard * 100).toFixed(1)}% in standard blocks`);
+});
+
+test("DorsalFlow's rotation saves every mode at once without losing a level step, and is wired in", () => {
+  const { ctx: D, src } = dorsalRotation();
+  const p0 = { currentMotionLevel: 3, currentTwoStepLevel: 2, currentAudioLevel: 4, replicationsAtCurrentLevel: 1 };
+  const pass = (mode) => ({ mode, passedLevel: true });
+  let p = p0;
+  for (const m of ["motion", "audio-flow", "av-two-step"]) p = D.nextProgress(p, pass(m));
+  assert.deepStrictEqual([p.currentMotionLevel, p.currentAudioLevel, p.currentMixedMemLevel, p.currentTwoStepLevel], [4, 5, 2, 2]);
+  assert.strictEqual(D.nextProgress(p0, { mode: "motion", passedLevel: false }).replicationsAtCurrentLevel, 2);
+  assert.ok(/kMany = \(list\) => \{\s*let j = t;\s*\(list\.forEach\(\(f\) => \{\s*\(Xo\(f\), \(j = nextProgress\(j, f\)\)\);/.test(src),
+    "the rotation's records are not each stepped on the one before");
+  const rec = D.dfRecord("motion", 3, [{ testSpatialFreqCpd: 2, contrastThreshold: 0.008, contrastSensitivity: 125 }]);
+  assert.ok(rec.mode === "motion" && rec.passedLevel && rec.meanCSByFreq[2] === 125 && rec.rotation, "a rotation's record is not a session of its mode");
+  assert.ok(!D.dfRecord("motion", 3, [{ testSpatialFreqCpd: 1, contrastThreshold: 0.003, contrastSensitivity: 333 }]).passedLevel,
+    "a record without the 2 cpd blocks passed the level");
+
+  const starts = ["  AfSession = (", "const AvSession = (", "const Rf = (", "  Af = (", "  If = ("].map((x) => src.indexOf(x));
+  assert.ok(starts.every((x, i) => x > 0 && (i === 0 || x > starts[i - 1])), "the sessions moved");
+  for (const [i, name] of ["AfSession", "AvSession", "Rf", "Af"].entries()) {
+    const body = src.slice(starts[i], starts[i + 1]);
+    assert.ok(/rotation: rot/.test(body) && /rotInit\(rot, o/.test(body) && /rotSpent\(rot, turn, /.test(body) && /rot\.onEnd\(/.test(body),
+      `${name} does not take its turn in the rotation`);
+  }
+  assert.ok(/rotSpent\(rot, turn, mem \? seq\.current\.length : 1\)/.test(src), "a run of Mixed Memory is not counted as its pairs");
+  assert.ok(/rotationCard\(i\),/.test(src) && /o === "rotation" &&\s*r\.jsx\(RotationSession/.test(src) && /f === "rotation"\s*\? c\("rotation"\)/.test(src),
+    "the dashboard does not reach the rotation");
+  assert.strictEqual(D.ROT_MIN_BLOCK, 6);
 });
 
 /* ------------------------------------------------------------------ */

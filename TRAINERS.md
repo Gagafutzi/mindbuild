@@ -189,6 +189,19 @@ with the Gabor.
 **Research** (†, in the page): contrast sensitivity (Campbell & Robson 1968),
 psychophysical thresholds (Pelli 1985), perceptual learning and noise exclusion
 (Lu & Dosher 1999). Targets dorsal-stream motion sensitivity.
+**Rotation** (a dashboard card): the five modes in turns of a set number of
+trials, 10 by default (4–40), each mode resuming exactly where it stopped.
+Each mode's own session restarts every block at the easy end (0.5% for
+sight, 5% for sound) and spends its first trials walking down; the rotation
+spends none that way. A turn resumes its staircase as it stood. A new block
+starts at the player's last threshold for that condition (this rotation's,
+else the latest session's, by condition and then by band) past the fast
+first descent. Between rotations, each mode keeps its place in its list of
+conditions. Each mode still aims at its own target: 65% for sight, 79% for
+sound and the mixed modes. In the test suite's model observer, 50% of
+rotation trials fall within 25% of the ideal contrast, against 37% in
+standard blocks. Ending a rotation saves each mode's blocks as a session of
+that mode, including a block in progress if it ran 6 trials.
 **More dorsal programs** (`more/dorsalflow/programs/`, linked from the
 dashboard): seven programs for what the dorsal stream builds on seeing motion.
 Each runs one adaptive staircase (75% correct), sizes its stimuli in degrees
