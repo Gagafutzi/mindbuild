@@ -8,7 +8,8 @@
    These programs train the rest of the dorsal pathway, one function each:
 
      coherence   global motion: how many dots must move together to be seen (MT)
-     ufov        useful field of view: centre and periphery at once, briefly
+     ufov        useful field of view: a new shape at the centre and a unique one
+                 among distractors outside, at once, briefly
      flow        heading from optic flow: where is the expansion's centre (MST)
      speed       which of two motions is faster
      mot         tracking several moving objects among identical ones
@@ -128,6 +129,72 @@ var DorsalPlus = (function () {
     return out;
   }
   function framesFor(ms, frameMs) { return Math.max(1, Math.round(ms / frameMs)); }
+
+  /**
+   * The field of view's shapes: made afresh for every trial, never a set to
+   * learn. A shape is 5 to 8 points at roughly even angles round a centre, each
+   * at its own distance, scaled to fill the unit circle so that size says
+   * nothing; x right, y down, in units of its radius.
+   */
+  function randomShape(rand) {
+    var k = 5 + Math.floor(rand() * 4), off = rand() * 2 * Math.PI, pts = [];
+    for (var i = 0; i < k; i++) {
+      var a = off + 2 * Math.PI * (i + (rand() - 0.5) * 0.5) / k, r = 0.35 + 0.65 * rand();
+      pts.push([r * Math.cos(a), r * Math.sin(a)]);
+    }
+    var m = Math.max.apply(null, pts.map(function (p) { return Math.hypot(p[0], p[1]); }));
+    return pts.map(function (p) { return [p[0] / m, p[1] / m]; });
+  }
+  function insideShape(pts, x, y) {
+    var c = false;
+    for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      var xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  }
+  /** How different two shapes look: 1 − their overlap over their union, on a 24×24 grid. */
+  function shapeDistance(a, b) {
+    var n = 24, both = 0, either = 0;
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) {
+      var x = -1 + (2 * c + 1) / n, y = -1 + (2 * r + 1) / n, p = insideShape(a, x, y), q = insideShape(b, x, y);
+      if (p && q) both++;
+      if (p || q) either++;
+    }
+    return either ? 1 - both / either : 0;
+  }
+  /**
+   * Shapes no two of which are closer than `apart`: random shapes are sometimes
+   * near-twins. A few draws usually do it; the cap only keeps a page from ever
+   * hanging on it.
+   */
+  function distinctShapes(n, rand, apart) {
+    var out = [], tries = 0;
+    while (out.length < n) {
+      var s = randomShape(rand);
+      if (++tries > 5000 || out.every(function (o) { return shapeDistance(o, s) >= apart; })) out.push(s);
+    }
+    return out;
+  }
+  /**
+   * One trial's shapes: the centre one, the outer one, the distractor the outer
+   * one hides among, and for each answer four numbered choices, the right one
+   * among three it was not. All of them new and all clearly apart.
+   */
+  var SHAPE_APART = 0.35;
+  function ufovShapes(rand) {
+    var s = distinctShapes(9, rand, SHAPE_APART);
+    function choices(right, foils) {
+      var opts = shuffleIn([right].concat(foils), rand);
+      return { options: opts, answer: opts.indexOf(right) };
+    }
+    return { centre: s[0], target: s[1], distractor: s[2], centreChoice: choices(s[0], s.slice(3, 6)), targetChoice: choices(s[1], s.slice(6, 9)) };
+  }
+  function shuffleIn(a, rand) {
+    a = a.slice();
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(rand() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
 
   /* ---------- heading from optic flow ---------- */
 
@@ -269,6 +336,7 @@ var DorsalPlus = (function () {
     Staircase: Staircase,
     makeDots: makeDots, stepDots: stepDots,
     ufovPlaces: ufovPlaces, ufovDistractors: ufovDistractors, framesFor: framesFor,
+    randomShape: randomShape, shapeDistance: shapeDistance, distinctShapes: distinctShapes, ufovShapes: ufovShapes, SHAPE_APART: SHAPE_APART,
     stepFlow: stepFlow,
     speedPair: speedPair,
     makeDiscs: makeDiscs, stepDiscs: stepDiscs,

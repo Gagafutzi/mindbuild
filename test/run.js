@@ -1535,6 +1535,81 @@ test("Relational n-back's spoken letters: every voice says every letter, and no 
   assert.ok(/v > peak - 45/.test(render) && /kal: "kal16"/.test(render), "the renderer cuts into the sound again, or renders the 8 kHz voice");
 });
 
+test("the field of view's shapes: new every trial, clearly apart, and the right answer among four", () => {
+  /* mulberry32: `seeded` above repeats itself after some ten thousand draws,
+     which over sixty trials of nine shapes each would bring shapes back. */
+  let m = 23;
+  const rand = () => {
+    m = (m + 0x6d2b79f5) | 0;
+    let t = Math.imul(m ^ (m >>> 15), 1 | m);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const E = plusEngine();
+  const seen = new Set();
+  for (let t = 0; t < 60; t++) {
+    const u = E.ufovShapes(rand);
+    const all = [u.centre, u.target, u.distractor, ...u.centreChoice.options, ...u.targetChoice.options];
+    const distinct = [...new Set(all)];
+    assert.strictEqual(distinct.length, 9, "a trial's shapes are not nine different ones");
+    for (let i = 0; i < distinct.length; i++) for (let j = i + 1; j < distinct.length; j++)
+      assert.ok(E.shapeDistance(distinct[i], distinct[j]) >= E.SHAPE_APART, "two shapes in one trial are near-twins");
+    assert.strictEqual(u.centreChoice.options.length, 4); assert.strictEqual(u.targetChoice.options.length, 4);
+    assert.strictEqual(u.centreChoice.options[u.centreChoice.answer], u.centre, "the centre's right answer is not among its choices");
+    assert.strictEqual(u.targetChoice.options[u.targetChoice.answer], u.target, "the odd one's right answer is not among its choices");
+    assert.ok(!u.targetChoice.options.includes(u.distractor), "the distractor is offered as the odd one");
+    for (const sh of distinct) assert.ok(Math.abs(Math.max(...sh.map(([x, y]) => Math.hypot(x, y))) - 1) < 1e-9, "a shape's size says something");
+    for (const sh of [u.centre, u.target, u.distractor]) {
+      const key = JSON.stringify(sh);
+      assert.ok(!seen.has(key), "a shape came back in a later trial");
+      seen.add(key);
+    }
+  }
+  const a = E.randomShape(rand), b = E.randomShape(rand);
+  assert.strictEqual(E.shapeDistance(a, a), 0);
+  /* Worked by hand: the left half and the top half of a square share a quarter
+     of it and cover three quarters, so they are 1 − 1/3 apart. */
+  const left = [[-1, -1], [0, -1], [0, 1], [-1, 1]], top = [[-1, -1], [1, -1], [1, 0], [-1, 0]];
+  assert.ok(Math.abs(E.shapeDistance(left, top) - 2 / 3) < 1e-9, `the distance of two half squares is ${E.shapeDistance(left, top)}`);
+  assert.ok(Math.abs(E.shapeDistance(a, b) - E.shapeDistance(b, a)) < 1e-12);
+  /* Where the answer sits is not a pattern either. */
+  const at = [0, 0, 0, 0];
+  for (let t = 0; t < 400; t++) at[E.ufovShapes(rand).centreChoice.answer]++;
+  assert.ok(at.every((n) => n > 70 && n < 130), `the right answer sat at ${at.join("/")} of 400`);
+});
+
+test("the field of view asks for the shapes, not a place, and every program can take a turn in DorsalFlow's rotation", () => {
+  const base = path.join(__dirname, "..", "apps", "more", "dorsalflow");
+  const src = readFileSync(path.join(base, "programs", "programs.js"), "utf8");
+  const ufov = src.slice(src.indexOf('id: "ufov"'), src.indexOf('id: "flow"'));
+  assert.ok(/E\.ufovShapes\(rand\)/.test(ufov) && (ufov.match(/await choose\(/g) || []).length === 2, "the field of view does not ask for both shapes");
+  assert.ok(!/vehicle|spokes|clicks\(/.test(ufov), "the field of view still asks for cars or a place");
+  assert.ok(/labels: \["centre", "periphery"\]/.test(ufov));
+  assert.ok(/places\.filter\(function \(q\) \{ return q\.k !== where; \}\)/.test(ufov), "the odd one does not hide among the distractor at its own ring");
+  assert.ok(/window\.DorsalPrograms = \{ PROGRAMS: PROGRAMS, turn: turn, finish: finish \}/.test(src), "the programs cannot take a turn");
+  assert.ok(/fresh\(p, lastThreshold\(p\)\)/.test(src) && /st\.erred = true/.test(src), "a program's first turn does not start at the player's level");
+  assert.ok(/runSession[\s\S]{0,200}fresh\(p, 0\)/.test(src), "a program's own session changed where it starts");
+
+  const bundle = readFileSync(path.join(base, "assets", "dorsalflow.js"), "utf8");
+  const ids = [...bundle.matchAll(/\{ id: "p-(\w+)", name: "[^"]+", prog: "(\w+)" \}/g)];
+  assert.deepStrictEqual(ids.map((m) => m[2]).sort(), ["coherence", "contact", "flow", "mot", "speed", "ufov", "walker"], "a program is missing from the rotation");
+  assert.ok(ids.every((m) => m[1] === m[2]));
+  for (const id of ids.map((m) => m[2])) assert.ok(src.includes(`id: "${id}"`), `the rotation names a program, ${id}, the page does not have`);
+
+  /* A choice saved before the programs joined keeps what it chose and gains them. */
+  const vm = require("vm");
+  const helpers = bundle.slice(bundle.indexOf("const ROT_KEY"), bundle.indexOf("function rotConditions(mode)"));
+  const store = {};
+  const ctx = { JSON, Math, Number, Array, localStorage: { getItem: (k) => store[k] ?? null, setItem: (k, v) => (store[k] = v) } };
+  vm.runInNewContext(helpers + "; this.rotLoad = rotLoad; this.rotSave = rotSave;", ctx);
+  store["mindbuild.dorsalflow.rotation"] = JSON.stringify({ modes: ["motion", "audio-flow"], budget: 12, at: {} });
+  const old = ctx.rotLoad();
+  assert.ok(old.modes.includes("motion") && old.modes.includes("audio-flow") && !old.modes.includes("av-flow"), "an old choice was not kept");
+  assert.ok(ids.every((m) => old.modes.includes("p-" + m[2])), "the programs did not join an old choice");
+  ctx.rotSave({ ...old, modes: ["motion", "p-ufov"] });
+  assert.deepStrictEqual([...ctx.rotLoad().modes], ["motion", "p-ufov"], "a choice made with the programs offered is not kept as made");
+});
+
 /* ------------------------------------------------------------------ */
 
 for (const [name, fn] of cases) {

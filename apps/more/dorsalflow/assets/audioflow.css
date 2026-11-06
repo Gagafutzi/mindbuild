@@ -132,8 +132,9 @@
 .av-badge-sm { background: #451a03; color: #fbbf24; border: 1px solid rgba(180, 83, 9, .6); }
 
 /* The rotation (RotationSession): its own screens, and the banner over each turn. */
-.rot-page { position: fixed; background: #020617; }
-.rot-card { text-align: left; }
+/* Centred when it fits, scrolled from its top when it does not: centring alone would push the top out of reach. */
+.rot-page { position: fixed; background: #020617; align-items: flex-start; }
+.rot-card { text-align: left; margin: auto 0; }
 .rot-card .af-h2, .rot-card .af-h3 { margin-top: .35rem; }
 .rot-card .af-dim { line-height: 1.55; }
 .rot-modes { margin-top: 1rem; display: grid; gap: .35rem; }
@@ -159,3 +160,6 @@
   padding: .3rem .7rem; border-radius: 9999px; font-size: .7rem; font-weight: 700;
   color: #6ee7b7; background: rgba(2, 44, 34, .85); border: 1px solid rgba(6, 95, 70, .6);
 }
+/* The more dorsal programs' page, embedded for the rotation: over everything while a program has its turn. */
+.rot-frame { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; z-index: 55; display: none; background: #808080; }
+.rot-frame--on { display: block; }

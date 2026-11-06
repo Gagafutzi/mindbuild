@@ -189,8 +189,10 @@ with the Gabor.
 **Research** (†, in the page): contrast sensitivity (Campbell & Robson 1968),
 psychophysical thresholds (Pelli 1985), perceptual learning and noise exclusion
 (Lu & Dosher 1999). Targets dorsal-stream motion sensitivity.
-**Rotation** (a dashboard card): the five modes in turns of a set number of
+**Rotation** (a dashboard card): every mode in turns of a set number of
 trials, 10 by default (4–40), each mode resuming exactly where it stopped.
+That means DorsalFlow's five modes and the seven more dorsal programs below;
+the programs run in an embedded copy of their page.
 Each mode's own session restarts every block at the easy end (0.5% for
 sight, 5% for sound) and spends its first trials walking down; the rotation
 spends none that way. A turn resumes its staircase as it stood. A new block
@@ -208,11 +210,14 @@ Each runs one adaptive staircase (75% correct), sizes its stimuli in degrees
 through DorsalFlow's screen calibration and times them in measured frames.
 - Global motion: the share of coherent dots needed to tell left from right,
   the classic MT measure (Newsome & Paré 1988).
-- Useful field of view: a car or truck at the centre plus a car at one of
-  eight places, among triangles, then masked. The display time is the
-  staircase, down to one frame, and the centre and periphery are scored apart.
-  This is the speed-of-processing task from the ACTIVE trial (Ball et al.
-  2002).
+- Useful field of view: a shape at the centre plus, at one of eight places,
+  one shape unlike the 47 identical distractors around it, then masked. Each
+  is then picked out of four by number. Every shape is generated for that
+  trial, so there is no set to learn, and all nine in a trial are clearly
+  apart. The display time is the staircase, down to one frame, and the centre
+  and periphery are scored apart. This is the speed-of-processing task from
+  the ACTIVE trial (Ball et al. 2002), with generated shapes in place of its
+  car, truck and triangles.
 - Heading from optic flow: the offset of the focus of expansion
   (Warren & Hannon 1988).
 - Speed discrimination: the Weber fraction between two bursts. The base speed

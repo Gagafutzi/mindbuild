@@ -15673,6 +15673,14 @@ const ROT_KEY = "mindbuild.dorsalflow.rotation",
     { id: "audio-flow", name: "AudioFlow" },
     { id: "av-flow", name: "Mixed Discrimination" },
     { id: "av-two-step", name: "Mixed Memory" },
+    /* The more dorsal programs (programs/), run in an embedded copy of their page. */
+    { id: "p-coherence", name: "Global motion", prog: "coherence" },
+    { id: "p-ufov", name: "Useful field of view", prog: "ufov" },
+    { id: "p-flow", name: "Heading from optic flow", prog: "flow" },
+    { id: "p-speed", name: "Speed discrimination", prog: "speed" },
+    { id: "p-mot", name: "Multiple object tracking", prog: "mot" },
+    { id: "p-walker", name: "Biological motion", prog: "walker" },
+    { id: "p-contact", name: "Time to contact", prog: "contact" },
   ],
   /* A block cut off by the end of a rotation counts if it ran this long. */
   ROT_MIN_BLOCK = 6;
@@ -15682,7 +15690,12 @@ function rotLoad() {
     x = JSON.parse(localStorage.getItem(ROT_KEY));
   } catch {}
   x = x && typeof x === "object" ? x : {};
-  const modes = Array.isArray(x.modes) ? x.modes.filter((m) => ROT_MODES.some((d) => d.id === m)) : [];
+  /* A mode added since the choice was saved starts chosen: the choice was
+     made among the modes there were. */
+  const known = Array.isArray(x.known) ? x.known : ["motion", "two-step-direction", "audio-flow", "av-flow", "av-two-step"],
+    modes = Array.isArray(x.modes)
+      ? ROT_MODES.map((d) => d.id).filter((m) => x.modes.includes(m) || !known.includes(m))
+      : [];
   return {
     modes: modes.length ? modes : ROT_MODES.map((m) => m.id),
     budget: Math.round(Math.min(40, Math.max(4, Number(x.budget) || 10))),
@@ -15691,7 +15704,7 @@ function rotLoad() {
 }
 function rotSave(x) {
   try {
-    localStorage.setItem(ROT_KEY, JSON.stringify(x));
+    localStorage.setItem(ROT_KEY, JSON.stringify({ ...x, known: ROT_MODES.map((m) => m.id) }));
   } catch {}
 }
 function rotConditions(mode) {
@@ -18010,10 +18023,17 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
     snaps = T.useRef({}),
     counts = T.useRef({}),
     t0 = T.useRef(0),
+    /* The programs' page, embedded once for the whole rotation: shown during a program's turn. */
+    frame = T.useRef(null),
+    [ready, setReady] = T.useState(!1),
+    running = T.useRef(-1),
+    progs = () => (frame.current && frame.current.contentWindow && frame.current.contentWindow.DorsalPrograms) || null,
     order = ROT_MODES.filter((m) => modes.includes(m.id)),
     cur = order.length ? order[k % order.length] : null,
     level = (id) =>
-      id === "motion"
+      id.startsWith("p-")
+        ? null
+        : id === "motion"
         ? P0.currentMotionLevel
         : id === "two-step-direction"
           ? P0.currentTwoStepLevel
@@ -18025,8 +18045,10 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
       const at = rotLoad().at;
       (rotSave({ modes, budget, at }), (snaps.current = {}), (counts.current = {}));
       (order.forEach((m) => {
-        ((snaps.current[m.id] = { c: (at[m.id] && at[m.id].c) || 0, g: null, results: [] }), (counts.current[m.id] = 0));
+        ((snaps.current[m.id] = m.prog ? null : { c: (at[m.id] && at[m.id].c) || 0, g: null, results: [] }), (counts.current[m.id] = 0));
       }),
+        setReady(!1),
+        (running.current = -1),
         (t0.current = Date.now()),
         setK(0),
         setPhase("between"));
@@ -18037,7 +18059,7 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
         rows = [];
       (order.forEach((m) => {
         const sn = snaps.current[m.id];
-        if (!sn) return;
+        if (!sn || m.prog) return;
         const res = sn.results.slice(),
           n = rotConditions(m.id).length;
         let c = sn.c;
@@ -18051,13 +18073,39 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
         }
         ((at[m.id] = { c: c >= n ? 0 : c }), res.length && recs.push(dfRecord(m.id, level(m.id), res)));
         const thr = res.length ? Math.exp(res.reduce((a, x) => a + Math.log(x.contrastThreshold), 0) / res.length) : null;
-        rows.push({ name: m.name, trials: counts.current[m.id] || 0, blocks: res.length, thr });
+        rows.push({ name: m.name, trials: counts.current[m.id] || 0, blocks: res.length, thr: thr ? (thr * 100).toFixed(2) + "%" : "—" });
       }),
+        /* The programs keep their own sessions, through their page. */
+        (() => {
+          const states = {};
+          order.forEach((m) => m.prog && snaps.current[m.id] && (states[m.prog] = snaps.current[m.id]));
+          const api = progs();
+          Object.keys(states).length && api &&
+            api.finish(states).forEach((x) => {
+              const m = order.find((d) => d.prog === x.id);
+              rows.push({ name: x.name, trials: counts.current[m.id] || 0, blocks: "—", thr: x.threshold });
+            });
+        })(),
         rotSave({ modes, budget, at }),
         recs.length && finAll(recs),
         setSum({ rows, minutes: (Date.now() - t0.current) / 60000 }),
         setPhase("done"));
     };
+  /* A program's turn runs on the embedded page; its state comes back with it. */
+  T.useEffect(() => {
+    if (phase !== "run" || !cur || !cur.prog || !ready || running.current === k) return;
+    const api = progs();
+    if (!api) return;
+    running.current = k;
+    const m = cur;
+    (frame.current.contentWindow.focus(),
+      api.turn(m.prog, budget, snaps.current[m.id]).then((res) => {
+        ((snaps.current[m.id] = res.state),
+          (counts.current[m.id] = (counts.current[m.id] || 0) + res.steps),
+          window.focus(),
+          res.ended ? end() : next());
+      }));
+  }, [phase, k, ready]);
   /* Between turns: what comes next, for a moment, then it starts. */
   T.useEffect(() => {
     if (phase !== "between") return;
@@ -18081,7 +18129,7 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
           r.jsx("p", {
             className: "af-dim",
             children:
-              "Each mode for a few trials, then the next. Every mode picks up exactly where it stopped, at your level, and each new block starts at your last threshold, so no trial is spent walking down from easy.",
+              "Each mode for a few trials, then the next: DorsalFlow's five and the seven more dorsal programs. Every mode picks up exactly where it stopped, at your level, and each starts at your last threshold, so no trial is spent walking down from easy.",
           }),
           r.jsx("div", {
             className: "rot-modes",
@@ -18100,7 +18148,7 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
                         ),
                     }),
                     r.jsx("span", { children: m.name }),
-                    r.jsxs("span", { className: "rot-level", children: ["Level ", level(m.id)] }),
+                    r.jsx("span", { className: "rot-level", children: m.prog ? "program" : "Level " + level(m.id) }),
                   ],
                 },
                 m.id,
@@ -18120,7 +18168,7 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
               }),
             ],
           }),
-          r.jsx("p", { className: "af-dim rot-note", children: "AudioFlow and the mixed modes need headphones. A run of Mixed Memory counts as many trials as it has pairs." }),
+          r.jsx("p", { className: "af-dim rot-note", children: "AudioFlow and the mixed modes need headphones. A run of Mixed Memory counts as many trials as it has pairs, and a tracking trial as four, one for each pick (answered by clicking)." }),
           r.jsx("button", { className: "af-btn af-btn--go", disabled: !order.length, onClick: start, children: "Start the rotation" }),
           r.jsx("button", { className: "af-btn af-btn--ghost rot-back", onClick: leave, children: "Back" }),
         ],
@@ -18147,7 +18195,7 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
                         r.jsx("td", { children: x.name }),
                         r.jsx("td", { children: x.trials }),
                         r.jsx("td", { children: x.blocks }),
-                        r.jsx("td", { children: x.thr ? (x.thr * 100).toFixed(2) + "%" : "—" }),
+                        r.jsx("td", { children: x.thr }),
                       ],
                     },
                     x.name,
@@ -18162,19 +18210,33 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
         ],
       }),
     });
+  const page = order.some((m) => m.prog)
+    ? r.jsx("iframe", {
+        ref: frame,
+        src: "programs/?embed=1",
+        title: "More dorsal programs",
+        className: "rot-frame" + (phase === "run" && cur.prog ? " rot-frame--on" : ""),
+        onLoad: () => setReady(!0),
+      })
+    : null;
   if (phase === "between")
-    return r.jsx("div", {
-      className: "af-overlay rot-page",
-      children: r.jsxs("div", {
-        className: "af-card af-card--small rot-card",
-        children: [
-          r.jsxs("span", { className: "af-kicker", children: ["Rotation · turn ", k + 1] }),
-          r.jsx("h3", { className: "af-h3", children: cur.name }),
-          r.jsxs("p", { className: "af-dim", children: [budget, " trials · Level ", level(cur.id)] }),
-          r.jsx("p", { className: "af-dim rot-note", children: "Starting… (Space now, Escape to end)" }),
-          r.jsx("button", { className: "af-btn af-btn--ghost rot-back", onClick: end, children: "End rotation" }),
-        ],
-      }),
+    return r.jsxs("div", {
+      children: [
+        r.jsx("div", {
+          className: "af-overlay rot-page",
+          children: r.jsxs("div", {
+            className: "af-card af-card--small rot-card",
+            children: [
+              r.jsxs("span", { className: "af-kicker", children: ["Rotation · turn ", k + 1] }),
+              r.jsx("h3", { className: "af-h3", children: cur.name }),
+              r.jsx("p", { className: "af-dim", children: budget + " trials" + (cur.prog ? "" : " · Level " + level(cur.id)) }),
+              r.jsx("p", { className: "af-dim rot-note", children: "Starting… (Space now, Escape to end)" }),
+              r.jsx("button", { className: "af-btn af-btn--ghost rot-back", onClick: end, children: "End rotation" }),
+            ],
+          }),
+        }),
+        page,
+      ],
     });
   const rot = {
       budget,
@@ -18188,8 +18250,9 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
        as it would be on its own, and starts its list again next turn. */
     done = (f) => (fin1(f), (snaps.current[cur.id] = { c: 0, g: null, results: [] }), next()),
     common = { key: "turn-" + k, complexityLevel: level(cur.id), onFinishSession: done, onExit: end, rotation: rot },
-    body =
-      cur.id === "motion"
+    body = cur.prog
+      ? null
+      : cur.id === "motion"
         ? r.jsx(Rf, { ...common, calibration: cal, replicationsCount: P0.replicationsAtCurrentLevel })
         : cur.id === "two-step-direction"
           ? r.jsx(Af, { ...common, calibration: cal })
@@ -18197,7 +18260,7 @@ function RotationSession({ progress: P0, sessions: S0, calibration: cal, onFinis
             ? r.jsx(AfSession, common)
             : r.jsx(AvSession, { ...common, calibration: cal, memory: cur.id === "av-two-step" });
   return r.jsxs("div", {
-    children: [body, r.jsxs("div", { className: "rot-banner", children: ["Rotation · turn ", k + 1, " · ", cur.name] })],
+    children: [body, page, r.jsxs("div", { className: "rot-banner", children: ["Rotation · turn ", k + 1, " · ", cur.name] })],
   });
 }
 /* A dashboard card for the rotation. */
@@ -18213,7 +18276,7 @@ function rotationCard(launch) {
           r.jsx("p", {
             className: "mt-1 text-xs text-slate-400 leading-relaxed",
             children:
-              "Every mode in turns of a few trials. Each one resumes exactly where it stopped, and each block starts at your last threshold, so the session is spent at your level rather than walking down to it.",
+              "Every mode in turns of a few trials, the seven more dorsal programs included. Each one resumes exactly where it stopped, and starts at your last threshold, so the session is spent at your level rather than walking down to it.",
           }),
         ],
       }),

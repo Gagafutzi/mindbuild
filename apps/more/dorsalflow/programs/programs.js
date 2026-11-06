@@ -184,41 +184,36 @@
     },
     {
       id: "ufov", name: "Useful field of view", tag: "Speed of processing · divided attention",
-      what: "A car or truck in the centre and a car out at one of eight places, shown for a moment and masked. Name the centre, find the outer car.",
-      intro: ["Keep your eyes on the cross. For a moment the centre shows a car or a truck, and one more car appears at one of eight places around it, among triangles; then a mask covers everything.",
-        "Say car or truck (1 or 2), then click where the outer car was (or press its number). Both have to be right for the display to get shorter; a mistake in either makes it longer. Each is also scored on its own.",
+      what: "A new shape in the centre and, outside, one shape unlike the many around it, shown for a moment and masked. Pick each out of four.",
+      intro: ["Keep your eyes on the cross. For a moment a shape appears in the centre, and outside, at one of eight places, one shape unlike all the others around it; then a mask covers everything. Every shape is new, made for that trial, so there is no set to learn.",
+        "Pick the centre shape out of four (press its number, 1 to 4, or click it), then the odd one from outside the same way. Both have to be right for the display to get shorter; a mistake in either makes it longer. Each is also scored on its own.",
         "Display times are whole screen frames, and the shortest is one frame."],
       options: function () {
-        return '<label class="opt"><input type="checkbox" id="optDistr"' + (opts.distractors ? " checked" : "") + '> Triangles in the periphery (the hardest form; off is easier)</label>';
+        return '<label class="opt"><input type="checkbox" id="optDistr"' + (opts.distractors ? " checked" : "") + '> Distractor shapes in the periphery (the hardest form; off is easier)</label>';
       },
-      readOptions: function () { opts.distractors = $("optDistr").checked; },
+      readOptions: function () { var b = $("optDistr"); if (b) opts.distractors = b.checked; },
       stair: { start: 300, min: 1, max: 500, harder: -1, target: 0.75, step: 0.15 }, trials: 50,
       show: function (v) { return E.framesFor(v, frameMs) + " frames (" + Math.round(E.framesFor(v, frameMs) * frameMs) + " ms)"; },
       run: async function (v) {
         var ecc = Math.max(3 * PPD, Math.min(10 * PPD, 0.45 * W - 1.3 * PPD, H / 2 - 1.3 * PPD - 80 * dpr)), places = E.ufovPlaces(ecc);
-        var distr = opts.distractors ? E.ufovDistractors(ecc) : [];
-        var centre = rand() < 0.5 ? "car" : "truck", where = Math.floor(rand() * 8), unit = Math.max(1, 1.5 * PPD / 40);
+        var where = Math.floor(rand() * 8), sh = E.ufovShapes(rand);
+        /* About 1.1° across at 10° out, smaller only if the screen is: the rings stay clear of each other. */
+        var size = Math.max(5 * dpr, Math.min(0.55 * PPD, 0.055 * ecc));
+        /* The distractor everywhere the odd one is not: the other seven places and the rings between. */
+        var spots = opts.distractors ? E.ufovDistractors(ecc).concat(places.filter(function (q) { return q.k !== where; })) : [];
         var frames = E.framesFor(v, frameMs);
         await playFrames(frames, function () {
           clear();
-          vehicle(W / 2, H / 2, centre, unit);
-          distr.forEach(function (d) { triangle(W / 2 + d.x, H / 2 + d.y, unit); });
-          vehicle(W / 2 + places[where].x, H / 2 + places[where].y, "car", unit);
+          shape(W / 2, H / 2, sh.centre, size);
+          spots.forEach(function (d) { shape(W / 2 + d.x, H / 2 + d.y, sh.distractor, size); });
+          shape(W / 2 + places[where].x, H / 2 + places[where].y, sh.target, size);
         });
         await play(300, function (t, n) { if (n % 3 === 0) mask(); });
-        clear(); spokes(places);
-        var c = await ask("In the centre: car or truck?", [
-          { label: "Car (1)", keys: ["1"], value: "car" }, { label: "Truck (2)", keys: ["2"], value: "truck" }]);
+        var c = await choose("Which shape was in the centre? Press its number.", sh.centreChoice.options);
         if (c === null) return null;
-        clear(); spokes(places);
-        var keys = {}; for (var k = 0; k < 8; k++) keys[String(k + 1)] = k;
-        var p = await clicks("Where was the outer car? Click it, or press its number.", 1, function (x, y) {
-          var best = null, d0 = 2.5 * PPD;
-          places.forEach(function (q) { var d = Math.hypot(x - W / 2 - q.x, y - H / 2 - q.y); if (d < d0) { d0 = d; best = q.k; } });
-          return best;
-        }, keys);
+        var p = await choose("Which was the odd one outside? Press its number.", sh.targetChoice.options);
         if (p === null) return null;
-        var items = [c === centre, p[0] === where];
+        var items = [c === sh.centreChoice.answer, p === sh.targetChoice.answer];
         return { stair: [items[0] && items[1]], items: items, labels: ["centre", "periphery"] };
       },
     },
@@ -358,35 +353,33 @@
 
   /* ---------- drawing helpers for the field of view ---------- */
 
-  /* A side-on car (low, long) or truck (tall cab, high box), in black: told apart by outline, not detail. */
-  function vehicle(x, y, kind, u) {
-    g.fillStyle = "#000";
-    if (kind === "car") {
-      g.fillRect(x - 20 * u, y - 4 * u, 40 * u, 10 * u);
-      g.fillRect(x - 10 * u, y - 12 * u, 20 * u, 9 * u);
-    } else {
-      g.fillRect(x - 20 * u, y - 18 * u, 26 * u, 24 * u);
-      g.fillRect(x + 7 * u, y - 10 * u, 13 * u, 16 * u);
-    }
-    dot(x - 12 * u, y + 7 * u, 4 * u, "#000"); dot(x + 12 * u, y + 7 * u, 4 * u, "#000");
+  /* A filled shape, `r` the radius it is scaled to. */
+  function shape(x, y, pts, r) {
+    g.fillStyle = "#000"; g.beginPath();
+    pts.forEach(function (q, i) { (i ? g.lineTo : g.moveTo).call(g, x + q[0] * r, y + q[1] * r); });
+    g.closePath(); g.fill();
   }
-  function triangle(x, y, u) {
-    g.strokeStyle = "#000"; g.lineWidth = Math.max(1, 2 * u);
-    g.beginPath(); g.moveTo(x, y - 12 * u); g.lineTo(x + 12 * u, y + 9 * u); g.lineTo(x - 12 * u, y + 9 * u); g.closePath(); g.stroke();
+  /* Four shapes in a row, numbered; resolves with the one picked, by key or click, or null if the session ends. */
+  function choose(prompt, options) {
+    var R = Math.max(14 * dpr, 0.9 * PPD), gap = Math.min(W / (options.length + 1), 4 * R);
+    var at = options.map(function (o, i) { return { x: W / 2 + (i - (options.length - 1) / 2) * gap, y: H / 2 }; });
+    clear();
+    g.font = Math.round(Math.max(14 * dpr, 0.5 * PPD)) + "px ui-monospace, monospace"; g.textAlign = "center"; g.textBaseline = "top";
+    options.forEach(function (o, i) {
+      shape(at[i].x, at[i].y, o, R);
+      g.fillStyle = "#000"; g.fillText(String(i + 1), at[i].x, at[i].y + R + 10 * dpr);
+    });
+    var keys = {}; options.forEach(function (o, i) { keys[String(i + 1)] = i; });
+    return clicks(prompt, 1, function (x, y) {
+      var best = null, d0 = gap / 2;
+      at.forEach(function (q, i) { var d = Math.hypot(x - q.x, y - q.y); if (d < d0) { d0 = d; best = i; } });
+      return best;
+    }, keys).then(function (got) { return got === null ? null : got[0]; });
   }
   function mask() {
     var b = Math.max(4, Math.round(0.4 * PPD));
     for (var y = 0; y < H; y += b) for (var x = 0; x < W; x += b) { g.fillStyle = rand() < 0.5 ? "#000" : "#fff"; g.fillRect(x, y, b, b); }
   }
-  function spokes(places) {
-    fixation();
-    g.font = Math.round(0.6 * PPD) + "px ui-monospace, monospace"; g.textAlign = "center"; g.textBaseline = "middle";
-    places.forEach(function (q) {
-      g.strokeStyle = "rgba(0,0,0,.5)"; g.lineWidth = 2 * dpr; g.beginPath(); g.arc(W / 2 + q.x, H / 2 + q.y, 1.2 * PPD, 0, 2 * Math.PI); g.stroke();
-      g.fillStyle = "#000"; g.fillText(String(q.k + 1), W / 2 + q.x, H / 2 + q.y);
-    });
-  }
-
   /* ---------- sessions ---------- */
 
   function load() { try { return JSON.parse(localStorage.getItem(STORE)) || { sessions: [] }; } catch (e) { return { sessions: [] }; } }
@@ -430,26 +423,46 @@
     show("intro");
   }
 
-  async function runSession(p) {
+  /* The display measured and the stage up, before a session or a turn. */
+  async function prepare(p) {
     if (p.readOptions) p.readOptions();
     try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch (e) {}
     abort = false;
     show("stage"); resize(); clear();
     frameMs = await measureRefresh();
-    var st = new E.Staircase(p.stair), start = Date.now(), items = 0, right = 0, per = {}, done = 0;
-    for (var i = 0; i < p.trials && !abort; i++) {
-      $("hudLeft").innerHTML = "<b>" + p.name + "</b> · trial " + (i + 1) + " of " + p.trials;
-      $("hudRight").textContent = p.show(st.value);
+  }
+  /** A session's running state: the staircase and the tallies, all of it plain enough to hand over and back. */
+  function fresh(p, seed) {
+    var st = new E.Staircase(p.stair);
+    /* Started at the player's own level, past the fast first descent. */
+    if (seed > 0) { st.value = Math.min(p.stair.max, Math.max(p.stair.min, seed)); st.erred = true; }
+    return { st: st, start: Date.now(), items: 0, right: 0, per: {}, done: 0 };
+  }
+  /** The player's last threshold on a program, from the sessions kept. */
+  function lastThreshold(p) {
+    var last = load().sessions.filter(function (s) { return s.program === p.id && s.threshold > 0; }).pop();
+    return last ? last.threshold : 0;
+  }
+  /**
+   * Trials until `displays` have been shown or `steps` staircase answers given,
+   * whichever comes first, or the session is ended. Returns the steps taken.
+   */
+  async function trials(p, s, displays, steps, where) {
+    var used = 0;
+    while (s.done < displays && used < steps && !abort) {
+      $("hudLeft").innerHTML = "<b>" + p.name + "</b> · " + where(s);
+      $("hudRight").textContent = p.show(s.st.value);
       clear(); fixation(); await wait(500);
       if (abort) break;
-      var res = await p.run(st.value);
+      var res = await p.run(s.st.value);
       if (!res || abort) break;
-      done++;
-      res.stair.forEach(function (ok) { st.update(ok); });
+      s.done++;
+      res.stair.forEach(function (ok) { s.st.update(ok); });
+      used += res.stair.length;
       var its = res.items || res.stair;
       its.forEach(function (ok, k) {
-        items++; if (ok) right++;
-        if (res.labels) { var l = res.labels[k]; per[l] = per[l] || [0, 0]; per[l][0] += ok ? 1 : 0; per[l][1]++; }
+        s.items++; if (ok) s.right++;
+        if (res.labels) { var l = res.labels[k]; s.per[l] = s.per[l] || [0, 0]; s.per[l][0] += ok ? 1 : 0; s.per[l][1]++; }
       });
       var good = its.filter(Boolean).length;
       $("feedback").innerHTML = its.length > 1
@@ -458,13 +471,24 @@
       await wait(450);
       $("feedback").innerHTML = "";
     }
-    if (items > 0) {
-      var rec = load();
-      rec.sessions.push({ program: p.id, start: start, end: Date.now(), trials: done, items: items, right: right,
-        threshold: st.threshold(), last: st.value, per: per, frameMs: frameMs, ppd: PPD / dpr, completed: !abort,
-        settings: p.id === "ufov" ? { distractors: opts.distractors } : undefined });
-      save(rec);
-      summary(p, st, done, items, right, per, start);
+    return used;
+  }
+  /** What a session leaves in storage. */
+  function record(p, s, extra) {
+    var rec = load();
+    rec.sessions.push(Object.assign({ program: p.id, start: s.start, end: Date.now(), trials: s.done, items: s.items, right: s.right,
+      threshold: s.st.threshold(), last: s.st.value, per: s.per, frameMs: frameMs, ppd: PPD / dpr, completed: !abort,
+      settings: p.id === "ufov" ? { distractors: opts.distractors } : undefined }, extra || {}));
+    save(rec);
+  }
+
+  async function runSession(p) {
+    await prepare(p);
+    var s = fresh(p, 0);
+    await trials(p, s, p.trials, Infinity, function (x) { return "trial " + (x.done + 1) + " of " + p.trials; });
+    if (s.items > 0) {
+      record(p, s);
+      summary(p, s.st, s.done, s.items, s.right, s.per, s.start);
     } else renderHome();
   }
 
@@ -485,10 +509,45 @@
   $("quitBtn").onclick = function () { abort = true; if (pending) pending(); };
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && $("stage").style.display === "block") { abort = true; if (pending) pending(); } });
 
-  /* Opened at #program, straight to that program's page. */
-  var start = PROGRAMS.find(function (p) { return "#" + p.id === location.hash; });
-  renderHome();
-  if (start) openIntro(start);
+  /* ---------- in DorsalFlow's rotation ----------
 
-  window.DorsalPrograms = { PROGRAMS: PROGRAMS };
+     The rotation (DorsalFlow's RotationSession) runs these programs in an
+     iframe of this page, opened with ?embed=1, a turn at a time:
+
+       turn(id, budget, state)  runs the program until `budget` staircase
+         answers are given (a tracking trial gives four), from `state` as the
+         last turn left it, or, on the program's first turn, from the player's
+         last threshold, past the fast first descent. Resolves with
+         { state, steps, ended }; `ended` when the player ended it (End or Escape).
+       finish(states)  keeps each program's turns as one session of it, and
+         returns a row for the rotation's summary. */
+  function byId(id) { return PROGRAMS.find(function (p) { return p.id === id; }); }
+  async function turn(id, budget, state) {
+    var p = byId(id);
+    await prepare(p);
+    var s = state ? Object.assign({}, state, { st: Object.assign(new E.Staircase(p.stair), state.st) }) : fresh(p, lastThreshold(p));
+    var steps = await trials(p, s, Infinity, budget, function () { return "in the rotation"; });
+    clear();
+    return { state: s, steps: steps, ended: abort };
+  }
+  function finish(states) {
+    return Object.keys(states).map(function (id) {
+      var p = byId(id), s = Object.assign({}, states[id], { st: Object.assign(new E.Staircase(p.stair), states[id].st) });
+      if (s.items > 0) record(p, s, { completed: true, rotation: true });
+      return { id: id, name: p.name, trials: s.done, threshold: s.items > 0 ? p.show(s.st.threshold()) : "—" };
+    });
+  }
+
+  var embedded = /[?&]embed=1/.test(location.search);
+  window.DorsalPrograms = { PROGRAMS: PROGRAMS, turn: turn, finish: finish };
+  if (embedded) {
+    /* Nothing but the stage, and only while a turn runs. */
+    document.body.classList.add("embedded");
+    show("none");
+  } else {
+    /* Opened at #program, straight to that program's page. */
+    var start = PROGRAMS.find(function (p) { return "#" + p.id === location.hash; });
+    renderHome();
+    if (start) openIntro(start);
+  }
 })();
