@@ -63,15 +63,39 @@ var Today = (function () {
   function minutesOn(day) {
     day = day || utcDay();
     var out = {};
+    sweep(function (r) {
+      var m = Number(r.minutes[day]) || 0;
+      if (m > 0) out[r.source] = (out[r.source] || 0) + m;
+    });
+    return out;
+  }
 
+  /**
+   * Every day's training minutes, summed over trainers: { "2026-11-10": 42, … }.
+   * One sweep of storage for all days, which is what the transfer probe needs to
+   * know how much has been trained since it last ran.
+   */
+  function minutesByDay() {
+    var out = {};
+    sweep(function (r) {
+      for (var d in r.minutes) {
+        if (!Object.prototype.hasOwnProperty.call(r.minutes, d)) continue;
+        var m = Number(r.minutes[d]) || 0;
+        if (m > 0) out[d] = (out[d] || 0) + m;
+      }
+    });
+    return out;
+  }
+
+  /** Hands every trainer's reading (and each source split out of one) to `visit`. */
+  function sweep(visit) {
     /* A reading can hold a source split out of it — Composed World's time
        comes inside Syllogimous's storage — so each part is counted as its own. */
     function take(reading) {
       if (!reading) return;
       [reading].concat(reading.parts || []).forEach(function (r) {
         if (!r || !r.minutes) return;
-        var m = Number(r.minutes[day]) || 0;
-        if (m > 0) out[r.source] = (out[r.source] || 0) + m;
+        visit(r);
       });
     }
 
@@ -139,8 +163,6 @@ var Today = (function () {
         if (raw) take(readOne(raw));
       }
     } catch (e) { /* no rnb here */ }
-
-    return out;
   }
 
   /**
@@ -174,6 +196,7 @@ var Today = (function () {
   return {
     utcDay: utcDay,
     minutesOn: minutesOn,
+    minutesByDay: minutesByDay,
     totalMinutes: totalMinutes,
     streak: streak,
   };
