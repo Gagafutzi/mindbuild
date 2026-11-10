@@ -223,6 +223,8 @@ export class Question {
      * rather than something vague.
      */
     explanation: string[] = [];
+    /** Set on a belief-conflict syllogism: which way belief and logic disagree. */
+    beliefConflict?: "valid-unbelievable" | "invalid-believable";
     type: EnumQuestionType;
     isValid = false;
     premises: string[] = [];

@@ -13,7 +13,8 @@ import {
     AbilityState, Aggregate, ConfigChoice, DEFAULT_ABILITY, abilityDecay, abilityEstimate,
     abilityUpdate, aggregate, cautionPenalty, chooseConfig, densityAt, dialSteps, leversOf, guessRateFor, guessRateForRungs, initAbility, ItemSpec, levelOf,
     pCorrect, priorForNewMode, targetLevel,
-    DepthFit, DepthReport, Trial, depthReport, fitDepthCoefficient, fitRungCosts,
+    DepthFit, DepthReport, SpeedFit, Trial, depthReport, fitDepthCoefficient, fitJointCosts,
+    fitRungCosts, fitSpeed, generousDeadline,
     fitWidthCoefficient, referenceSecondsFrom,
 } from "../utils/ability.utils";
 import { MODE_SCALE } from "../utils/calibration.utils";
@@ -466,6 +467,15 @@ export class ProgressionService {
     }
 
     /**
+     * Every cost fitted together: mode weights, rungs, the clock, width, depth
+     * and the carousel. Reported, not applied; see `fitJointCosts` for why this
+     * replaces reading the rung fits one at a time.
+     */
+    fittedJointCosts(minTrials = 60) {
+        return fitJointCosts(this.trials(), this.abilityConfig, { minTrials });
+    }
+
+    /**
      * What a bit of extra width is worth, or null if the answers cannot say.
      *
      * Null is the common case and the honest one: with the spread dial at its
@@ -584,7 +594,34 @@ export class ProgressionService {
             forgetting: forgettingFor(this.config.memoryAnswers),
             widthPerBit: this.widthPerBit,
             levelsPerUnneededPremise: this.depthPerPremise,
+            perTimeHalving: this.speedPerHalving,
         };
+    }
+
+    /* ---------------- speed, apart from reasoning ---------------- */
+
+    private speedFitCache: { at: number; value: SpeedFit | null } | null = null;
+
+    /**
+     * The speed estimate, from timed answers only: levels a halving of the clock
+     * costs this player. Refit every twenty answers. See `generousDeadline`.
+     */
+    speedEstimate(): SpeedFit | null {
+        const n = this.trialCount();
+        if (this.speedFitCache && n - this.speedFitCache.at < 20) return this.speedFitCache.value;
+        const value = fitSpeed(this.trials(), {
+            ...DEFAULT_ABILITY,
+            minSeconds: this.config.floorSeconds,
+            maxSeconds: this.config.ceilingSeconds,
+        });
+        this.speedFitCache = { at: n, value };
+        return value;
+    }
+
+    /** What the clock is priced at: this player's speed once measured, the default before. */
+    private get speedPerHalving(): number {
+        const fit = this.speedEstimate();
+        return fit ? Math.max(0.4, Math.min(4, fit.perTimeHalving)) : DEFAULT_ABILITY.perTimeHalving;
     }
 
     /* ---------------- what width is worth ---------------- */
@@ -1467,6 +1504,8 @@ export class ProgressionService {
             undelivered?: string[];
             /** Levels beyond mode and rungs; see `Question.surcharge`. */
             surcharge?: number;
+            /** Premises shown one at a time; logged for the joint fit. */
+            carousel?: boolean;
         },
     ): LadderEvent[] {
         if (!this.config.enabled) { this.lastEvents = []; return []; }
@@ -1570,12 +1609,23 @@ export class ProgressionService {
             widthDelta: item?.widthDelta ?? 0,
             surcharge: item?.surcharge ?? 0,
             depth: item?.depth ?? 0,
+            carousel: !!item?.carousel,
             arity: item?.arity ?? 0,
             integration: item?.integration ?? 0,
             pairsSettled: item?.pairsSettled ?? 0,
             openGroups: item?.openGroups ?? 0,
             answerSeconds,
         });
+
+        /*
+         * A tight clock is evidence about speed, not reasoning. The answer is
+         * logged above, where the speed estimate reads it, and the reasoning
+         * estimate is left where it was. See `generousDeadline`.
+         */
+        if (!generousDeadline(before.seconds, this.configForMode(type))) {
+            this.lastEvents = [];
+            return [];
+        }
 
         /*
          * A slump already in progress stops the posterior moving. The trial is

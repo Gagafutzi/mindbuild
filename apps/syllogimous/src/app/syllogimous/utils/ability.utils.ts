@@ -1075,6 +1075,81 @@ export function timeCost(seconds: number | null, config = DEFAULT_ABILITY): numb
 }
 
 /** The deadline that contributes exactly `levels` of difficulty. */
+/*
+ * Speed and reasoning, kept apart.
+ *
+ * The clock used to be folded into the same number as structure, so a mode that
+ * ran out of rungs got harder by getting faster, and every answer under a tight
+ * clock moved the reasoning estimate. Speed and reasoning level are separate
+ * abilities, and a rising number made of both says nothing clear about either.
+ *
+ * So the reasoning estimate is moved only by items whose deadline was generous
+ * (the clock costs under a quarter of a level, which includes every untimed
+ * item), and the clock's price is a separate, per-player speed estimate: how
+ * many levels a halving of the time costs this player, fitted from the timed
+ * answers alone. Lower is faster.
+ */
+export const GENEROUS_TIME_COST = 0.25;
+
+/** Whether a deadline left the item a test of reasoning rather than of speed. */
+export function generousDeadline(seconds: number | null, config = DEFAULT_ABILITY): boolean {
+    return seconds == null || timeCost(seconds, config) < GENEROUS_TIME_COST;
+}
+
+export interface SpeedFit {
+    /** Levels a halving of the clock costs this player. Lower is faster. */
+    perTimeHalving: number;
+    /** Timed answers it came from. */
+    trials: number;
+}
+
+/**
+ * The speed estimate: what the clock costs this player, from timed answers only.
+ *
+ * The same likelihood search as the width fit, over the one coefficient the clock
+ * has. Each timed answer is read against its structure, priced as usual, plus
+ * `k` levels per halving below the player's reference time; `k` is whatever
+ * makes the timed answers likeliest. Null until there are enough timed answers
+ * spread over enough clock pressure to say.
+ */
+export function fitSpeed(
+    trials: Trial[],
+    config = DEFAULT_ABILITY,
+    minTrials = 40,
+): SpeedFit | null {
+    const timed = trials.filter(t => t.seconds != null && t.seconds > 0
+        && Math.log2(config.referenceSeconds / t.seconds) > 0.2);
+    if (timed.length < minTrials) return null;
+    const halvings = timed.map(t => Math.log2(config.referenceSeconds / t.seconds!));
+    const structure = timed.map(t => levelOf(
+        { type: t.type, premises: t.premises, rungs: t.rungs, dials: t.dials, seconds: null,
+          widthDelta: t.widthDelta, surcharge: t.surcharge, depth: t.depth, carousel: t.carousel },
+        config));
+    const logLik = (k: number) => {
+        let total = 0;
+        for (let i = 0; i < timed.length; i++) {
+            const t = timed[i];
+            const q = Math.min(1 - 1e-9, Math.max(1e-9,
+                pCorrect(config, t.estimate, structure[i] + k * halvings[i], t.guess)));
+            total += t.correct ? Math.log(q) : Math.log(1 - q);
+        }
+        return total;
+    };
+    let best = 0, bestScore = -Infinity;
+    for (let k = 0; k <= 6; k += 0.05) {
+        const s = logLik(k);
+        if (s > bestScore) { bestScore = s; best = k; }
+    }
+    for (let step = 0.025; step > 0.001; step /= 2) {
+        for (const k of [best - step, best + step]) {
+            if (k < 0) continue;
+            const s = logLik(k);
+            if (s > bestScore) { bestScore = s; best = k; }
+        }
+    }
+    return { perTimeHalving: best, trials: timed.length };
+}
+
 export function secondsForCost(levels: number, config = DEFAULT_ABILITY): number {
     const raw = config.referenceSeconds / Math.pow(2, levels / config.perTimeHalving);
     return Math.min(config.maxSeconds, Math.max(config.minSeconds, Math.round(raw)));
@@ -1800,6 +1875,8 @@ export interface Trial {
     widthDelta?: number;
     /** Levels the generator added beyond mode and rungs; see `Question.surcharge`. */
     surcharge?: number;
+    /** Premises shown one at a time, so the joint fit can price the carousel. */
+    carousel?: boolean;
     /**
      * How much had to be held at once, and how much one premise joined.
      *
@@ -1969,6 +2046,183 @@ export function fitRungCosts(
     }
 
     return out.sort((a, b) => Math.abs(b.fitted - b.current) - Math.abs(a.fitted - a.current));
+}
+
+export interface JointTerm {
+    /** What the model charges now. */
+    current: number;
+    /** What the answers say, all terms fitted together. */
+    fitted: number;
+    /** Answers that carried the term. */
+    trials: number;
+}
+
+export interface JointFit {
+    trials: number;
+    players: number;
+    /** Levels per premise, per mode: the `MODE_SCALE` weights. */
+    modeWeights: Record<string, JointTerm>;
+    rungs: Record<string, JointTerm>;
+    perTimeHalving: JointTerm;
+    widthPerBit: JointTerm;
+    levelsPerUnneededPremise: JointTerm;
+    levelsPerCarousel: JointTerm;
+    /** Each player's offset from the estimates their items were chosen under. */
+    playerShift: Record<string, number>;
+    /** Mean log-likelihood per answer under the current costs and the fitted ones. */
+    logLikBefore: number;
+    logLikAfter: number;
+}
+
+/**
+ * Every cost in the difficulty model, fitted at once.
+ *
+ * `fitRungCosts` fits one rung at a time against an ability estimate computed
+ * with the current costs. Rungs are always claimed as a prefix, so an item that
+ * carries the fourth rung carries the first three too, and each one-at-a-time
+ * fit absorbs whatever is wrong with the rungs below it. The mode weights were
+ * never fitted at all: they came from one player's report.
+ *
+ * Here one likelihood carries everything that sets an item's level: the
+ * per-premise weight of each mode, every rung, the clock (`perTimeHalving`),
+ * width, premises the answer did not need, the carousel, and a shift per
+ * player for how far their estimates sat from the truth. Fitted together, a
+ * cost that belongs to the second rung cannot hide in the first.
+ *
+ * Penalised towards the current values (a ridge prior, `priorSd` in that
+ * term's own units), which is what keeps a term with little evidence where it
+ * was and lets one with a lot move. Terms seen on fewer than `minTrials`
+ * answers are not fitted. Optimised by diagonal Newton steps on the penalised
+ * log-likelihood, which is smooth and close to quadratic here.
+ *
+ * `player` on a trial groups answers by person, so the same fit runs on the
+ * shared multi-player data when it carries the estimate each item was chosen
+ * under. One player's log is one group.
+ *
+ * Reported, not applied, like the single-term fits.
+ */
+export function fitJointCosts(
+    trials: Array<Trial & { player?: string; carousel?: boolean }>,
+    config = DEFAULT_ABILITY,
+    opts: { minTrials?: number; iterations?: number } = {},
+): JointFit | null {
+    const minTrials = opts.minTrials ?? 60;
+    const usable = trials.filter(t => t && t.premises > 0 && Number.isFinite(t.estimate)
+        && typeof t.correct === "boolean");
+    if (usable.length < minTrials) return null;
+
+    /* The parameter vector: names, current values, prior sd, and which trials carry each. */
+    type Param = { key: string; value: number; start: number; sd: number; n: number };
+    const params: Param[] = [];
+    const index = new Map<string, number>();
+    const add = (key: string, start: number, sd: number) => {
+        if (index.has(key)) return index.get(key)!;
+        index.set(key, params.length);
+        params.push({ key, value: start, start, sd, n: 0 });
+        return params.length - 1;
+    };
+
+    const refSeconds = config.referenceSeconds;
+    const timeX = (s: number | null) => s == null || s <= 0 ? 0 : Math.max(0, Math.log2(refSeconds / s));
+
+    /* Each trial as a sparse row: (param, x) pairs, plus the fixed part of its level. */
+    const rows = usable.map(t => {
+        const xs: Array<[number, number]> = [];
+        xs.push([add("mode:" + t.type, MODE_SCALE[t.type]?.weight ?? 1, 0.3), t.premises]);
+        for (const r of t.rungs ?? []) xs.push([add("rung:" + r, RUNG_COST[r] ?? 0.8, 1.0), 1]);
+        const tx = timeX(t.seconds);
+        if (tx > 0) xs.push([add("time", config.perTimeHalving, 0.5), tx]);
+        if (t.widthDelta) xs.push([add("width", config.widthPerBit, 1.0), t.widthDelta]);
+        const short = unneededPremises(t);
+        if (short) xs.push([add("depth", config.levelsPerUnneededPremise, 1.0), short]);
+        if (t.carousel) xs.push([add("carousel", config.levelsPerCarousel, 1.0), 1]);
+        xs.push([add("player:" + (t.player ?? "me"), 0, 1.0), -1]);
+        for (const [j] of xs) params[j].n++;
+        return { t, xs, fixed: dialsCost(t.dials) + (t.surcharge ?? 0) };
+    });
+
+    /* Too little evidence: held at the current value. Players are always fitted. */
+    const free = params.map(p => p.key.startsWith("player:") || p.n >= minTrials);
+
+    const levelOfRow = (r: typeof rows[0]) => {
+        let lv = r.fixed;
+        for (const [j, x] of r.xs) lv += params[j].value * x;
+        return lv;
+    };
+
+    const phi = (z: number) => Math.exp(-z * z / 2) / Math.sqrt(2 * Math.PI);
+    const logLik = () => {
+        let total = 0;
+        for (const r of rows) {
+            const p = pCorrect(config, r.t.estimate, levelOfRow(r), r.t.guess);
+            const q = Math.min(1 - 1e-9, Math.max(1e-9, p));
+            total += r.t.correct ? Math.log(q) : Math.log(1 - q);
+        }
+        return total / rows.length;
+    };
+
+    const before = logLik();
+    const iterations = opts.iterations ?? 200;
+    for (let it = 0; it < iterations; it++) {
+        const grad = new Array(params.length).fill(0);
+        const hess = new Array(params.length).fill(0);
+        for (const r of rows) {
+            const level = levelOfRow(r);
+            const z = (r.t.estimate - level) / config.slope;
+            const span = 1 - r.t.guess - config.lapseRate;
+            const p = Math.min(1 - 1e-9, Math.max(1e-9, r.t.guess + span * Phi(z)));
+            /* dp/dlevel: a dearer item is less likely right. */
+            const dp = -span * phi(z) / config.slope;
+            const dl = (r.t.correct ? 1 : 0) - p;
+            const g = dl * dp / (p * (1 - p));
+            const w = dp * dp / (p * (1 - p));
+            for (const [j, x] of r.xs) {
+                if (!free[j]) continue;
+                grad[j] += g * x;
+                hess[j] += w * x * x;
+            }
+        }
+        let moved = 0;
+        for (let j = 0; j < params.length; j++) {
+            if (!free[j]) continue;
+            const prm = params[j];
+            const g = grad[j] - (prm.value - prm.start) / (prm.sd * prm.sd);
+            const h = hess[j] + 1 / (prm.sd * prm.sd);
+            /* Half steps: the diagonal ignores how terms trade off, and a full one overshoots. */
+            const step = Math.max(-1, Math.min(1, 0.5 * g / h));
+            prm.value += step;
+            moved = Math.max(moved, Math.abs(step));
+        }
+        if (moved < 1e-5) break;
+    }
+
+    const term = (key: string, current: number): JointTerm => {
+        const j = index.get(key);
+        return j == null ? { current, fitted: current, trials: 0 }
+            : { current, fitted: params[j].value, trials: params[j].n };
+    };
+    const modeWeights: Record<string, JointTerm> = {};
+    const rungs: Record<string, JointTerm> = {};
+    const playerShift: Record<string, number> = {};
+    for (const p of params) {
+        if (p.key.startsWith("mode:")) modeWeights[p.key.slice(5)] = term(p.key, p.start);
+        else if (p.key.startsWith("rung:")) rungs[p.key.slice(5)] = term(p.key, p.start);
+        else if (p.key.startsWith("player:")) playerShift[p.key.slice(7)] = p.value;
+    }
+
+    return {
+        trials: rows.length,
+        players: Object.keys(playerShift).length,
+        modeWeights,
+        rungs,
+        perTimeHalving: term("time", config.perTimeHalving),
+        widthPerBit: term("width", config.widthPerBit),
+        levelsPerUnneededPremise: term("depth", config.levelsPerUnneededPremise),
+        levelsPerCarousel: term("carousel", config.levelsPerCarousel),
+        playerShift,
+        logLikBefore: before,
+        logLikAfter: logLik(),
+    };
 }
 
 /** `levelOf` against a substituted cost table. */

@@ -1224,6 +1224,7 @@ export class GameService implements GeneratorContext {
                     // Logged so the bits-to-levels coefficient can be fitted
                     // rather than guessed; nothing reads it for difficulty yet.
                     widthDelta: this.question.widthDelta,
+                    carousel: this.question.gameModeOnAnswer !== "0",
                     // Order-dependent load, on the same standing as width: how
                     // many groups the heaviest premise welded, how many of them
                     // were structures already held, and how many part-built

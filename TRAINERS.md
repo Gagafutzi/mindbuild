@@ -28,9 +28,25 @@ strips.
 **Loads.** Relational integration: composing several relations held at once
 into one that is not on the page.
 **Research.**
+- Mental models and relational integration are the rationale now: building
+  one model from several relations and reading off an unstated one. Reasoning
+  training has better near-transfer evidence than memory training (Guerin et
+  al. 2021); transfer to academic outcomes is less clear.
 - Relational Frame Theory — relating stimuli is the basic operation of
-  language and cognition (Hayes, Barnes-Holmes & Roche 2001; the app's intro
-  names it †).
+  language and cognition (Hayes, Barnes-Holmes & Roche 2001) — was the
+  original rationale and is the weakest part. A 2022 meta-analysis found
+  g = 0.57 on non-verbal IQ from five studies (N = 195), all at high risk of
+  bias; a preregistered trial (Cummins et al. 2026, 107 children, n-back
+  control) found no advantage on relational ability, fluid intelligence,
+  reading or maths. The intro says so.
+- A rising level is skill at these items, not necessarily rising ability: in
+  Hayes et al. (2015) about a third of retest gains on Raven's tracked a change
+  of strategy. So the level is kept apart from speed (the reasoning estimate
+  moves only on generous-deadline items; a separate speed estimate prices the
+  clock), all difficulty costs are fitted jointly from the answers rather than
+  one at a time, and a third of syllogisms with meaningful words are
+  belief-conflict items (valid but unbelievable, or believable but invalid;
+  Evans, Barston & Pollard 1983).
 - Relational complexity — difficulty is how many relations must be bound at
   once, with adults topping out near four (Halford, Wilson & Phillips 1998).
 - Item difficulty from rule count rather than element count (Carpenter, Just &

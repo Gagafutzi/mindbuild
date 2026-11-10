@@ -62,16 +62,27 @@ export function createSyllogismCanyon(ctx: GeneratorContext, numOfPremises: numb
     const maxExtra = numDistractors;
     const extra = Math.floor(Math.random() * (maxExtra - minExtra + 1)) + minExtra;
     const poolSize = chainTermsNeeded + extra;
-    const termPool = getRandomSymbols(settings, poolSize);
     const wantTrue = coinFlip();
-    const { premises, conclusion, conclusionIsTrue, trace, derived } = generatePolysyllogism({
-        nPremises: numOfPremises,
-        chainDepth,
-        termPool,
-        trueConclusion: wantTrue,
-    });
+    /*
+     * A belief-conflict item, some of the time, when the words mean something:
+     * terms from real categories, kept only when the conclusion's real-world
+     * believability is the opposite of whether it follows. See `beliefConflict`.
+     */
+    const belief = beliefItemsOn(settings) && Math.random() < BELIEF_SHARE
+        ? beliefConflict(numOfPremises, chainDepth, poolSize, wantTrue)
+        : null;
+    const termPool = belief ? belief.termPool : getRandomSymbols(settings, poolSize);
+    const { premises, conclusion, conclusionIsTrue, trace, derived } = belief ? belief.result
+        : generatePolysyllogism({
+            nPremises: numOfPremises,
+            chainDepth,
+            termPool,
+            trueConclusion: wantTrue,
+        });
 
-    const negated = settings.enabled.negation && coinFlip();
+    /* Negation would invert what the sentences say about the world, so a belief
+       item is never struck through. */
+    const negated = !belief && settings.enabled.negation && coinFlip();
 
     question.bucket = termPool;
     question.isValid = conclusionIsTrue;
@@ -123,8 +134,87 @@ export function createSyllogismCanyon(ctx: GeneratorContext, numOfPremises: numb
         ? syllogismLines(question.venn, support, derived, negated, conclusionIsTrue)
         : explainPolysyllogism(trace, derived, conclusionIsTrue);
 
+    if (belief) {
+        question.beliefConflict = conclusionIsTrue ? "valid-unbelievable" : "invalid-believable";
+        question.explanation = [
+            conclusionIsTrue
+                ? "Belief conflict: the conclusion is false in the real world, and it still follows from the premises."
+                : "Belief conflict: the conclusion is true in the real world, and it does not follow from the premises.",
+            ...question.explanation,
+        ];
+    }
+
     extendSyllogism(ctx, question, premises, negated);
     return question;
+}
+
+/*
+ * Belief-conflict items: valid but unbelievable, or believable but invalid.
+ *
+ * The belief-bias effect is the best-documented way everyday knowledge corrupts
+ * deduction: people accept believable conclusions that do not follow and reject
+ * unbelievable ones that do (Evans, Barston & Pollard 1983). Resisting it is
+ * part of reasoning that random words never exercise, because a random word has
+ * no beliefs attached. So when the words are meaningful, a share of syllogisms
+ * use real categories, and an item is kept only when its conclusion's truth in
+ * the world is the opposite of its validity. The premises may be false; the
+ * question is still only whether the conclusion follows from them.
+ */
+export const BELIEF_SHARE = 1 / 3;
+
+/** Each category's parent. A category is inside every one of its ancestors. */
+export const BELIEF_TAXONOMY: Record<string, string | null> = {
+    Animal: null, Plant: null, Food: null, Tool: null, Vehicle: null, Metal: null,
+    Bird: "Animal", Fish: "Animal", Mammal: "Animal", Reptile: "Animal", Insect: "Animal",
+    Sparrow: "Bird", Eagle: "Bird", Penguin: "Bird", Owl: "Bird",
+    Salmon: "Fish", Shark: "Fish", Trout: "Fish",
+    Dog: "Mammal", Cat: "Mammal", Whale: "Mammal", Horse: "Mammal", Bat: "Mammal",
+    Snake: "Reptile", Lizard: "Reptile", Turtle: "Reptile",
+    Bee: "Insect", Ant: "Insect", Beetle: "Insect",
+    Flower: "Plant", Tree: "Plant",
+    Rose: "Flower", Tulip: "Flower", Daisy: "Flower",
+    Oak: "Tree", Pine: "Tree", Birch: "Tree",
+    Fruit: "Food", Cheese: "Food", Bread: "Food",
+    Apple: "Fruit", Banana: "Fruit", Cherry: "Fruit",
+    Hammer: "Tool", Saw: "Tool", Wrench: "Tool",
+    Car: "Vehicle", Bus: "Vehicle", Bicycle: "Vehicle", Truck: "Vehicle",
+    Iron: "Metal", Copper: "Metal", Gold: "Metal",
+};
+
+/** Whether every A is a B, in the world: B is A or one of A's ancestors. */
+function inside(a: string, b: string): boolean {
+    for (let x: string | null = a; x; x = BELIEF_TAXONOMY[x] ?? null) if (x === b) return true;
+    return false;
+}
+
+/** Whether a statement is true of the world, by the taxonomy. */
+export function believable([a, k, b]: SylPremise): boolean {
+    const overlap = inside(a, b) || inside(b, a);
+    switch (k) {
+        case "all": return inside(a, b);
+        case "no": return !overlap;
+        case "some": return overlap;
+        case "some_not": return !inside(a, b);
+    }
+}
+
+function beliefItemsOn(settings: GeneratorContext["settings"]): boolean {
+    return !!settings.enabled.meaningfulWords && settings.enabled.useText !== false;
+}
+
+/**
+ * A syllogism whose conclusion's believability contradicts its validity, or null
+ * if the draw could not find one (the caller then builds an ordinary item).
+ */
+export function beliefConflict(nPremises: number, chainDepth: number, poolSize: number, wantTrue: boolean) {
+    const terms = Object.keys(BELIEF_TAXONOMY);
+    if (poolSize > terms.length) return null;
+    for (let attempt = 0; attempt < 200; attempt++) {
+        const termPool = shuffle([...terms]).slice(0, poolSize);
+        const result = generatePolysyllogism({ nPremises, chainDepth, termPool, trueConclusion: wantTrue });
+        if (believable(result.conclusion) !== result.conclusionIsTrue) return { termPool, result };
+    }
+    return null;
 }
 
 /**

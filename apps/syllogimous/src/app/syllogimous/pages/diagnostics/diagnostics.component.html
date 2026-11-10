@@ -161,6 +161,49 @@
         </div>
 
         <hr class="my-2">
+        <div class="small mb-1">
+            <strong>All costs fitted together</strong> &mdash; mode weights, rungs, the
+            clock, width, unneeded premises and the carousel in one likelihood. Fitted
+            one at a time, a rung soaks up the error of the rungs it is always claimed
+            with; fitted together it cannot. Terms with fewer than 60 answers stay as
+            they are.
+        </div>
+        <div *ngIf="joint">
+            <div class="res__main" style="grid-template-columns: 1fr 4rem 4rem 4rem;">
+                <span class="nm"><strong>term</strong></span>
+                <span class="num"><strong>now</strong></span>
+                <span class="num"><strong>fitted</strong></span>
+                <span class="num"><strong>n</strong></span>
+            </div>
+            <div class="res__main" style="grid-template-columns: 1fr 4rem 4rem 4rem;"
+                 *ngFor="let r of jointRows">
+                <span class="nm">{{ r.name }}</span>
+                <span class="num">{{ r.current.toFixed(2) }}</span>
+                <span class="num">{{ r.fitted.toFixed(2) }}</span>
+                <span class="num">{{ r.trials }}</span>
+            </div>
+            <div class="text-muted small">
+                Log-likelihood per answer {{ joint.logLikBefore.toFixed(3) }} now,
+                {{ joint.logLikAfter.toFixed(3) }} fitted.
+            </div>
+        </div>
+        <div class="text-muted small" *ngIf="!joint && trialCount">
+            Too few answers for a joint fit.
+        </div>
+
+        <hr class="my-2">
+        <div class="small">
+            <strong>Speed, apart from reasoning</strong> &mdash; your reasoning
+            estimate moves only on items with a generous deadline; timed items
+            measure this instead.
+            <div *ngIf="speed; else noSpeed">
+                A halving of the clock costs you {{ speed.perTimeHalving.toFixed(2) }}
+                levels (from {{ speed.trials }} timed answers; lower is faster).
+            </div>
+            <ng-template #noSpeed><div class="text-muted">Not enough timed answers yet.</div></ng-template>
+        </div>
+
+        <hr class="my-2">
         <div class="small">
             <strong>Conclusion depth</strong> &mdash; how much of an item its
             answer needed.

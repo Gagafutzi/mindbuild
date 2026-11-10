@@ -6,7 +6,7 @@ import { Question } from "../../models/question.models";
 import { Settings, canGenerateQuestion } from "../../models/settings.models";
 import { GameService } from "../../services/game.service";
 import { ProgressionService } from "../../services/progression.service";
-import { DepthFit, DepthReport, RungFit, WidthFit } from "../../utils/ability.utils";
+import { DepthFit, DepthReport, JointFit, JointTerm, RungFit, SpeedFit, WidthFit } from "../../utils/ability.utils";
 
 /**
  * Generator diagnostics.
@@ -115,6 +115,10 @@ export class DiagnosticsComponent {
      */
     rungFits: RungFit[] = [];
     trialCount = 0;
+    /** Every cost fitted together, as rows: what is charged now and what the answers say. */
+    joint: JointFit | null = null;
+    speed: SpeedFit | null = null;
+    jointRows: Array<{ name: string } & JointTerm> = [];
 
     widthFit: WidthFit | null = null;
     widthApplied = 0;
@@ -125,6 +129,17 @@ export class DiagnosticsComponent {
     loadRungFits() {
         this.trialCount = this.progression.trials().length;
         this.rungFits = this.progression.fittedRungCosts();
+        this.joint = this.progression.fittedJointCosts();
+        this.speed = this.progression.speedEstimate();
+        const j = this.joint;
+        this.jointRows = !j ? [] : [
+            ...Object.entries(j.modeWeights).map(([k, t]) => ({ name: k + " / premise", ...t })),
+            ...Object.entries(j.rungs).map(([k, t]) => ({ name: k, ...t })),
+            { name: "per time halving", ...j.perTimeHalving },
+            { name: "per bit of width", ...j.widthPerBit },
+            { name: "per unneeded premise", ...j.levelsPerUnneededPremise },
+            { name: "carousel", ...j.levelsPerCarousel },
+        ].filter(r => r.trials > 0);
         this.widthFit = this.progression.fittedWidthCoefficient();
         this.widthApplied = this.progression.appliedWidthPerBit();
         this.depths = this.progression.depthByMode();
