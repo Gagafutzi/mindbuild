@@ -463,6 +463,7 @@ function computeLoad() {
   STREAM_KEYS.forEach(k => {
     if (cfg.streams[k] === 'identity') load += 4;
     else if (cfg.streams[k] === 'relational') load += 9;
+    else if (cfg.streams[k] === 'cross') load += 11;
   });
   if (cfg.dim === 4) load += 12;
   /*

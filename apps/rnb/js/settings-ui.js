@@ -17,6 +17,7 @@ function renderStreamRows() {
         <option value="off">Off</option>
         <option value="identity">Identity</option>
         ${spec.idOnly ? '' : '<option value="relational">Relational</option>'}
+        ${CROSS_STREAMS.includes(k) ? '<option value="cross">Same way as position</option>' : ''}
       </select>`;
     const sel = row.querySelector('select');
     /* A profile saved before this stream existed, or hand-edited, could still name a
@@ -51,6 +52,7 @@ function renderProgStreamRows() {
         <option value="off">Off</option>
         <option value="identity">Identity</option>
         ${spec.idOnly ? '' : '<option value="relational">Relational</option>'}
+        ${CROSS_STREAMS.includes(s.key) ? '<option value="cross">Same way as position</option>' : ''}
       </select>`;
     const sel = row.querySelector('select');
     sel.value = chosen[s.key] || 'off';
@@ -197,7 +199,7 @@ function renderLadderState() {
   $('ladderState').innerHTML = `
     <div><span class="k">Milestone</span><b>${pos.index}</b> of ${pos.total}</div>
     <div><span class="k">Stimuli</span><b>${active.length}</b> — ${
-      active.map(s => `${STREAMS[s.key].label}<span style="opacity:.5">·${s.mode === 'relational' ? 'rel' : 'id'}</span>`).join(', ')}</div>
+      active.map(s => `${STREAMS[s.key].label}<span style="opacity:.5">·${s.mode === 'relational' ? 'rel' : s.mode === 'cross' ? '⇈pos' : 'id'}</span>`).join(', ')}</div>
     <div><span class="k">N</span><b>${prog.n}</b></div>
     <div><span class="k">Rotation</span><b>${prog.spinLevel === 0 ? 'still' : levels[prog.spinLevel] + 's/turn'}</b>${
       prog.spinLevel > 0 ? ` <span style="opacity:.5">(step ${prog.spinLevel}/${levels.length - 1})</span>` : ''}</div>

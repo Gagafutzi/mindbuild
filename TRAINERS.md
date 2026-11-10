@@ -54,7 +54,10 @@ pinned to this mode); knights and knaves after Smullyan.
 ### Relational N-back
 **Task.** An n-back where the streams are judged as relations — which way did
 the position move, did the tone rise — rather than "same as n ago?". A
-progression ladder adds rotation, N, stimuli and, at second order, extra axes;
+progression ladder adds rotation, N, stimuli and, at second order, extra axes.
+Streams after position join as cross-stream relations ("did the tone move the
+same way as the position?"), not as plain identity streams, so the higher
+rungs stay relational;
 a Bayesian staircase sets the pace.
 **Loads.** Updating plus relational judgement. The tiers are named for what they
 ask: first-order (which way a move went), second-order (how it relates to the

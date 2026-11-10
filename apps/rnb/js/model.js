@@ -36,6 +36,10 @@ function createSampler(env) {
     STREAM_KEYS, TARGET_RATE, META_SHARE, META_FLOOR, PANS, LETTER_KEYS,
     GLYPH_SET_KEYS, dimCount, magnitudeCap, coordAxes, poolFor, voiceSet,
   } = env;
+  /* Cross streams' reference axis and "up" (constants.js); defaults for a host
+     that predates them. */
+  const crossRef = env.crossRef || (k => (k === 'pan' ? 0 : 2));
+  const crossUp = env.crossUp || (k => (k === 'color' ? -1 : 1));
   const randInt = n => Math.floor(Math.random() * n);
   const pick = a => a[randInt(a.length)];
 
@@ -290,6 +294,32 @@ function createSampler(env) {
     return type;
   }
 
+  /*
+   * A cross stream's level: a step drawn against the position's step on the
+   * stream's reference axis, so the three answers come up about equally often.
+   * When the position moved on that axis the stream goes the same way or the
+   * opposite way, half and half (or whichever the pool's edge allows); when it
+   * did not, the stream moves or stays at random and the answer is "press
+   * nothing" either way. Drawn against the n-back partner, as it is judged.
+   */
+  function crossLevel(key, len) {
+    const nb = backAt(state.__lag || 1);
+    if (!nb || nb[key] == null) return randInt(len);
+    const pos = state.__cell != null && nb.cellIdx != null
+      ? (() => { const ca = state.cells[nb.cellIdx], cb = state.cells[state.__cell];
+                 return Math.sign([cb.x - ca.x, cb.y - ca.y, cb.z - ca.z][crossRef(key)]); })()
+      : 0;
+    const from = nb[key], up = crossUp(key);
+    const can = dir => { const v = from + dir * up; return v >= 0 && v < len; };
+    if (pos) {
+      const want = Math.random() < 0.5 ? pos : -pos;
+      const dir = can(want) ? want : can(-want) ? -want : 0;
+      return from + dir * up;
+    }
+    const steps = [0, 1, -1].filter(d => d === 0 || can(d));
+    return from + pick(steps) * up;
+  }
+
   function sampleTrial() {
     const n = trialLag();
     const nb = backAt(n);
@@ -352,9 +382,11 @@ function createSampler(env) {
                               noRepeat);
     }
 
+    state.__lag = n; state.__cell = t.cellIdx;
     const feature = (key, pool) => {
       if (!on(key)) return null;
       if (rel(key)) return randInt(pool.length);
+      if (cfg.streams[key] === 'cross') return crossLevel(key, pool.length);
       return sampleIndex(key, pool.length, nb ? nb[key] : null,
                          [lureA && lureA[key], lureB && lureB[key]]);
     };

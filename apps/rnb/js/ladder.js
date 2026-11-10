@@ -9,17 +9,22 @@
        interval  →  rotation speed  →  N  →  number of stimuli
 
    Order of introduction: position is relational from the very first block. Every
-   stream added after it enters as an identity judgement, except size and quantity
-   — the two magnitude dimensions — which are relational and come last.
+   stream added after it used to enter as an identity judgement, so the higher
+   rungs were mostly plain multi-stream n-back and the relational part thinned
+   out as they climbed. They now enter as CROSS-STREAM relations (see
+   CROSS_STREAMS): "did the tone move the same way as the position?" — a
+   relation between two relations, as Listening Integration asks. Glyph stays an
+   identity stream (its sets have no single up), and size and quantity, the two
+   magnitude dimensions, are relational and come last.
    ============================================================ */
 
 const PROG_STREAMS = [
   { key:'position', mode:'relational' },
-  { key:'pitch',    mode:'identity'   },
-  { key:'color',    mode:'identity'   },
+  { key:'pitch',    mode:'cross'      },
+  { key:'color',    mode:'cross'      },
   { key:'glyph',    mode:'identity'   },
-  { key:'pan',      mode:'identity'   },
-  { key:'timbre',   mode:'identity'   },
+  { key:'pan',      mode:'cross'      },
+  { key:'timbre',   mode:'cross'      },
   { key:'size',     mode:'relational' },
   { key:'quantity', mode:'relational' },
 ];
@@ -51,9 +56,12 @@ function progStreams(choice) {
     .map(s => {
       if (s.key === 'position') return s;
       const m = pick[s.key] || s.mode;
-      return { key: s.key, mode: m === 'relational' && idOnly(s.key) ? 'identity' : m };
+      const crossable = typeof CROSS_STREAMS !== 'undefined' ? CROSS_STREAMS
+        : ['pitch', 'color', 'pan', 'timbre', 'size', 'quantity'];
+      const ok = m === 'cross' ? crossable.includes(s.key) : !(m === 'relational' && idOnly(s.key));
+      return { key: s.key, mode: ok ? m : 'identity' };
     })
-    .filter(s => s.mode === 'identity' || s.mode === 'relational');
+    .filter(s => s.mode === 'identity' || s.mode === 'relational' || s.mode === 'cross');
 }
 
 /*

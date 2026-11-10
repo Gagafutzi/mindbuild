@@ -247,7 +247,7 @@ const createSampler = require(path.join(ROOT, 'js/model.js'));
    so `geo.dimCount` is undefined however plainly constants.js declares it. */
 const SAMPLER_ENV = ['cfg', 'state', 'STREAM_KEYS', 'TARGET_RATE', 'META_SHARE',
   'META_FLOOR', 'PANS', 'LETTER_KEYS', 'GLYPH_SET_KEYS', 'dimCount',
-  'magnitudeCap', 'coordAxes', 'poolFor', 'voiceSet'];
+  'magnitudeCap', 'coordAxes', 'poolFor', 'voiceSet', 'crossRef', 'crossUp'];
 const M = createSampler(Object.fromEntries(SAMPLER_ENV.map(n =>
   [n, vm.runInContext(`typeof ${n} === 'undefined' ? undefined : ${n}`, geo)])));
 
@@ -314,6 +314,47 @@ ok('a player at the target scores inside the hold band',
 ok('the hold band sits where a human can actually play',
    holdLo >= 0.60 && holdHi <= 0.95,
    `${(holdLo * 100).toFixed(0)}%-${(holdHi * 100).toFixed(0)}% raw is not a band anyone sits in`);
+
+/*
+ * Cross-stream relations: "did the tone move the same way as the position?".
+ * The answer is read off the cells (above is up, east is right for stereo), and
+ * the sampler draws the stream's step against the position's so that same way,
+ * opposite and nothing to press each come up about a third of the time.
+ */
+{
+  vm.runInContext("cfg.coordAxes = []; cfg.meta = false; cfg.streams = { position: 'relational', pitch: 'cross', pan: 'cross', color: 'cross' };", geo);
+  const J = (a, b) => g4(`buildJudgments(${JSON.stringify(a)}, ${JSON.stringify(b)})`);
+  const pitch = js => (js.find(j => j.stream === 'pitch') || {}).correct;
+  ok('a tone that rises as the position rises is the same way',
+     JSON.stringify(pitch(J({ cellIdx: g4('idx(1,1,0)'), pitch: 1 }, { cellIdx: g4('idx(1,1,1)'), pitch: 2 }))) === '["pitch-xsame"]');
+  ok('a tone that falls as it rises is the opposite way',
+     JSON.stringify(pitch(J({ cellIdx: g4('idx(1,1,0)'), pitch: 2 }, { cellIdx: g4('idx(1,1,1)'), pitch: 1 }))) === '["pitch-xopp"]');
+  ok('a move with no rise asks for nothing, whatever the tone did',
+     JSON.stringify(pitch(J({ cellIdx: g4('idx(0,1,1)'), pitch: 1 }, { cellIdx: g4('idx(1,1,1)'), pitch: 2 }))) === '[]');
+  const pan = js => (js.find(j => j.stream === 'pan') || {}).correct;
+  ok('stereo is compared with left and right, not up and down',
+     JSON.stringify(pan(J({ cellIdx: g4('idx(0,1,1)'), pan: 0 }, { cellIdx: g4('idx(1,1,1)'), pan: 1 }))) === '["pan-xsame"]');
+  const col = js => (js.find(j => j.stream === 'color') || {}).correct;
+  ok('warmer is up for colour, whose pool runs warm to cool',
+     JSON.stringify(col(J({ cellIdx: g4('idx(1,1,0)'), color: 2 }, { cellIdx: g4('idx(1,1,1)'), color: 1 }))) === '["color-xsame"]');
+
+  geo.state.chain = []; geo.state.metaDrawn = null;
+  const share = { same: 0, opp: 0, none: 0 }, chain = []; let n = 0;
+  for (let i = 0; i < 6000; i++) {
+    const t = M.sampleTrial();
+    const partner = chain[chain.length - (t.n || 2)];
+    if (partner) {
+      const c = pitch(geo.buildJudgments(partner, t, null));
+      if (c) { share[c[0] === 'pitch-xsame' ? 'same' : c[0] === 'pitch-xopp' ? 'opp' : 'none']++; n++; }
+    }
+    chain.push(t); geo.state.chain.push(t);
+  }
+  Object.keys(share).forEach(k => share[k] /= n);
+  console.log(`   cross answers drawn: same ${(share.same * 100).toFixed(0)}%, opposite ${(share.opp * 100).toFixed(0)}%, nothing ${(share.none * 100).toFixed(0)}%`);
+  ok('no answer owns a cross stream', Math.max(share.same, share.opp, share.none) < 0.45 &&
+     Math.min(share.same, share.opp, share.none) > 0.2, JSON.stringify(share));
+  vm.runInContext("cfg.coordAxes = ['pitch']; cfg.magnitudeCap = 2; cfg.streams = { position: 'relational' }; state.chain = []; state.metaDrawn = null;", geo);
+}
 
 /*
  * Chance from the long run, not from the block. The commonest of four equally
@@ -1571,13 +1612,20 @@ vm.runInContext('Object.assign(tune, { spinStart: 100, spinEnd: 20, spinStep: 10
 ok('with nothing chosen the ladder climbs the stimuli it always climbed',
    g('progStreams() === PROG_STREAMS'));
 const chosen = g(`JSON.stringify(progStreams({ position: 'off', pitch: 'off', glyph: 'relational', size: 'off', timbre: 'relational' }))`);
+/* New streams join as relations between relations, not as identity streams. */
+ok('above position the ladder brings streams in as cross-stream relations',
+   g(`PROG_STREAMS.filter(function (s) { return s.mode === 'identity'; }).map(function (s) { return s.key; }).join()`) === 'glyph' &&
+   g(`PROG_STREAMS.filter(function (s) { return s.mode === 'cross'; }).length`) === 4,
+   g('JSON.stringify(PROG_STREAMS)'));
+ok('cross is only kept for a stream that has an up and a down',
+   g(`progStreams({ glyph: 'cross', letter: 'cross' }).filter(function (s) { return s.key === 'glyph' || s.key === 'letter'; }).map(function (s) { return s.mode; }).join()`) === 'identity,identity');
 ok('the spoken letter can be chosen, and is never offered unasked',
    g(`progStreams({ letter: 'identity' }).slice(-1)[0].key`) === 'letter' &&
    !g(`progStreams().some(function (s) { return s.key === 'letter'; })`));
 ok('a choice keeps the order, drops what is off, and holds position relational',
    chosen === JSON.stringify([
-     { key: 'position', mode: 'relational' }, { key: 'color', mode: 'identity' },
-     { key: 'glyph', mode: 'relational' }, { key: 'pan', mode: 'identity' },
+     { key: 'position', mode: 'relational' }, { key: 'color', mode: 'cross' },
+     { key: 'glyph', mode: 'relational' }, { key: 'pan', mode: 'cross' },
      { key: 'timbre', mode: 'relational' }, { key: 'quantity', mode: 'relational' },
    ]), chosen);
 const rungs = () => g(`(function () {

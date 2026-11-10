@@ -72,6 +72,15 @@ function screenVectorOf(a, b) {
 
 
 
+/* The position's step on a cross stream's reference axis, as -1, 0 or +1 (east and
+   above are +1, as in CUBE_CARDINAL_IDS). Read off the cells, in the cube frame. */
+function crossPositionStep(a, b, key) {
+  if (a.cellIdx == null || b.cellIdx == null) return 0;
+  const ca = state.cells[a.cellIdx], cb = state.cells[b.cellIdx];
+  const d = [cb.x - ca.x, cb.y - ca.y, cb.z - ca.z][crossRef(key)];
+  return Math.sign(d);
+}
+
 /** Every axis a move happened on, named — so a diagonal can be spelled out. */
 function moveNames(v) {
   if (!v) return [];
@@ -204,6 +213,14 @@ function buildJudgments(a, b, extra) {
     const m = mode(key);
     if (m === 'off' || a[key] == null || b[key] == null) return;
     if (m === 'identity') push(key, [idCommon], a[key] === b[key] ? [idCommon] : []);
+    else if (m === 'cross') {
+      /* The stream's step against the position's step on its reference axis; see
+         CROSS_STREAMS. Nothing to press unless both moved in that sense. */
+      const own = Math.sign(b[key] - a[key]) * crossUp(key);
+      const pos = crossPositionStep(a, b, key);
+      push(key, [key + '-xsame', key + '-xopp'],
+        own && pos ? [own === pos ? key + '-xsame' : key + '-xopp'] : []);
+    }
     else push(key, [idUp, idDown], b[key] > a[key] ? [idUp] : b[key] < a[key] ? [idDown] : []);
   };
   scalar('pitch',    'pitch',  'pitch-up',   'pitch-down');

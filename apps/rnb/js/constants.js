@@ -357,7 +357,7 @@ function relationalComplexity(c) {
   Object.keys(c.streams).forEach(k => {
     if (k === 'position') return;
     const m = c.streams[k];
-    if (m === 'relational') rc = Math.max(rc, 3);
+    if (m === 'relational' || m === 'cross') rc = Math.max(rc, 3);
     else if (m === 'identity') rc = Math.max(rc, 2);
   });
   /*
@@ -569,6 +569,35 @@ const STREAMS = {
     relational: [],
   },
 };
+/*
+ * Cross-stream relations: "did this stream change the same way as the position?"
+ *
+ * The ladder used to bring every stream after position in as an identity
+ * judgement, so its higher rungs were mostly plain multi-stream n-back with the
+ * relational part diluted. A cross stream is judged as a relation between two
+ * relations instead, as Listening Integration does: the stream's own step against
+ * the position's step on one axis of the cube, over the same n-back pair.
+ *
+ * Stereo is compared with left/right, everything else with above/below: a higher
+ * tone, a warmer colour, a brighter timbre, a bigger size or more items is "up".
+ * Same way and opposite each have a key; if either did not move in that sense
+ * the answer is to press nothing. `CROSS_REF` is the cube axis (0 = east/west,
+ * 2 = above/below) and `CROSS_UP` the stream's own "up", as a change in its
+ * index (colour's pool runs warm → cool, so warmer is a step down the index).
+ */
+const CROSS_STREAMS = ['pitch', 'color', 'pan', 'timbre', 'size', 'quantity'];
+const CROSS_REF = { pan: 0 };
+const crossRef = k => CROSS_REF[k] ?? 2;
+const CROSS_UP = { color: -1 };
+const crossUp = k => CROSS_UP[k] ?? 1;
+CROSS_STREAMS.forEach(k => {
+  const s = STREAMS[k], keys = s.relational.map(c => c.key);
+  const ref = crossRef(k) === 0 ? 'right' : 'up';
+  s.cross = [
+    { id: k + '-xsame', glyph: s.identity[0].glyph + '⇈', label: `Same way as position (${ref})`, key: keys[0] },
+    { id: k + '-xopp',  glyph: s.identity[0].glyph + '⇅', label: 'Opposite way to position', key: keys[1] },
+  ];
+});
 const STREAM_KEYS = Object.keys(STREAMS);
 
 /* Eight letters, not twenty-six, chosen by how they sound in these voices rather
@@ -600,7 +629,7 @@ const KEY_POOL = ('qwertyuiopasdfghjkl;zxcvbnm,./1234567890').split('');
 /* The meta modes belong here as much as the first-order ones: they are response
    buttons with default keys, and leaving them out meant the keybind editor could
    not see the only channels in the app that a quaternary block is answered on. */
-const CHANNEL_MODES = ['identity', 'relational', 'relationalScreen', 'meta', 'metaScreen'];
+const CHANNEL_MODES = ['identity', 'relational', 'cross', 'relationalScreen', 'meta', 'metaScreen'];
 const CHANNELS = STREAM_KEYS.flatMap(k =>
   CHANNEL_MODES.flatMap(mode =>
     (STREAMS[k][mode] || []).map(c => ({ ...c, stream: k, mode }))));

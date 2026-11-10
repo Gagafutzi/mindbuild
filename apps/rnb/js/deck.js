@@ -9,7 +9,7 @@ function deckGroups() {
   const groups = [];
   STREAM_KEYS.forEach(k => {
     const m = cfg.streams[k];
-    if (m !== 'identity' && m !== 'relational') return;
+    if (m !== 'identity' && m !== 'relational' && m !== 'cross') return;
     const spec = STREAMS[k];
 
     if (k === 'position' && m === 'relational' && cfg.meta) {
@@ -38,7 +38,7 @@ function deckGroups() {
       groups.push({ key:k, label:'Glyph rank ↔', color: spec.color,
                     channels: spec.relational.filter(c => c.id === 'glyph-up' || c.id === 'glyph-down') });
     } else {
-      groups.push({ key:k, label: spec.label + (m === 'relational' ? ' ↔' : ' ='),
+      groups.push({ key:k, label: spec.label + (m === 'relational' ? ' ↔' : m === 'cross' ? ' ⇈ position' : ' ='),
                     color: spec.color, channels: spec[m] });
     }
   });

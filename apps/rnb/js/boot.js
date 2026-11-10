@@ -19,7 +19,7 @@
 Object.assign(globalThis, createSampler({
   cfg, state,
   STREAM_KEYS, TARGET_RATE, META_SHARE, META_FLOOR, PANS, LETTER_KEYS,
-  GLYPH_SET_KEYS, dimCount, magnitudeCap, coordAxes, poolFor, voiceSet,
+  GLYPH_SET_KEYS, dimCount, magnitudeCap, coordAxes, poolFor, voiceSet, crossRef, crossUp,
 }));
 
 loadAppearance();
