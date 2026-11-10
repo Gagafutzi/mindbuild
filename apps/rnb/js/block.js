@@ -304,6 +304,7 @@ function recordAbandoned() {
   progress.blocks.push(blockRecord(false, {
     load: computeLoad(), score: blockScore(), lureScore: lureScore(),
   }));
+  foldChanceBook(state.tally);
   saveProgress();
 }
 
@@ -432,6 +433,9 @@ function endBlock() {
   const median = rts.length ? rts[rts.length >> 1] : null;
 
   progress.blocks.push(blockRecord(true, { load, score, lureScore: ls }));
+  /* Into the long-run base rates only after the record is written, so the block is
+     not counted twice in its own chance level. */
+  foldChanceBook(state.tally);
   state.ending = false;
   saveProgress();
 

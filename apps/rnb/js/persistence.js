@@ -123,6 +123,19 @@ function loadProgress() {
        can never silently reinterpret an old array against a different grid. */
     if (Array.isArray(p.stair) && p.stair.length === STAIR.steps) stairLog = p.stair.slice();
     if (legacyTarget) stairRetarget(LEGACY_P_TARGET, tune.targetAccuracy);
+    /*
+     * The old default, 0.40, was chosen on the belief that chance on the position
+     * stream was 2/3; it is about 1/3, so 0.40 meant about 60% right rather than
+     * 80%. A record still sitting on that default (and not marked as moved) is
+     * moved to the new one, its posterior translated rather than relabelled. A
+     * target anybody set by hand to something else is left alone.
+     */
+    const oldDefault = t => t && !t.targetV2 && Math.abs((t.targetAccuracy ?? -1) - 0.40) < 1e-9;
+    if (!legacyTarget && oldDefault(p.tune)) {
+      tune.targetAccuracy = TUNE_DEFAULTS.targetAccuracy;
+      stairRetarget(0.40, tune.targetAccuracy);
+    }
+    tune.targetV2 = true;
     if (p.tiers) Object.entries(p.tiers).forEach(([k, v]) => {
       tiers[k] = { prog: v.prog,
         stair: Array.isArray(v.stair) && v.stair.length === STAIR.steps ? v.stair.slice() : null,
@@ -141,7 +154,17 @@ function loadProgress() {
         stairRetarget(LEGACY_P_TARGET, tiers[k].tune.targetAccuracy);
         tiers[k].stair = stairLog;
         stairLog = held;
+      } else if (oldDefault(v.tune)) {
+        tiers[k].tune.targetAccuracy = TUNE_DEFAULTS.targetAccuracy;
+        if (tiers[k].stair) {
+          const held = stairLog;
+          stairLog = tiers[k].stair;
+          stairRetarget(0.40, tiers[k].tune.targetAccuracy);
+          tiers[k].stair = stairLog;
+          stairLog = held;
+        }
       }
+      tiers[k].tune.targetV2 = true;
     });
     if (p.rcTier) rcTier = p.rcTier;
     /* A fixed symbol map is only fixed if it outlives the session that made it. */

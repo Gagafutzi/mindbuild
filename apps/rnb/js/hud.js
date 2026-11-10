@@ -20,12 +20,12 @@ function updateHUD() {
     ? `Milestone ${pos.index} / ${pos.total}`
     : 'Free Play';
   const rc = relationalComplexity();
-  $('hudRC').textContent = 'RC ' + rc;
-  /* Quinary is not a deeper binding than quaternary, it is two of them at once —
-     so it is named as what it is rather than as one rung further up the same
-     scale, which "past the adult ceiling" would have implied. */
-  $('hudRCName').textContent = RC_NAMES[rc] +
-    (rc >= 5 ? ' · two frames at once' : rc === 4 ? ' · adult ceiling' : '');
+  $('hudRC').textContent = RC_NAMES[rc];
+  /* What the tier asks, said plainly. A second-order judgement over diagonal moves
+     is the one that cannot be split axis by axis (see RC_NAMES). */
+  $('hudRCName').textContent =
+    rc >= 4 ? (cfg.singleAxis ? 'one axis at a time' : 'diagonals: angle between moves')
+    : rc === 3 ? 'direction of the move' : 'same or different';
   /* In variable mode the single number is a lie — what is fixed is the span the
      lag is drawn from, so that is what the HUD shows. */
   $('hudN').textContent = cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
@@ -105,7 +105,7 @@ setInterval(renderDailyTimer, 1000);
 /* Coloured against the target you are actually being held to, not against 85%.
    These were fixed at 0.85 and 0.70, which were the right lines when every block
    aimed at 80% — the staircase now places you wherever `targetAccuracy` says, and
-   it defaults to 40%. So a block that cleared a milestone was being painted red
+   it once defaulted to 40%. So a block that cleared a milestone was being painted red
    for scoring 56%: the colour said failure while the ladder promoted you.
    `advanceAt` and `demoteAt` are the lines the ladder itself moves on, so green
    means "this would advance you", amber "this holds", red "this would demote". */

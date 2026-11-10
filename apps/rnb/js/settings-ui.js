@@ -229,18 +229,18 @@ function renderLadderState() {
   $('rcTier').value = String(rcTier);
   $('rcHint').textContent =
     rcTier >= 5
-      ? 'Quinary asks the same relation twice — once against the cube, once against the screen — and a turning cube is what stops the second answer being the first one copied out. Rotation never switches off on this tier. Two bindings held at once, not one binding of five things: past the ceiling by sharing capacity rather than by deepening it.'
+      ? 'Two frames asks the second-order relation twice — once against the cube, once against the screen — and a turning cube is what stops the second answer being the first one copied out. Rotation never switches off on this tier. Two judgements held at once, not a deeper one.'
     : rcTier >= 4
-      ? 'Quaternary binds two relations into one representation — Halford\'s documented adult ceiling. Its own ladder, its own staircase and its own targets, independent of the ternary track. Its ladder climbs past the last stimulus into the axes of the move itself.'
-      : 'Ternary binds two positions and the direction relating them. The standard track. Its ladder and its targets are its own — editing them leaves quaternary untouched.';
+      ? 'Second-order compares the direction you stored with the new one: same, opposite, at right angles, or at no tidy angle. With moves along one axis it can still be answered axis by axis; with diagonal moves the angle between two multi-axis moves cannot, which is the closest this trainer comes to integrating relations. Its own ladder, staircase and targets, independent of first-order.'
+      : 'First-order reports which way each move went: a two-place relation, answerable one axis at a time. The standard track. Its ladder and its targets are its own — editing them leaves second-order untouched.';
 
   /* Every section whose numbers are stored per tier is stamped with the tier they
      belong to. Without it, the same four panels showing different values depending on
      a dropdown further up reads as a bug rather than as the point. */
   document.querySelectorAll('.tier-tag').forEach(el => {
-    el.textContent = `RC ${rcTier}`;
-    el.title = `Saved separately for each relational-complexity tier. ` +
-               `You are editing the RC ${rcTier} track.`;
+    el.textContent = RC_NAMES[rcTier];
+    el.title = `Saved separately for each tier. ` +
+               `You are editing the ${RC_NAMES[rcTier]} track.`;
   });
 
   /*
@@ -252,17 +252,27 @@ function renderLadderState() {
   const ta = targetAccuracy();
   $('targetAccuracyHint').innerHTML =
     `Blocks are placed where you score about <b>${Math.round(ta * 100)}%</b>, ` +
-    `chance-corrected — 0% is never pressing, 100% is perfect. ` +
+    `chance-corrected — 0% is what always giving the commonest answer scores, 100% is perfect. ` +
     `Above <b>${Math.round(advanceAt() * 100)}%</b> speeds you up, ` +
     `below <b>${Math.round(demoteAt() * 100)}%</b> eases off. ` +
     /*
-     * The raw figure alongside it, because the corrected one is unintuitive and
-     * setting it by feel is exactly how the old 80% default came about: on a
-     * relational position stream two thirds of judgments are "press nothing",
-     * so 40% corrected is about 80% of judgments answered exactly right.
+     * The raw figure alongside it, because the corrected one is unintuitive. It is
+     * converted with the chance level measured for this configuration (the
+     * commonest answer's long-run share, see `chanceOf`), not with an assumed
+     * one: the old hint assumed two thirds of position judgments were "press
+     * nothing" when about one third are, and so promised 80% right where the
+     * default gave 60%.
      */
-    `On a relational position stream that is roughly ` +
-    `<b>${Math.round((2 / 3 + ta / 3) * 100)}%</b> of judgments answered exactly right. ` +
+    (() => {
+      const st = cfg.streams.position && cfg.streams.position !== 'off' ? 'position'
+        : Object.keys(cfg.streams).find(k => cfg.streams[k] && cfg.streams[k] !== 'off');
+      const measured = st ? longRunChance(st) : null;
+      /* Before any history: the first-order position rate the sampler gives. */
+      const c = measured != null ? measured : (cfg.meta ? 0.25 : 1 / 3);
+      return `On your ${st ? labelFor(st).toLowerCase() : 'main'} stream that is about ` +
+        `<b>${Math.round((c + ta * (1 - c)) * 100)}%</b> of judgments answered exactly right ` +
+        `(chance there is ${Math.round(c * 100)}%${measured != null ? ', measured over your blocks' : ', expected'}). `;
+    })() +
     `Aim lower for a harder, faster session; higher to consolidate.`;
 
   $('adaptHint').textContent = tune.adapt === 'bayes'
@@ -312,12 +322,12 @@ function syncSettingsUI() {
      quaternary by the ladder owning them outright. */
   $('progCoordOwned').textContent = ladderOwns
     ? 'The ladder is driving these: axis count is the digit above stream count, and ' +
-      'the furthest step is the one above that. Drop to ternary to choose them yourself.'
+      'the furthest step is the one above that. Drop to first-order to choose them yourself.'
     : '';
   $('progCoordRule').textContent = ladderOwns
     ? 'A rung has to mean the same thing each time you reach it, so at this tier the ' +
       'axes are the ladder\'s rather than yours — they are the last thing left to climb.'
-    : 'The ladder never moves these at ternary — a rung has to mean the same thing each ' +
+    : 'The ladder never moves these at first-order — a rung has to mean the same thing each ' +
       'time you reach it. Changing them changes what your recorded speed and N are about.';
   $('feedbackModeF').value = freeCfg.feedback;
   $('adaptMode').value = tune.adapt;
@@ -390,7 +400,7 @@ function syncSettingsUI() {
       ? 'With meta on, this picks which frame the <b>relation between the two moves</b> ' +
         'is read in — not which frame the move is reported in.'
       : freeCfg.rotation
-        ? 'Quinary: the relation between the two moves, asked once against the cube and ' +
+        ? 'Two frames: the relation between the two moves, asked once against the cube and ' +
           'once against the screen. They differ only by however far the cube turned ' +
           'between the two moves.'
         : '<b style="color:#ff922b">Turn rotation on.</b> Angles survive a rotation, so ' +

@@ -137,20 +137,20 @@ const STAIR = {
   beta: 6.0,                        // slope, log10 units
   lapse: 0.03,                      // attention lapses; without it one bad block bites hard
   /*
-   * Where the interval is placed, ON THE CHANCE-CORRECTED SCALE.
+   * Where the interval is placed, ON THE CHANCE-CORRECTED SCALE: `streamScore`
+   * maps the best constant answer to 0 and perfect to 1.
    *
-   * This was 0.80, and the 0.85/0.70 band with it, as though the score it is
-   * compared against were a raw accuracy. It is not: `streamScore` maps "never
-   * pressed" to 0 and perfect to 1, and for the relational position stream the
-   * never-press rate is 2/3 by construction — three axis judgments per interval,
-   * one of them non-empty for an axis-aligned move. So 0.80 chance-corrected is
-   * about 93% of judgments answered exactly right, and the old band told a
-   * player scoring 85% raw to ease off.
-   *
-   * 0.40 is roughly 80% raw on that stream, which is the conventional target for
-   * adaptive n-back and comfortably inside what the staircase can resolve.
+   * 0.70 puts a first-order relational position stream at about 80% of judgments
+   * answered exactly right, the conventional target for adaptive n-back. Chance
+   * there is about 1/3, measured: moves are drawn over free cells, so on two
+   * judgments in three an axis did move and only one in three is "press nothing"
+   * (tools/ladder-check.js simulates the sampler to keep this honest). The
+   * default used to be 0.40 on the belief that chance was 2/3, which made it
+   * about 60% right at first order and 55% at second order, with the whole move
+   * known on fewer than half the trials. The settings hint now converts with the
+   * chance actually measured for your configuration.
    */
-  pTarget: 0.40,                    // default performance the interval is placed at
+  pTarget: 0.70,                    // default performance the interval is placed at
   /* The floor is low because the scale is: 0.20 is still well clear of chance.
      The ceiling keeps `stairC` finite against `lapse` — at 1 - lapse the log
      diverges — and 0.90 is already ~97% raw, past anyone's ceiling. */

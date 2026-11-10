@@ -110,7 +110,7 @@ function progressSummary(blocks) {
 
      The standard is the score that would advance you, not a fixed 80%. That was
      the right number while every block aimed at 80%; the staircase now places
-     you at whatever `targetAccuracy` says and defaults to 40%, at which no block
+     you at whatever `targetAccuracy` says (by default 70%), at which few blocks
      ever reaches 0.80 — so this read "no block at ≥80% yet" for everybody,
      permanently, whatever they had actually held. */
   const CRIT = advanceAt();
@@ -264,7 +264,7 @@ function progressHTML() {
     const series = [], n = prog3.length;
     tiers.forEach(t => {
       const ys = prog3.map(b => (b.rcTier || 3) === t ? (b.cfg && b.cfg.interval) : null);
-      series.push({ name: `RC ${t}`, color: COLOR[t] || '#8ab4ff', dots: ys,
+      series.push({ name: RC_NAMES[t] || `tier ${t}`, color: COLOR[t] || '#8ab4ff', dots: ys,
                     ys: rollingMean(ys, WIN) });
     });
     const haveThr = prog3.some(b => b.thrLo != null);
@@ -349,7 +349,7 @@ function progressHTML() {
       <div><span class="k">Load held</span><b>${s.loadHeld || '—'}</b><span class="ch-sub">${
         s.loadHeld ? `at ≥${Math.round(s.crit*100)}%` : `no block at ≥${Math.round(s.crit*100)}% yet`
         }${s.bestLoad ? ` · best set ${s.bestLoad}` : ''}</span></div>
-      <div><span class="k">Threshold</span><b>${thr}</b><span class="ch-sub">RC ${rcTier}, now</span></div>
+      <div><span class="k">Threshold</span><b>${thr}</b><span class="ch-sub">${RC_NAMES[rcTier]}, now</span></div>
     </div>
     ${speed}${sens}${bias}${vol}
     <p class="ch-note" style="margin-top:16px">

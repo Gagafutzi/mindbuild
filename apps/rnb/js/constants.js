@@ -331,12 +331,22 @@ const glyphUsesMap = () => cfg.streams.glyph === 'relational' && !glyphRankOnly(
    which build produced which numbers. */
 const BUILD = '2026-10-11.1';
 
-/* ---- Relational complexity (Halford) ----
-   Difficulty defined by how many variables are bound in one representation.
-   Quaternary is the documented adult ceiling, which is why meta-relations is brutal
-   and why the ladder has a principled place to stop. A far better headline axis than
-   N, which correlates only r≈.20 with complex span. */
-const RC_NAMES = { 2: 'binary', 3: 'ternary', 4: 'quaternary', 5: 'quinary' };
+/* ---- The tiers, named for what they ask ----
+   The tiers used to be named after Halford's relational complexity (ternary,
+   quaternary, quinary) and quaternary was labelled the adult ceiling. That
+   overstated them. Halford counts the variables that must be processed together
+   AFTER chunking and after splitting a problem into serial steps, and his adult
+   ceiling came from tasks built to block both. Here the first-order judgement is
+   a two-argument relation that can be answered one axis at a time, and the
+   second-order one compares a stored direction with a new one; neither is shown
+   to need four variables bound at once. So they are named for what they ask.
+
+   The closest thing to real integration is a second-order judgement over moves
+   that combine axes (diagonals): the angle between two multi-axis moves cannot
+   be read off axis by axis. That is what the HUD says when diagonals are on.
+
+   The numbers 3, 4 and 5 stay as the tiers' keys, because the records use them. */
+const RC_NAMES = { 2: 'identity', 3: 'first-order', 4: 'second-order', 5: 'two frames' };
 
 function relationalComplexity(c) {
   c = c || cfg;

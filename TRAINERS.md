@@ -54,10 +54,15 @@ pinned to this mode); knights and knaves after Smullyan.
 ### Relational N-back
 **Task.** An n-back where the streams are judged as relations — which way did
 the position move, did the tone rise — rather than "same as n ago?". A
-progression ladder adds rotation, N, stimuli and, at quaternary, extra axes;
+progression ladder adds rotation, N, stimuli and, at second order, extra axes;
 a Bayesian staircase sets the pace.
-**Loads.** Updating plus relational judgement; the tiers are named by Halford's
-relational complexity (ternary, quaternary, quinary) †.
+**Loads.** Updating plus relational judgement. The tiers are named for what they
+ask: first-order (which way a move went), second-order (how it relates to the
+move before) and two frames (the same, against cube and screen). They were once
+named by Halford's relational complexity (ternary, quaternary, quinary) †, but
+Halford counts what must be processed together after chunking and serial
+steps, and both judgements here can be split axis by axis, except the angle
+between two diagonal moves.
 **Research.** N-back training (Jaeggi et al. 2008, dual n-back); relational
 complexity (Halford et al. 1998) †; the adaptive staircase is, in its code's
 words, a "QUEST/ZEST-style" grid posterior † — QUEST is Watson & Pelli (1983),

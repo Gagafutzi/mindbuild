@@ -248,7 +248,8 @@ function applyInterval(snap, sign) {
   const { judgments, presses, isLure } = snap;
   judgments.forEach(j => {
     const t = state.tally[j.stream] ||
-      (state.tally[j.stream] = { ok:0, total:0, empty:0, sigs:{}, hit:0, miss:0, fa:0, cr:0 });
+      (state.tally[j.stream] = { ok:0, total:0, empty:0, sigs:{}, hit:0, miss:0, fa:0, cr:0,
+                                 key: chanceKey(j.stream) });
     if (!j.correct.length) t.empty += sign;
     /* Histogram of correct-answer patterns. Chance is the best CONSTANT strategy,
        which is "always answer the most common thing" — that equals the never-press
@@ -328,11 +329,66 @@ function lureScore() {
    stream (28% target rate) and ~33% on a 3-way relational axis. */
 const rawAcc = t => t.total ? t.ok / t.total : 0;
 
-/* Chance-corrected score, on a scale where "never press" = 0 and perfect = 1.
-   `empty/total` IS the score a passive player would get, measured from the block's
-   own base rates — so one fixed threshold means the same thing at every milestone. */
-const chanceOf = t => !t.total ? 1
-  : Math.max(...Object.values(t.sigs || { '': t.empty })) / t.total;
+/*
+ * Chance, as the share of the commonest correct answer: the best constant strategy.
+ *
+ * Measured over the LONG RUN for this configuration, not over the block alone.
+ * The commonest answer within one 20-trial block is the maximum of a few noisy
+ * shares, and a maximum of noisy shares is biased upward: with the four
+ * second-order relations equally likely (0.25 each in the long run) a block's
+ * commonest one averages about 0.30, which scores every block as if chance were
+ * higher than it is and placed the threshold some 4–5% slow.
+ *
+ * So each stream's answer patterns are pooled across every block played under
+ * the same configuration (`chanceKey`), the current block included, and chance
+ * is the pooled commonest pattern's pooled share. Until a configuration has
+ * history the block's own counts are all there is, which is the old behaviour.
+ * A tally with no key (the lure tally) is scored on its own counts.
+ */
+const CHANCE_STORE = 'rnb_chance_book_v1';
+let chanceBook = (() => {
+  try { return JSON.parse(localStorage.getItem(CHANCE_STORE)) || {}; } catch (e) { return {}; }
+})();
+
+/* What the base rates depend on: the stream, what it is asked as, and the settings
+   that change how answers are drawn. Pacing and assists do not change them, so a
+   faster interval keeps its history. */
+function chanceKey(stream) {
+  const c = cfg;
+  const pool = typeof poolFor === 'function' && stream !== 'position'
+    ? (() => { try { return poolFor(stream, c).length; } catch (e) { return 0; } })() : 0;
+  return [stream, c.streams[stream] || 'off', c.meta ? 'meta' : '', c.frame,
+          (c.coordAxes || []).join('+'), c.magnitudeCap, c.lureRate, c.gate, c.retro,
+          c.varN, pool].join('/');
+}
+
+function chanceOf(t) {
+  if (!t.total) return 1;
+  const own = t.sigs || { '': t.empty };
+  const past = t.key && chanceBook[t.key];
+  if (!past) return Math.max(...Object.values(own)) / t.total;
+  const sigs = { ...past.sigs };
+  Object.entries(own).forEach(([k, v]) => { sigs[k] = (sigs[k] || 0) + v; });
+  return Math.max(...Object.values(sigs)) / (past.total + t.total);
+}
+
+/* Fold a finished (or stopped) block's answer patterns into the long-run book. */
+function foldChanceBook(tally) {
+  Object.values(tally || {}).forEach(t => {
+    if (!t.key || !t.total) return;
+    const b = chanceBook[t.key] || (chanceBook[t.key] = { total: 0, sigs: {} });
+    b.total += t.total;
+    Object.entries(t.sigs || {}).forEach(([k, v]) => { b.sigs[k] = (b.sigs[k] || 0) + v; });
+  });
+  try { localStorage.setItem(CHANCE_STORE, JSON.stringify(chanceBook)); } catch (e) {}
+}
+
+/* The long-run chance of a stream under the current configuration, or null with no
+   history yet: what the settings hint converts the target with. */
+function longRunChance(stream) {
+  const b = chanceBook[chanceKey(stream)];
+  return b && b.total >= 60 ? Math.max(...Object.values(b.sigs)) / b.total : null;
+}
 
 function streamScore(t) {
   if (!t.total) return 0;

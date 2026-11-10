@@ -24,8 +24,8 @@ const ROOT = path.join(__dirname, '..');
 
 const ctx = vm.createContext({ console, Math, Array, Object, JSON });
 // Only what ladder.js reaches for.
-vm.runInContext('var TUNE_DEFAULTS = { targetAccuracy: 0.40 };', ctx);
-vm.runInContext('var tune = { startInterval: 5000, targetInterval: 3000, maxInterval: 6500, nMax: 3, targetAccuracy: 0.40 };', ctx);
+vm.runInContext('var TUNE_DEFAULTS = { targetAccuracy: 0.70 };', ctx);
+vm.runInContext('var tune = { startInterval: 5000, targetInterval: 3000, maxInterval: 6500, nMax: 3, targetAccuracy: 0.70 };', ctx);
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/ladder.js'), 'utf8'), ctx);
 const g = k => vm.runInContext(k, ctx);
 const set = (k, v) => vm.runInContext(`tune.targetAccuracy = ${v};`, ctx);
@@ -41,37 +41,6 @@ ok('the band brackets the target',
    near(g('demoteAt()'), g('targetAccuracy()') - 0.10, 1e-9),
    `target=${g('targetAccuracy()')} advance=${g('advanceAt()')} demote=${g('demoteAt()')}`);
 
-/*
- * The scale the band has to live on -- the bug this file exists to keep out.
- *
- * `streamScore` maps "never pressed" to 0 and perfect to 1, and for the
- * relational position stream the never-press rate is 2/3 by construction: three
- * axis judgments per interval, one of them non-empty for an axis-aligned move.
- * So a raw accuracy `a` scores (a - 2/3) / (1/3), and a band chosen as though
- * the score were a raw accuracy is a band nobody can sit inside. At the original
- * 0.85 / 0.70 a player answering 85% of judgments exactly right scored 55% and
- * was told to ease off on every block.
- *
- * Written as a reachability check rather than as fixed numbers, so it keeps
- * meaning the same thing if the target is retuned again.
- */
-const POSITION_CHANCE = 2 / 3;
-const corrected = a => (a - POSITION_CHANCE) / (1 - POSITION_CHANCE);
-const rawFor = s => POSITION_CHANCE + s * (1 - POSITION_CHANCE);
-
-const holdLo = rawFor(g('demoteAt()')), holdHi = rawFor(g('advanceAt()'));
-console.log(`   hold band is ${(holdLo * 100).toFixed(0)}%-${(holdHi * 100).toFixed(0)}%`
-  + ` of judgments answered exactly right (target ${(rawFor(g('targetAccuracy()')) * 100).toFixed(0)}%)`);
-
-ok('a player at the target scores inside the hold band',
-   corrected(rawFor(g('targetAccuracy()'))) > g('demoteAt()') &&
-   corrected(rawFor(g('targetAccuracy()'))) < g('advanceAt()'));
-ok('the hold band sits where a human can actually play',
-   holdLo >= 0.60 && holdHi <= 0.95,
-   `${(holdLo * 100).toFixed(0)}%-${(holdHi * 100).toFixed(0)}% raw is not a band anyone sits in`);
-ok('easing off means genuinely below target, not merely imperfect',
-   holdLo > POSITION_CHANCE + 0.02 && holdLo < 0.85,
-   `eases off below ${(holdLo * 100).toFixed(0)}% raw`);
 
 // 2. The grid parameter IS the threshold, at any target.
 let curveOk = true, band = [];
@@ -289,6 +258,92 @@ const M = createSampler(Object.fromEntries(SAMPLER_ENV.map(n =>
 Object.assign(geo, M);
 
 const g4 = k => vm.runInContext(k, geo);
+
+/*
+ * The scale the band has to live on.
+ *
+ * `streamScore` maps the best constant answer to 0 and perfect to 1, so what a
+ * target means in judgments answered exactly right depends on chance, and chance
+ * is MEASURED here by running the real sampler, not assumed. This check used to
+ * hard-code 2/3 as the "press nothing" rate of the position stream; moves are
+ * drawn over free cells, so it is about 1/3, and the 0.40 default that number
+ * justified meant about 60% right rather than the intended 80%.
+ */
+function longRunChance(setup, trials) {
+  vm.runInContext(setup, geo);
+  geo.state.chain = []; geo.state.metaDrawn = null;
+  const sigs = {}, chain = []; let total = 0;
+  for (let i = 0; i < trials; i++) {
+    const t = M.sampleTrial();
+    const partner = chain[chain.length - (t.n || geo.cfg.n)];
+    if (partner) {
+      const extra = geo.cfg.meta ? { metaPrev: partner.pair } : null;
+      geo.buildJudgments(partner, t, extra).filter(j => j.stream === 'position').forEach(j => {
+        const sg = j.correct.slice().sort().join('|'); sigs[sg] = (sigs[sg] || 0) + 1; total++;
+      });
+      t.pair = [partner, t];
+    }
+    chain.push(t); geo.state.chain.push(t);
+  }
+  return { chance: Math.max(...Object.values(sigs)) / total, sigs, total };
+}
+const plain = "Object.assign(cfg, { coordAxes: [], magnitudeCap: 2, n: 2, lureRate: 0.2, varN: 0, retro: 0, gate: 0, frame: 'cube', streams: { position: 'relational' } });";
+const firstOrder = longRunChance(plain + 'cfg.meta = false;', 12000);
+const secondOrder = longRunChance(plain + 'cfg.meta = true;', 12000);
+/* Back to the configuration the checks below were written against. */
+vm.runInContext("cfg.coordAxes = ['pitch']; cfg.magnitudeCap = 2; cfg.meta = false; cfg.streams = { position: 'relational' }; state.chain = []; state.metaDrawn = null;", geo);
+console.log(`   chance, measured: first order ${(firstOrder.chance * 100).toFixed(1)}%, second order ${(secondOrder.chance * 100).toFixed(1)}%`);
+ok('chance on first-order position is about a third, not two thirds',
+   Math.abs(firstOrder.chance - 1 / 3) < 0.03, `${firstOrder.chance.toFixed(3)}`);
+ok('the hint\'s fallback chances are the ones the sampler gives',
+   /cfg\.meta \? 0\.25 : 1 \/ 3/.test(fs.readFileSync(path.join(ROOT, 'js/settings-ui.js'), 'utf8')) &&
+   Math.abs(secondOrder.chance - 0.25) < 0.03, `${secondOrder.chance.toFixed(3)}`);
+
+const P1 = firstOrder.chance;
+const corrected = a => (a - P1) / (1 - P1);
+const rawFor = s => P1 + s * (1 - P1);
+const ta = g('TUNE_DEFAULTS.targetAccuracy');
+set('t', ta);
+const holdLo = rawFor(g('demoteAt()')), holdHi = rawFor(g('advanceAt()'));
+console.log(`   hold band is ${(holdLo * 100).toFixed(0)}%-${(holdHi * 100).toFixed(0)}%`
+  + ` of first-order judgments answered exactly right (target ${(rawFor(ta) * 100).toFixed(0)}%)`);
+ok('the default target is about 80% of first-order judgments right',
+   Math.abs(rawFor(ta) - 0.80) < 0.03, `${(rawFor(ta) * 100).toFixed(1)}%`);
+ok('a player at the target scores inside the hold band',
+   corrected(rawFor(ta)) > g('demoteAt()') && corrected(rawFor(ta)) < g('advanceAt()'));
+ok('the hold band sits where a human can actually play',
+   holdLo >= 0.60 && holdHi <= 0.95,
+   `${(holdLo * 100).toFixed(0)}%-${(holdHi * 100).toFixed(0)}% raw is not a band anyone sits in`);
+
+/*
+ * Chance from the long run, not from the block. The commonest of four equally
+ * likely relations, counted over one block's twenty judgments, is a maximum of
+ * noisy shares and so biased upward; pooled over many blocks it is not.
+ */
+{
+  const rel = ['meta-same', 'meta-opp', 'meta-diff', ''];
+  let rs = 7; const rnd = () => ((rs = (rs * 16807) % 2147483647) / 2147483647);
+  const block = () => { const t = { total: 0, sigs: {} };
+    for (let i = 0; i < 20; i++) { const k = rel[Math.floor(rnd() * 4)]; t.sigs[k] = (t.sigs[k] || 0) + 1; t.total++; }
+    return t; };
+  const jc = vm.createContext({ console, Math, Array, Object, JSON });
+  vm.runInContext('var __store = {}; var localStorage = { getItem: function (k) { return __store[k] || null; }, setItem: function (k, v) { __store[k] = v; } };', jc);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/judgments.js'), 'utf8').replace(/^"use strict";/, ''), jc);
+  const J = { chanceOf: t => vm.runInContext('chanceOf', jc)(t), foldChanceBook: x => vm.runInContext('foldChanceBook', jc)(x) };
+  let alone = 0, pooled = 0; const B = 400;
+  for (let b = 0; b < B; b++) {
+    const t = block(); t.key = 'test';
+    alone += Math.max(...Object.values(t.sigs)) / t.total;
+    pooled += J.chanceOf(t);
+    J.foldChanceBook({ s: t });
+  }
+  alone /= B; pooled /= B;
+  console.log(`   chance of four even answers: ${(alone * 100).toFixed(1)}% block by block, ${(pooled * 100).toFixed(1)}% pooled`);
+  ok('a block\'s own commonest answer overstates chance', alone > 0.28, alone.toFixed(3));
+  ok('the pooled long-run chance does not', Math.abs(pooled - 0.25) < 0.015, pooled.toFixed(3));
+  ok('a tally with no history is scored on its own counts, as before',
+     J.chanceOf({ total: 4, sigs: { a: 3, b: 1 } }) === 0.75);
+}
 
 /*
  * A coordinate step is a direction like any other, and it borrows the stream's
@@ -1288,7 +1343,7 @@ ok('the readout names all three axes',
  */
 const lad = vm.createContext({ console, Math, Array, Object, JSON });
 vm.runInContext(`
-  var TUNE_DEFAULTS = { targetAccuracy: 0.40 };
+  var TUNE_DEFAULTS = { targetAccuracy: 0.70 };
   var tune = { startInterval: 5000, targetInterval: 3000, maxInterval: 6500,
                nMax: 3, nAfterStimulus: 2, spinStart: 100, spinEnd: 20, spinStep: 10,
                targetAccuracy: 0.40, adapt: 'bayes' };
