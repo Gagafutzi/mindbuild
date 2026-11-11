@@ -86,6 +86,25 @@ between two diagonal moves.
 complexity (Halford et al. 1998) †; the adaptive staircase is, in its code's
 words, a "QUEST/ZEST-style" grid posterior † — QUEST is Watson & Pelli (1983),
 ZEST King-Smith et al. (1994).
+**Nested levels** (a track of its own in Progression, and a setting in Free
+Play). The stream opens and closes levels, marked `(`, `·` and `)`, and each
+item is judged against the last item of its own level instead of the one N
+back: on the way out, that is an item from before the whole inner episode. An
+item that opens a level asks nothing. Depth, the most levels suspended at once,
+takes the place of N on the ladder.
+It loads what a queue never does: holding an item pending across an episode
+that is then dropped, and returning to it. That is Koechlin's branching at
+depth one (Koechlin et al. 1999) †; with three tasks people perform as if one
+had been forgotten (Charron & Koechlin 2010) †; and managing a set of goals is
+one of the two things that separated high from low scorers on Raven's
+(Carpenter, Just & Shell 1990) †. Nobody has trained this task, so that is
+where the evidence stops.
+Dives and climbs come in runs, because a stream that turns round freely is
+only ever read from the top of the stack: simulated, a player holding one
+suspended item scored 95% at any depth. As built, that player scores about 68%
+at depth two and 57% at three, and plain 1-back scores nothing
+(`apps/rnb/tools/nest-check.js`). The track's target starts at 85% for the
+same reason, and a block reports returns and stays apart.
 
 ### Precision N-back
 **Task.** N-back with a tighter response window. (Chimera Hub calls it Threshold
@@ -296,11 +315,16 @@ It counts no minutes of its own.
   the visibility of gratings. *Journal of Physiology*, 197, 551–566.
 - Carpenter, P. A., Just, M. A., & Shell, P. (1990). What one intelligence test
   measures. *Psychological Review*, 97(3), 404–431.
+- Charron, S., & Koechlin, E. (2010). Divided representation of concurrent
+  goals in the human frontal lobes. *Science*, 328(5976), 360–363.
 - Gao, R., et al. (2021). On path integration of grid cells. *NeurIPS*.
 - Gosselin, F., & Schyns, P. G. (2003). Superstitious perceptions reveal
   properties of internal representations. *Psychological Science*, 14(5).
 - Halford, G. S., Wilson, W. H., & Phillips, S. (1998). Processing capacity
   defined by relational complexity. *Behavioral and Brain Sciences*, 21(6).
+- Koechlin, E., Basso, G., Pietrini, P., Panzer, S., & Grafman, J. (1999). The
+  role of the anterior prefrontal cortex in human cognition. *Nature*, 399,
+  148–151.
 - Lu, Z.-L., & Dosher, B. A. (1999). Characterizing human perceptual
   inefficiencies with equivalent internal noise. *JOSA A*, 16(3).
 - Melby-Lervåg, M., Redick, T. S., & Hulme, C. (2016). Working memory training

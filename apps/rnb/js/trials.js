@@ -202,8 +202,16 @@ function litColour(face, hex) {
    instruction rather than as last trial's cue still sitting there. */
 function showLagCue(t) {
   const el = $('lagGhost');
-  if (!cfg.varN || t.n == null) { el.classList.remove('show'); return; }
-  el.textContent = t.n;
+  /* Nested levels use the same place for the same job: what the instruction
+     for THIS item is. There it is which way the nesting just went, and it is
+     shown on every item, because the mark is the only thing that says which
+     earlier item this one is to be held against. */
+  const mark = t.nest ? NEST_MARK[t.nest] : '';
+  el.classList.toggle('nest-in', t.nest === 'in');
+  el.classList.toggle('nest-out', t.nest === 'out');
+  el.classList.toggle('nest-stay', t.nest === 'stay');
+  if (!mark && (!cfg.varN || t.n == null)) { el.classList.remove('show'); return; }
+  el.textContent = mark || t.n;
   el.classList.remove('show');
   void el.offsetWidth;                 // reflow, or the animation never replays
   el.classList.add('show');

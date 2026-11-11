@@ -24,11 +24,16 @@ function updateHUD() {
   /* What the tier asks, said plainly. A second-order judgement over diagonal moves
      is the one that cannot be split axis by axis (see RC_NAMES). */
   $('hudRCName').textContent =
-    rc >= 4 ? (cfg.singleAxis ? 'one axis at a time' : 'diagonals: angle between moves')
-    : rc === 3 ? 'direction of the move' : 'same or different';
+    (rc >= 4 ? (cfg.singleAxis ? 'one axis at a time' : 'diagonals: angle between moves')
+    : rc === 3 ? 'direction of the move' : 'same or different') +
+    /* Which earlier item, when it is not the one a lag back. */
+    (cfg.nest ? ' \u00b7 against the last of its level' : '');
   /* In variable mode the single number is a lie — what is fixed is the span the
      lag is drawn from, so that is what the HUD shows. */
-  $('hudN').textContent = cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
+  /* Under nested levels the lag is always one and says nothing; the number that
+     matters is how many levels may be suspended, so the HUD names that instead. */
+  $('hudNLabel').textContent = cfg.nest ? 'Depth' : 'N';
+  $('hudN').textContent = cfg.nest ? cfg.nest : cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
   $('hudSpinLabel').textContent = spinLabel();
   renderPriorityCue();
   $('hudTrial').textContent = `${state.scored}/${cfg.blockLength}`;
@@ -111,6 +116,24 @@ setInterval(renderDailyTimer, 1000);
    means "this would advance you", amber "this holds", red "this would demote". */
 const barColor = a => a >= advanceAt() ? '#51cf66' : a >= demoteAt() ? '#fcc419' : '#ff6b6b';
 
+/*
+ * Returns against stays, for a nested block.
+ *
+ * The bars pool every judged item, and a stay is 1-back: a block can read 80%
+ * while most returns were missed. These two figures are the ones that say
+ * whether the suspended items were actually held, so they are printed whenever
+ * there is a stack to have held them on.
+ */
+function nestLine() {
+  const nt = state.nestTally;
+  if (!cfg.nest || !nt) return '';
+  const pc = a => a[1] ? Math.round(100 * a[0] / a[1]) + '%' : '\u2014';
+  return `<p style="text-align:center;margin:8px 0 0;font-size:12px">
+    Returns <b>${pc(nt.out)}</b> <span style="opacity:.6">(${nt.out[0]}/${nt.out[1]})</span> ·
+    stays <b>${pc(nt.stay)}</b> <span style="opacity:.6">(${nt.stay[0]}/${nt.stay[1]})</span>
+    <span style="opacity:.6">— items answered exactly right</span></p>`;
+}
+
 function showReport(score, verdict, headline, detail, milestone, load) {
   const rows = Object.entries(state.tally).map(([k, t]) => {
     const s = streamScore(t);
@@ -133,8 +156,9 @@ function showReport(score, verdict, headline, detail, milestone, load) {
   modalBox.innerHTML = `
     <h2>Block complete</h2>
     <p>Score <b style="color:${barColor(score)}">${Math.round(score*100)}%</b> ·
-       Load <b>${load}</b> · N ${cfg.n} · ${spinLabel()}</p>
+       Load <b>${load}</b> · ${cfg.nest ? 'Depth ' + cfg.nest : 'N ' + cfg.n} · ${spinLabel()}</p>
     <div class="bars">${rows || '<p>No scored judgments.</p>'}</div>
+    ${nestLine()}
     ${headline ? `<div class="verdict ${verdict}">${headline}</div>` : ''}
     ${detail ? `<p style="text-align:center;margin:6px 0 0;font-size:12px">${detail}</p>` : ''}
     ${mBanner}

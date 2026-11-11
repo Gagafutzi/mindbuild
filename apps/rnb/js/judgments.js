@@ -290,6 +290,18 @@ function applyInterval(snap, sign) {
     if (exact) t.ok += sign;
   });
 
+  /* Nested levels: returns and stays, counted apart per item (every judgment
+     of the item answered exactly). Signed like the rest, so a late press that
+     reopens the interval takes its count back out before putting it in again. */
+  const tr = snap.trial_;
+  if (tr && (tr.nest === 'out' || tr.nest === 'stay') && judgments.length) {
+    const nt = state.nestTally || (state.nestTally = { out: [0, 0], stay: [0, 0] });
+    const exact = judgments.every(j =>
+      j.options.every(o => j.correct.includes(o) === presses.has(o)));
+    nt[tr.nest][1] += sign;
+    if (exact) nt[tr.nest][0] += sign;
+  }
+
   /* Lure trials get their own tally. Adapting the lure rate on OVERALL accuracy
      would just re-measure what the interval staircase already measures, and the two
      would fight over the same evidence; lure resistance is a separate signal. */
@@ -376,7 +388,12 @@ function chanceKey(stream) {
     ? (() => { try { return poolFor(stream, c).length; } catch (e) { return 0; } })() : 0;
   return [stream, c.streams[stream] || 'off', c.meta ? 'meta' : '', c.frame,
           (c.coordAxes || []).join('+'), c.magnitudeCap, c.lureRate, c.gate, c.retro,
-          c.varN, pool].join('/');
+          c.varN, pool].join('/') +
+    /* Appended, and only when it is on, so that every key written before nested
+       levels existed is still the key its configuration looks itself up under.
+       Depth is part of it: the deeper the stream, the more of the judged items
+       are returns, and the lures a return can carry are not the ones a stay can. */
+    (nestDepth(c) ? '/nest' + nestDepth(c) : '');
 }
 
 function chanceOf(t) {

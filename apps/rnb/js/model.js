@@ -303,7 +303,10 @@ function createSampler(env) {
    * nothing" either way. Drawn against the n-back partner, as it is judged.
    */
   function crossLevel(key, len) {
-    const nb = backAt(state.__lag || 1);
+    /* The partner `sampleTrial` settled on. Under nested levels that is not the
+       item a lag back, and drawing against the wrong one would balance the three
+       answers for a pair nobody is asked about. */
+    const nb = state.__nb !== undefined ? state.__nb : backAt(state.__lag || 1);
     if (!nb || nb[key] == null) return randInt(len);
     const pos = state.__cell != null && nb.cellIdx != null
       ? (() => { const ca = state.cells[nb.cellIdx], cb = state.cells[state.__cell];
@@ -320,10 +323,98 @@ function createSampler(env) {
     return from + pick(steps) * up;
   }
 
+  /* ---- Nested levels ----
+   *
+   * The other way to find the earlier item. N-back holds a queue: the partner is
+   * whatever was shown n items ago. Here the stream opens and closes LEVELS, and
+   * the partner is the last item of this item's own level:
+   *
+   *   in    this item starts an inner level; the level you were on is suspended
+   *   stay  this item continues the current level
+   *   out   the inner level has ended; this item is back on the level above
+   *
+   * So on `stay` the partner is the previous item, on `out` it is an item last
+   * seen before the whole inner episode, and on `in` there is none — a level
+   * starts empty. `cfg.nest` is the most levels that may be suspended at once,
+   * and it is the number that plays the part n plays in n-back.
+   *
+   * What it asks for that a queue never does: holding an item PENDING across an
+   * episode that has to be dropped when it ends, and returning to it. That is
+   * Koechlin's branching (Koechlin et al. 1999) at depth one, the managing of
+   * goals Carpenter, Just & Shell (1990) found separating high from low scorers
+   * on Raven's, and Charron & Koechlin (2010) put its ceiling near two: with
+   * three tasks people perform as if they had forgotten one.
+   *
+   * DIVES AND CLIMBS COME IN RUNS, and that is not decoration. A walk that turns
+   * round freely hovers near the top of the stack, where only the innermost
+   * suspended item is ever returned to — simulated, a player who can hold ONE
+   * suspended item scored 95% at any depth, so depth was not the load at all.
+   * Keeping the direction more often than not makes the stream unwind several
+   * levels in a row, and then each level past what you can hold costs: the
+   * same one-item player scores about 68% at depth two and 57% at three
+   * (tools/nest-check.js keeps that true).
+   */
+  const NEST_RUN = env.NEST_RUN ?? 0.78;     // chance of keeping the direction
+  const NEST_STAY = env.NEST_STAY ?? 0.12;   // chance of staying on the level
+  const nestOn = () => (cfg.nest | 0) > 0;
+  const nestState = () => state.nest || (state.nest = { stack: [], anchor: null, last: 'stay' });
+
+  /* What the next item is to be, decided before it is drawn so that targets and
+     lures can be planted against the right partner — the same reason the lag is
+     drawn first. Reads the stack and changes nothing; `nestCommit` does that. */
+  function nestPlan() {
+    const s = nestState(), d = s.stack.length;
+    /* A block's first item opens the outermost level and has nothing before it. */
+    if (!s.anchor) return { tag: 'first', partner: null, lureA: null, lureB: null };
+    const canIn = d < (cfg.nest | 0), canOut = d > 0;
+    const turn = 1 - NEST_RUN - NEST_STAY, even = (1 - NEST_STAY) / 2;
+    let wIn  = s.last === 'in'  ? NEST_RUN : s.last === 'out' ? turn : even;
+    let wOut = s.last === 'out' ? NEST_RUN : s.last === 'in'  ? turn : even;
+    /* At the floor and the ceiling the blocked direction's share goes to the
+       other one, not to staying: a stream that idles at the bottom of the stack
+       is plain 1-back for as long as it does. */
+    if (!canIn)  { wOut += wIn; wIn = 0; }
+    if (!canOut) { wIn += wOut; wOut = 0; }
+    const r = Math.random() * (wIn + wOut + NEST_STAY);
+    const tag = r < wIn ? 'in' : r < wIn + wOut ? 'out' : 'stay';
+    if (tag === 'in') return { tag, partner: null, lureA: null, lureB: null };
+    /*
+     * The lures are the items a wrong reading of the structure would compare
+     * with, in the two slots the queue uses for n−1 and n+1.
+     *
+     * On `out` the first is the item just left behind — the last of the level
+     * that closed, and the last thing seen. Matching it is what plain 1-back
+     * does and what failing to let go of a finished level does. The second is
+     * the level below the one being returned to: a level skipped.
+     *
+     * On `stay` they are the suspended items: something still pending showing
+     * up on the current level, where it is not a match.
+     */
+    if (tag === 'stay')
+      return { tag, partner: s.anchor, lureA: s.stack[d - 1] || null, lureB: s.stack[d - 2] || null };
+    return { tag, partner: s.stack[d - 1], lureA: s.anchor, lureB: s.stack[d - 2] || null };
+  }
+
+  /* Every item becomes the last item of its level, whatever it was judged
+     against, so a lost thread mends itself the next time that level is seen. */
+  function nestCommit(plan, t) {
+    const s = nestState();
+    if (plan.tag === 'in') s.stack.push(s.anchor);
+    else if (plan.tag === 'out') s.stack.pop();
+    s.anchor = t;
+    s.last = plan.tag === 'first' ? 'stay' : plan.tag;
+    t.nest = plan.tag;
+    t.depth = s.stack.length;          // levels suspended while this item is up
+    t.partner = plan.partner;
+  }
+
   function sampleTrial() {
-    const n = trialLag();
-    const nb = backAt(n);
-    const lureA = backAt(n - 1), lureB = backAt(n + 1);
+    /* Nested levels replace the lag: the plan names the partner and the lures. */
+    const nest = nestOn() ? nestPlan() : null;
+    const n = nest ? 1 : trialLag();
+    const nb = nest ? nest.partner : backAt(n);
+    const lureA = nest ? nest.lureA : backAt(n - 1);
+    const lureB = nest ? nest.lureB : backAt(n + 1);
     const rel = k => cfg.streams[k] === 'relational';
     const on  = k => cfg.streams[k] && cfg.streams[k] !== 'off';
     const t = {};
@@ -349,8 +440,16 @@ function createSampler(env) {
        matches are drawn at a rate rather than owed on particular trials, and the
        first attempt at this exempted the case, which let a stationary cube back in
        on about one trial in twenty-six. */
-    const prev = backAt(1);
-    const noRepeat = prev && n > 1 ? prev.cellIdx : null;
+    /* Nested: the last item shown is always the current level's last item. On
+       `stay` it is the partner, so a repeat is allowed for the reason it is at
+       lag one. On `in` the cube moves, so that a level's first item never looks
+       like a match with the item before it. On `out` it moves too when position
+       is relational — but not when it is an identity stream, where landing on
+       the cell just left IS the lure (see `nestPlan`). */
+    const prev = nest ? nestState().anchor : backAt(1);
+    const noRepeat = nest
+      ? (prev && (nest.tag === 'in' || (nest.tag === 'out' && rel('position'))) ? prev.cellIdx : null)
+      : (prev && n > 1 ? prev.cellIdx : null);
     /* Set by the meta branch when it picks the axis as well as the cell. */
     let metaMove = null;
 
@@ -382,7 +481,7 @@ function createSampler(env) {
                               noRepeat);
     }
 
-    state.__lag = n; state.__cell = t.cellIdx;
+    state.__lag = n; state.__cell = t.cellIdx; state.__nb = nb;
     const feature = (key, pool) => {
       if (!on(key)) return null;
       if (rel(key)) return randInt(pool.length);
@@ -466,8 +565,9 @@ function createSampler(env) {
        Never close the gate before there is a chain to protect — measured at the
        DEEPEST lag in play, since eating an item the top of the range still needs would
        strand those trials. */
-    t.gate = (cfg.gate > 0 && state.chain.length > maxLag() && Math.random() < cfg.gate)
+    t.gate = (!nest && cfg.gate > 0 && state.chain.length > maxLag() && Math.random() < cfg.gate)
       ? 'compare' : 'update';
+    if (nest) nestCommit(nest, t);
     return t;
   }
   /**
@@ -530,6 +630,7 @@ function createSampler(env) {
   return {
     randInt, pick, randExcept, sampleIndex, backAt, maxLag, trialLag,
     cardinalNeighbours, pickMetaMove, pickMetaType, sampleTrial,
+    nestPlan, nestCommit, NEST_RUN, NEST_STAY,
     moveVectorOf, metaRelationOf,
   };
 }

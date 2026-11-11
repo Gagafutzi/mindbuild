@@ -257,6 +257,8 @@ $('metaOn').onchange  = e => { freeCfg.meta = e.target.checked; applyFree(); syn
 $('singleAxis').onchange = e => { freeCfg.singleAxis = e.target.checked; applyFree(); saveProgress(); };
 $('progSingleAxis').onchange = e => { progCfg.singleAxis = e.target.checked; applyProgression(); saveProgress(); };
 $('gateOn').onchange  = e => { freeCfg.gate = +e.target.value; applyFree(); updateHUD(); saveProgress(); };
+/* syncSettingsUI, because turning nesting on is what greys the lag controls out. */
+$('nestDepthF').onchange = e => { freeCfg.nest = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('retroOn').onchange = e => { freeCfg.retro = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('varNBack').onchange = e => { freeCfg.varN = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 

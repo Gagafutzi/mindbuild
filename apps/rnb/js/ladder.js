@@ -101,6 +101,26 @@ function progAxes() {
    orthogonality, and only a second-order judgement ever asks about that. Below
    quaternary the boxes stay the player's own, exactly as they were. */
 const laddersAxes = () => typeof rcTier !== 'undefined' && rcTier >= 4;
+
+/*
+ * The nested track: first-order judgements, with the earlier item found by
+ * level instead of by lag (see the sampler in model.js).
+ *
+ * It is a track of its own for the reason the tiers are: its own ladder, its
+ * own staircase and its own targets, because a speed earned against a queue
+ * says nothing about a speed against a stack, and one posterior cannot be about
+ * both. Its key is 1, below every tier, so that none of the `rcTier >= 4` tests
+ * that switch on second-order and the two frames can ever be true of it.
+ *
+ * On this track the ladder's N digit counts DEPTH. Everything about the
+ * odometer stays as it is — the still cube, the rotation steps, the stimuli —
+ * and only what the digit means changes, so `advanceLadder` and `regressLadder`
+ * need to know nothing about it.
+ */
+const NEST_TIER = 1;
+const nestedTier = () => typeof rcTier !== 'undefined' && rcTier === NEST_TIER;
+/* What the N digit is called on the track you are on. */
+const nWord = () => nestedTier() ? 'Depth' : 'N';
 const maxAxisCount = () => laddersAxes() ? progAxes().length : 0;
 
 /* Rotation is the whole of what separates the two frames at quinary: angles are
@@ -457,17 +477,19 @@ function regressLadder(p) {
 function describeNext(p) {
   const levels = spinLevels();
   if (p.spinLevel === 0) {
-    if (p.n < 2) return { what: `N rises to 2`, why: 'still no rotation — just a longer gap to hold' };
-    return { what: `the cube starts rotating`, why: `slowly, one turn per ${levels[1]}s — and N drops back to 1` };
+    if (p.n < 2) return { what: `${nWord()} rises to 2`, why: nestedTier()
+      ? 'still no rotation — a second level to hold suspended'
+      : 'still no rotation — just a longer gap to hold' };
+    return { what: `the cube starts rotating`, why: `slowly, one turn per ${levels[1]}s — and ${nWord()} drops back to 1` };
   }
   if (p.spinLevel < levels.length - 1)
-    return { what: `rotation speeds up to ${levels[p.spinLevel + 1]}s per turn`, why: 'same N, less stable frame' };
+    return { what: `rotation speeds up to ${levels[p.spinLevel + 1]}s per turn`, why: `same ${nWord()}, less stable frame` };
   if (p.n < tune.nMax)
-    return { what: `N rises to ${p.n + 1}`, why: 'rotation resets to slowest' };
+    return { what: `${nWord()} rises to ${p.n + 1}`, why: 'rotation resets to slowest' };
   if (p.streamCount < progStreams().length) {
     const nx = progStreams()[p.streamCount];
     return { what: `${STREAMS[nx.key].label} joins (${nx.mode})`,
-             why: `N drops to ${Math.min(tune.nAfterStimulus, tune.nMax)}, rotation resets` };
+             why: `${nWord()} drops to ${Math.min(tune.nAfterStimulus, tune.nMax)}, rotation resets` };
   }
   if ((p.axisCount || 0) < maxAxisCount()) {
     const nx = progAxes()[p.axisCount || 0];

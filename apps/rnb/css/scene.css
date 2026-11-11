@@ -355,3 +355,13 @@
 /* Gentle, and only ever up for one trial after a mistake — enough to be found
    without becoming something you have to work to ignore. */
 @keyframes move-arrow-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .58; } }
+
+/* ---------- NESTED LEVELS ----------
+   The lag ghost doing a second job: which way the nesting just went. In and out
+   are the two marks that change which earlier item this one is held against, and
+   missing one costs every level below it, so they are tinted and stronger than
+   the lag number is; the continuing dot stays as quiet as the number. In and out
+   are told apart by the bracket first and the colour second, so the colour is
+   help rather than the only signal. */
+.lag-ghost.nest-in  { color: rgba(77, 171, 247, .62); }
+.lag-ghost.nest-out { color: rgba(255, 146, 43, .66); }

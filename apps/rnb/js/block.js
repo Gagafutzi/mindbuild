@@ -62,6 +62,12 @@ function tick() {
       t.retroK = randInt(maxK + 1);
       pair = [S[S.length - t.retroK - 2], S[S.length - t.retroK - 1]];
     }
+  } else if (t.nest) {
+    /* Nested levels: the partner is the last item of this item's own level, which
+       the sampler already settled and planted its targets against — for the same
+       reason `t.n` is read back below. An item that opens a level has none, so
+       nothing is asked of it; it is only there to be held. */
+    if (t.partner) pair = [t.partner, t];
   } else {
     /* t.n, not cfg.n: sampleTrial already committed to a lag and built the stimulus
        around it. Reading cfg.n back here would score the answer against a different
@@ -110,6 +116,9 @@ function startBlock() {
   state.trial = 0; state.scored = 0; state.tally = {};
   state.lureTally = null; state.currentTrial = null; state.cued = true;
   state.metaDrawn = null;
+  /* The stack of suspended levels and the returns-against-stays tally are the
+     block's, like the chain. */
+  state.nest = null; state.nestTally = null;
   state.presses_log = []; state.stimAt = 0;
   state.tickAt = 0; state.lastSnap = null; clearTimeout(state.buzzTimer);
   state.paused = false; state.interrupted = false; state.ending = false;
@@ -240,6 +249,9 @@ function blockRecord(completed, scored) {
       interval: cfg.interval, blockLength: cfg.blockLength, rotation: cfg.rotation,
       spin: cfg.spin, feedback: cfg.feedback, lureRate: cfg.lureRate,
       meta: cfg.meta, gate: cfg.gate, retro: cfg.retro, varN: cfg.varN,
+      /* Depth of nesting, or 0 for the queue: with it on, `n` is not a lag at
+         all, and a block read without this would look like 1-back. */
+      nest: nestDepth(cfg),
       /* One-axis moves only: no oblique relation can come up, so it is a
          different quaternary block from one with diagonals. */
       singleAxis: !!cfg.singleAxis,
@@ -269,6 +281,12 @@ function blockRecord(completed, scored) {
                              hit:t.hit, miss:t.miss, fa:t.fa, cr:t.cr }])),
     rt: { n: rts.length, median, mean: rts.length
             ? Math.round(rts.reduce((a, b) => a + b, 0) / rts.length) : null },
+    /* Nested blocks: items answered exactly right out of items asked, returns
+       and stays apart. The block score pools them, and a stay is 1-back — so the
+       pooled number can sit high while every return to a deep level is missed,
+       and this is the only place that shows. */
+    ...(state.nestTally ? { nestStats: {
+      returns: state.nestTally.out.slice(), stays: state.nestTally.stay.slice() } } : {}),
     /* The posterior AFTER this block's observation — endBlock updates the staircase
        before it builds the record. Stored because the posterior is a single evolving
        distribution, not a series: without a stamp per block there is no way to
@@ -454,6 +472,15 @@ function endBlock() {
 
 function computeLoad() {
   let load = 10 * cfg.n;
+  /*
+   * Nested levels. `cfg.n` is 1 there — a stay is 1-back — so the term above
+   * pays for the level you are on and this pays for each one held suspended
+   * under it. A little more than a step of N, because a suspended item is held
+   * across an episode of unknown length and has to survive the items of that
+   * episode being dropped, where a queue's item is held for a fixed count and
+   * simply falls off the end.
+   */
+  load += 12 * nestDepth(cfg);
   /* A varying lag costs more than its mean depth: the pairing cannot be maintained
      as a rehearsal loop, so the whole recent window has to stay addressable and the
      cue has to be read and applied inside the interval. Scaled with N because the
@@ -645,7 +672,10 @@ function applyProgression() {
      wondering why your setting changed. */
   Object.assign(cfg, {
     streams,
-    n: prog.n,
+    /* On the nested track the ladder's N digit is the depth, and the lag is 1:
+       an item is compared with the last one of its own level (see NEST_TIER). */
+    n: nestedTier() ? 1 : prog.n,
+    nest: nestedTier() ? Math.min(NEST_MAX, prog.n) : 0,
     interval: prog.interval,
     lureRate: prog.lureRate,
     feedback: progCfg.feedback,
@@ -698,21 +728,32 @@ function applyProgression() {
 }
 
 function applyFree() {
-  const meta = !!freeCfg.meta;
+  /*
+   * Nested levels replace the n-back rule outright — the partner is found by
+   * level, not by lag — so everything that varies or bends the lag is off while
+   * they are on: there is no lag for a variable N to vary, no adjacent pair for
+   * a retro-cue to name, and no chain for a closed gate to keep an item out of.
+   * Second-order is off too, for now: it would ask how this move relates to the
+   * last move on its own level, which is well defined and untried, and a first
+   * version should be one new thing rather than two.
+   */
+  const nest = nestDepth(freeCfg);
+  const meta = !nest && !!freeCfg.meta;
   /* Meta and retro-cue ask incompatible questions of the same trial — meta needs a
      fixed n-back pairing to have a "previous move" at all. */
-  const retro = meta ? 0 : freeCfg.retro;
+  const retro = (meta || nest) ? 0 : freeCfg.retro;
   /* A retro trial is told which pair to report, so it has already replaced the
      n-back rule — there is no lag left for a variable one to vary. */
-  const varN = retro > 0 ? 0 : freeCfg.varN;
+  const varN = (retro > 0 || nest) ? 0 : freeCfg.varN;
 
   Object.assign(cfg, {
     streams: { ...freeCfg.streams },
-    n: freeCfg.n,
+    n: nest ? 1 : freeCfg.n,
+    nest,
     interval: freeCfg.interval,
     lureRate: freeCfg.lureRate,
     feedback: freeCfg.feedback,
-    meta, gate: freeCfg.gate, retro, varN,
+    meta, gate: nest ? 0 : freeCfg.gate, retro, varN,
     fixedGlyphMap: !!freeCfg.fixedGlyphMap,
     glyphRel: freeCfg.glyphRel === 'rank' ? 'rank' : 'map',
     varPriority: !!freeCfg.varPriority,

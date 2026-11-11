@@ -200,7 +200,8 @@ function renderLadderState() {
     <div><span class="k">Milestone</span><b>${pos.index}</b> of ${pos.total}</div>
     <div><span class="k">Stimuli</span><b>${active.length}</b> — ${
       active.map(s => `${STREAMS[s.key].label}<span style="opacity:.5">·${s.mode === 'relational' ? 'rel' : s.mode === 'cross' ? '⇈pos' : 'id'}</span>`).join(', ')}</div>
-    <div><span class="k">N</span><b>${prog.n}</b></div>
+    <div><span class="k">${nWord()}</span><b>${prog.n}</b>${nestedTier()
+      ? ' <span style="opacity:.5">levels that can be suspended at once</span>' : ''}</div>
     <div><span class="k">Rotation</span><b>${prog.spinLevel === 0 ? 'still' : levels[prog.spinLevel] + 's/turn'}</b>${
       prog.spinLevel > 0 ? ` <span style="opacity:.5">(step ${prog.spinLevel}/${levels.length - 1})</span>` : ''}</div>
     <div><span class="k">Interval</span><b>${(prog.interval / 1000).toFixed(2)}s</b>
@@ -230,7 +231,9 @@ function renderLadderState() {
 
   $('rcTier').value = String(rcTier);
   $('rcHint').textContent =
-    rcTier >= 5
+    nestedTier()
+      ? 'Nested reports which way each move went, like first-order, but against the last item of its own level instead of the one N back. The stream opens and closes levels, marked ( to go in, \u00b7 to stay and ) to come out; on the way out the item is compared with one from before the whole inner episode. The ladder\u2019s N digit is the depth here: how many levels can be waiting at once. Its own ladder, staircase and targets, and a higher target than the other tracks, because most returns are to the nearest level and a lower one would clear a depth you were not holding.'
+    : rcTier >= 5
       ? 'Two frames asks the second-order relation twice — once against the cube, once against the screen — and a turning cube is what stops the second answer being the first one copied out. Rotation never switches off on this tier. Two judgements held at once, not a deeper one.'
     : rcTier >= 4
       ? 'Second-order compares the direction you stored with the new one: same, opposite, at right angles, or at no tidy angle. With moves along one axis it can still be answered axis by axis; with diagonal moves the angle between two multi-axis moves cannot, which is the closest this trainer comes to integrating relations. Its own ladder, staircase and targets, independent of first-order.'
@@ -418,12 +421,25 @@ function syncSettingsUI() {
   $('progSingleAxis').checked = !!progCfg.singleAxis;
   $('gateOn').value = String(freeCfg.gate || 0);
   $('retroOn').value = String(freeCfg.retro || 0);
-  $('retroOn').disabled = !!freeCfg.meta;
+  /* Nested levels replace the n-back rule, so everything that works on the lag
+     is shown as unavailable while they are on rather than left looking live —
+     `applyFree` has already switched each of them off. Their settings are kept,
+     and come back when nesting goes off. */
+  const nestF = nestDepth(freeCfg);
+  $('nestDepthF').value = String(nestF);
+  $('nestHintF').textContent = nestF
+    ? `On at depth ${nestF}. N, meta-relations, the gate, variable N and the retro-cue ` +
+      `are set aside until it is off.`
+    : '';
+  $('nValue').disabled = !!nestF;
+  $('metaOn').disabled = !!nestF;
+  $('gateOn').disabled = !!nestF;
+  $('retroOn').disabled = !!freeCfg.meta || !!nestF;
   $('varNBack').value = String(freeCfg.varN || 0);
   /* Shown as unavailable rather than silently ignored: applyFree already forces the
      spread to zero under a retro-cue, and a control that keeps its setting while
      doing nothing is worse than one that says so. */
-  $('varNBack').disabled = cfg.retro > 0;
+  $('varNBack').disabled = cfg.retro > 0 || !!nestF;
   $('testerLabel').value = progress.tester || '';
   $('lureRateF').value = Math.round(freeCfg.lureRate * 100);
   $('lureVal').textContent = Math.round(freeCfg.lureRate * 100);

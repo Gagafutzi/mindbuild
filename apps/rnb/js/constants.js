@@ -329,7 +329,7 @@ const glyphUsesMap = () => cfg.streams.glyph === 'relational' && !glyphRankOnly(
 /* Stamped into every block and into the export. Testers who pick the file up at
    different times will be on different snapshots, and without this you cannot tell
    which build produced which numbers. */
-const BUILD = '2026-10-11.1';
+const BUILD = '2026-11-11.1';
 
 /* ---- The tiers, named for what they ask ----
    The tiers used to be named after Halford's relational complexity (ternary,
@@ -346,7 +346,29 @@ const BUILD = '2026-10-11.1';
    be read off axis by axis. That is what the HUD says when diagonals are on.
 
    The numbers 3, 4 and 5 stay as the tiers' keys, because the records use them. */
-const RC_NAMES = { 2: 'identity', 3: 'first-order', 4: 'second-order', 5: 'two frames' };
+const RC_NAMES = { 1: 'nested', 2: 'identity', 3: 'first-order', 4: 'second-order', 5: 'two frames' };
+
+/* ---- Nested levels ----
+   How deep the stream may nest: the most levels suspended at once, or 0 for the
+   ordinary queue. What it is and why is with the sampler, in `model.js`.
+
+   Six is a ceiling for the setting rather than a claim about anybody. Two
+   suspended tasks is where Charron & Koechlin (2010) found people starting to
+   act as if one had been forgotten, so most of the range is there to be failed
+   at — which is what a ladder needs above the rung you are on. */
+const NEST_MAX = 6;
+const nestDepth = c => Math.max(0, Math.min(NEST_MAX, Math.round((c || cfg).nest || 0)));
+
+/* The mark shown with each item: which way the nesting just went. A level's
+   continuing item gets a mark too — a blank would be indistinguishable from a
+   mark that was missed, and a missed mark costs every level below it.
+
+   Brackets, not arrows. The first version used a down and an up arrow, drawn
+   where the lag number is drawn: in the middle of the cube. An up arrow there
+   is a direction, in a task whose answers are directions, lying along the very
+   axis the North arm runs up. A bracket opens and closes a level, which is what
+   is being said, and points nowhere on the cube. */
+const NEST_MARK = { in: '(', out: ')', stay: '\u00b7', first: '' };
 
 function relationalComplexity(c) {
   c = c || cfg;

@@ -53,6 +53,7 @@
         <option value="3">First-order — report the direction</option>
         <option value="4">Second-order — relate two directions</option>
         <option value="5">Two frames — the same relation, cube and screen</option>
+        <option value="1">Nested — against the last item of its own level</option>
       </select>
       <div class="hint" id="rcHint"></div>
       <label class="row" id="progSingleAxisRow"><input type="checkbox" id="progSingleAxis">
@@ -303,6 +304,32 @@
           it is neither 0°, 180° nor square, <b>press nothing</b>. That fourth
           answer has no button, which is what keeps it a derivation — you cannot
           reach it by elimination across the deck. Punishing above N=2.</div>
+      </div>
+      <div class="setting-group">
+        <label>Nested levels</label>
+        <select id="nestDepthF">
+          <option value="0">Off — plain N-back</option>
+          <option value="1">Depth 1 — one level suspended</option>
+          <option value="2">Depth 2</option>
+          <option value="3">Depth 3</option>
+          <option value="4">Depth 4</option>
+          <option value="5">Depth 5</option>
+          <option value="6">Depth 6</option>
+        </select>
+        <div class="hint">The stream opens and closes <b>levels</b>, and each item is
+          judged against <b>the last item of its own level</b> instead of the one N
+          back. Every item carries a mark: <b>(</b> it starts an inner level, and
+          the level you were on waits; <b>&middot;</b> it continues the level;
+          <b>)</b> the inner level has ended and this item is back on the one
+          above &mdash; so it is compared with an item from before the whole inner
+          episode. An item that opens a level has nothing to compare with and asks
+          nothing. Depth is the most levels that can be waiting at once.</div>
+        <div class="hint">What it asks that N-back does not: holding something
+          <em>pending</em> across an episode you then have to drop. The lures are the
+          item you just left behind and the levels still waiting. Replaces N, and
+          turns off meta-relations, the gate, variable N and the retro-cue while it
+          is on.</div>
+        <div class="hint" id="nestHintF"></div>
       </div>
       <div class="setting-group">
         <label>Gate closing (compare-only trials)</label>
@@ -757,7 +784,7 @@
 <div class="hud">
   <div class="mode-name" id="hudMode">—</div>
   <div class="row"><b id="hudRC">first-order</b><span id="hudRCName">direction of the move</span></div>
-  <div class="row"><span>N</span><b id="hudN">1</b><span>·</span><span id="hudSpinLabel">still</span><span>·</span><span>trial</span><b id="hudTrial">0/20</b></div>
+  <div class="row"><span id="hudNLabel">N</span><b id="hudN">1</b><span>·</span><span id="hudSpinLabel">still</span><span>·</span><span>trial</span><b id="hudTrial">0/20</b></div>
   <div class="row"><span>block</span><b id="hudAcc">—</b></div>
   <div class="row" id="hudPriority" style="display:none"></div>
   <div class="row"><span>today</span><b id="hudToday">0m</b><span id="hudGoal"></span></div>

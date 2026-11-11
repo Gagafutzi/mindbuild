@@ -127,6 +127,7 @@ const cfg = {
   gate: 0,            // fraction of compare-only (gate-closed) trials
   retro: 0,           // 0 = off, else how many lags the post-cue can name
   varN: 0,            // 0 = fixed N, else the ± spread the per-trial lag is drawn in
+  nest: 0,            // 0 = the queue, else how many levels may be suspended at once
   varPriority: true,  // cue one stream to prioritise per block
   fixedGlyphMap: false,   // live rule; Progression forces it off, see applyProgression
   glyphRel: 'map',        // relational glyphs: 'map' (set map + rank) or 'rank' (rank only)
@@ -158,7 +159,7 @@ const freeCfg = {
      the ladder, where it is earned rather than chosen. */
   toneCount: TONE_DEFAULT,
   spin: 60, frame: 'cube', interval: 2500, blockLength: 20, feedback: 'reveal',
-  lureRate: 0.20, meta: false, gate: 0, retro: 0, varN: 0,
+  lureRate: 0.20, meta: false, gate: 0, retro: 0, varN: 0, nest: 0,
   /* varPriority was missing here while cfg defaulted it on, so Free Play silently
      ran without the cue that progression uses. */
   varPriority: true, fixedGlyphMap: false, glyphRel: 'map', singleAxis: false,
@@ -197,6 +198,23 @@ let prog = { streamCount: 1, n: 1, spinLevel: 0, interval: 5000, lureRate: 0.20,
    load, and editing one used to silently edit the other. */
 let rcTier = 3;
 const tiers = {};
+
+/*
+ * The nested track starts with a higher target than it would inherit.
+ *
+ * Most of a nested block is returns to the innermost suspended level, which a
+ * player holding one item gets right however deep the stream goes. Simulated,
+ * that player scores about 68% at depth two and one holding two scores about
+ * 82% at depth three — so at the usual 70% a rung would clear on a level less
+ * than it claims to ask for. At 85% it does not, up to depth three. It is a
+ * floor on the inherited value, never a cap: a higher target somebody already
+ * runs at is kept.
+ */
+const NEST_TARGET = 0.85;
+function nestTune(rc, t) {
+  if (rc === NEST_TIER) t.targetAccuracy = Math.max(NEST_TARGET, t.targetAccuracy || 0);
+  return t;
+}
 function tierState(rc) {
   return tiers[rc] || (tiers[rc] = {
     prog: { streamCount: 1, n: 1, spinLevel: 0, interval: 5000, lureRate: 0.20,
@@ -205,7 +223,7 @@ function tierState(rc) {
     /* A tier first visited mid-session inherits the settings you are already using,
        so the first switch carries your speeds across instead of dropping you on the
        factory defaults. They diverge from there. */
-    tune: { ...tune },
+    tune: nestTune(rc, { ...tune }),
   });
 }
 function switchTier(rc) {

@@ -260,7 +260,7 @@ function progressHTML() {
   let speed = '';
   if (prog3.length >= 2) {
     const tiers = [...new Set(prog3.map(b => b.rcTier || 3))].sort();
-    const COLOR = { 3: '#4dabf7', 4: '#cc5de8' };
+    const COLOR = { 1: '#51cf66', 3: '#4dabf7', 4: '#cc5de8' };
     const series = [], n = prog3.length;
     tiers.forEach(t => {
       const ys = prog3.map(b => (b.rcTier || 3) === t ? (b.cfg && b.cfg.interval) : null);
