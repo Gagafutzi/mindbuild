@@ -44,8 +44,8 @@ function cells(dim) {
 }
 
 /* A stream of `length` trials at this depth, with position as the only stream. */
-function stream({ depth, mode = 'identity', length = 60000, lureRate = 0.2 }) {
-  const cfg = { n: 1, nest: depth, meta: false, lureRate, varN: 0, retro: 0, gate: 0,
+function stream({ depth, width = 1, mode = 'identity', length = 60000, lureRate = 0.2 }) {
+  const cfg = { n: 1, nest: depth, nestWidth: width, meta: false, lureRate, varN: 0, retro: 0, gate: 0,
                 magnitudeCap: 2, coordAxes: [], streams: { position: mode } };
   const state = { cells: cells(3), chain: [], metaDrawn: null, nest: null };
   const POOL = [0, 0, 0];
@@ -76,14 +76,17 @@ function stream({ depth, mode = 'identity', length = 60000, lureRate = 0.2 }) {
  * mean what the settings page says they mean.
  */
 function replay(trials, visit) {
-  let stack = [], anchor = null;
+  /* A level is its current branch's last item and, at width 2, its side's. */
+  let stack = [], anchor = null, side = null;
   trials.forEach(t => {
-    if (t.nest === 'first') { stack = []; anchor = null; }
+    if (t.nest === 'first') { stack = []; anchor = null; side = null; }
     let partner = null, closed = null;
-    if (t.nest === 'in') stack.push(anchor);
+    if (t.nest === 'in') { stack.push({ anchor, side }); side = null; }
     else if (t.nest === 'stay') partner = anchor;
-    else if (t.nest === 'out') { closed = anchor; partner = stack.pop(); }
-    visit(t, partner, { closed, pending: stack.slice(), prev: anchor });
+    else if (t.nest === 'out') { closed = anchor; const l = stack.pop(); partner = l.anchor; side = l.side; }
+    else if (t.nest === 'switch') { closed = anchor; partner = side; side = anchor; }
+    visit(t, partner, { closed, pending: stack.map(l => l.anchor), sides: [side, ...stack.map(l => l.side)].filter(x => x),
+                        prev: anchor, side });
     anchor = t;
   });
 }
@@ -240,6 +243,103 @@ ok('the stream unwinds several levels in a row', table[3].deep > 0.35, pct(table
 ok('a target of 85% is out of reach one level short, up to depth three',
    table[2].h[0] < 0.85 && table[3].h[1] < 0.85,
    `depth 2 holding 1: ${pct(table[2].h[0])}, depth 3 holding 2: ${pct(table[3].h[1])}`);
+
+/* ------------------------------------------------------------------ *
+ * Width: a side branch per level                                      *
+ * ------------------------------------------------------------------ */
+console.log('\na side branch per level\n');
+for (const depth of [1, 3]) {
+  const s = stream({ depth, width: 2 });
+  let wrongPartner = 0, switches = 0, openSwitch = 0, openWithPartner = 0, judged = 0, tooDeep = 0;
+  replay(s, (t, partner, ctx) => {
+    if (t.partner !== partner) wrongPartner++;
+    if (partner) judged++;
+    if (ctx.pending.length > depth) tooDeep++;
+    if (t.nest === 'switch') { switches++; if (!partner) { openSwitch++; if (t.partner) openWithPartner++; } }
+  });
+  ok(`width 2, depth ${depth}: every partner is the last item of the item's own branch`,
+     wrongPartner === 0, `${wrongPartner} judged against something else`);
+  ok(`width 2, depth ${depth}: a switch onto an empty branch asks nothing`, openWithPartner === 0);
+  ok(`width 2, depth ${depth}: switches come up, and most return to a waiting branch`,
+     switches / s.length > 0.12 && openSwitch / switches < 0.6,
+     `${pct(switches / s.length)} switches, ${pct(openSwitch / switches)} of them onto an empty branch`);
+  ok(`width 2, depth ${depth}: never more than ${depth} levels suspended`, tooDeep === 0);
+}
+{
+  /* A switch is sideways, not a step: a run of dives (or climbs) carries on
+     through it. Were the switch to reset the run, a branch would cut every dive
+     short and depth would come up less often at width 2 than at width 1. */
+  const s = stream({ depth: 3, width: 2 });
+  const rate = (across) => {
+    let runs = 0, kept = 0;
+    for (let i = 2; i < s.length; i++) {
+      if (i % 40 < 2) continue;
+      const before = across ? s[i - 2].nest : s[i - 1].nest;
+      if (across && s[i - 1].nest !== 'switch') continue;
+      if (!across && s[i - 1].nest === 'switch') continue;
+      if (before !== 'in' || s[i].nest === 'switch') continue;
+      runs++; if (s[i].nest === 'in') kept++;
+    }
+    return kept / runs;
+  };
+  const direct = rate(false), through = rate(true);
+  ok('width 2: a run of dives carries on through a switch', Math.abs(direct - through) < 0.08,
+     `${pct(direct)} dive again straight after a dive, ${pct(through)} after a dive and a switch`);
+}
+{
+  /* A switch is lured with the branch just left: answering it as a stay. */
+  const s = stream({ depth: 2, width: 2, lureRate: 0.3 });
+  let lured = 0, returns = 0, lureMatch = 0;
+  replay(s, (t, partner, ctx) => {
+    if (t.nest !== 'switch' || !partner) return;
+    returns++;
+    const m = partner.cellIdx === t.cellIdx;
+    if (!m && ctx.closed && ctx.closed.cellIdx === t.cellIdx) lured++;
+    if (t.isLure && m) lureMatch++;
+  });
+  ok('a switch is lured with the branch just left', lured / returns > 0.08, pct(lured / returns));
+  ok('and a lure is never a match', lureMatch === 0, `${lureMatch} were`);
+}
+{
+  /* The side branch is load. A player who keeps the levels but never the side
+     branch (says "no" to every switch) loses; one who holds it all is perfect;
+     the two shortcuts still score nothing. */
+  const fullW = () => {
+    let st = [], anchor = null, side = null;
+    return { say(t) {
+      let said = false;
+      if (t.nest === 'first') { st = []; side = null; }
+      else if (t.nest === 'in') { st.push({ anchor, side }); side = null; }
+      else if (t.nest === 'out') { const l = st.pop(); said = !!l.anchor && l.anchor.cellIdx === t.cellIdx; side = l.side; }
+      else if (t.nest === 'switch') { said = !!side && side.cellIdx === t.cellIdx; side = anchor; }
+      else said = !!anchor && anchor.cellIdx === t.cellIdx;
+      anchor = t; return said;
+    } };
+  };
+  const noSide = () => {
+    let st = [], anchor = null;
+    return { say(t) {
+      let said = false;
+      if (t.nest === 'first') st = [];
+      else if (t.nest === 'in') st.push(anchor);
+      else if (t.nest === 'out') { const p = st.pop(); said = !!p && p.cellIdx === t.cellIdx; }
+      else if (t.nest === 'stay') said = !!anchor && anchor.cellIdx === t.cellIdx;
+      anchor = t; return said;
+    } };
+  };
+  for (const depth of [1, 2]) {
+    const s = stream({ depth, width: 2, length: 120000 });
+    const full = score(s, fullW), side = score(s, noSide), one = score(s, oneBack), none = score(s, noLevels);
+    console.log(`   width 2, depth ${depth}: holds it all ${pct(full)} | no side branch ${pct(side)} | plain 1-back ${pct(one)} | no levels ${pct(none)}`);
+    ok(`width 2, depth ${depth}: holding every branch is perfect`, full > 0.999, pct(full));
+    ok(`width 2, depth ${depth}: dropping the side branch costs`, side < 0.80, pct(side));
+    ok(`width 2, depth ${depth}: the shortcuts still score nothing`, one < 0.08 && none < 0.08, `${pct(one)} / ${pct(none)}`);
+  }
+  /* Width must not undo depth: at width 2 a player holding one suspended level
+     still loses at depth two. */
+  const s2 = stream({ depth: 2, width: 2, length: 120000 });
+  ok('width 2 still makes depth cost', score(s2, () => holds(1)) < 0.75, pct(score(s2, () => holds(1))));
+}
 
 console.log(bad ? `\n${bad} FAILED` : '\nall checks passed');
 process.exit(bad ? 1 : 0);

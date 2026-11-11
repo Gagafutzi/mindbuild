@@ -33,7 +33,7 @@ function updateHUD() {
   /* Under nested levels the lag is always one and says nothing; the number that
      matters is how many levels may be suspended, so the HUD names that instead. */
   $('hudNLabel').textContent = cfg.nest ? 'Depth' : 'N';
-  $('hudN').textContent = cfg.nest ? cfg.nest : cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
+  $('hudN').textContent = cfg.nest ? cfg.nest + (nestWidth() > 1 ? ' × 2' : '') : cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
   $('hudSpinLabel').textContent = spinLabel();
   renderPriorityCue();
   $('hudTrial').textContent = `${state.scored}/${cfg.blockLength}`;
@@ -131,6 +131,7 @@ function nestLine() {
   return `<p style="text-align:center;margin:8px 0 0;font-size:12px">
     Returns <b>${pc(nt.out)}</b> <span style="opacity:.6">(${nt.out[0]}/${nt.out[1]})</span> ·
     stays <b>${pc(nt.stay)}</b> <span style="opacity:.6">(${nt.stay[0]}/${nt.stay[1]})</span>
+    ${nt.switch && nt.switch[1] ? `· switches <b>${pc(nt.switch)}</b> <span style="opacity:.6">(${nt.switch[0]}/${nt.switch[1]})</span>` : ''}
     <span style="opacity:.6">— items answered exactly right</span></p>`;
 }
 

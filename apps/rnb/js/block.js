@@ -252,6 +252,7 @@ function blockRecord(completed, scored) {
       /* Depth of nesting, or 0 for the queue: with it on, `n` is not a lag at
          all, and a block read without this would look like 1-back. */
       nest: nestDepth(cfg),
+      nestWidth: nestWidth(cfg),
       /* One-axis moves only: no oblique relation can come up, so it is a
          different quaternary block from one with diagonals. */
       singleAxis: !!cfg.singleAxis,
@@ -481,6 +482,8 @@ function computeLoad() {
    * simply falls off the end.
    */
   load += 12 * nestDepth(cfg);
+  /* A side branch per level is one more live item at every level and the top. */
+  if (nestWidth(cfg) > 1) load += 8 * (nestDepth(cfg) + 1);
   /* A varying lag costs more than its mean depth: the pairing cannot be maintained
      as a rehearsal loop, so the whole recent window has to stay addressable and the
      cue has to be read and applied inside the interval. Scaled with N because the
@@ -676,6 +679,7 @@ function applyProgression() {
        an item is compared with the last one of its own level (see NEST_TIER). */
     n: nestedTier() ? 1 : prog.n,
     nest: nestedTier() ? Math.min(NEST_MAX, prog.n) : 0,
+    nestWidth: nestedTier() && progCfg.nestWidth >= 2 ? 2 : 1,
     interval: prog.interval,
     lureRate: prog.lureRate,
     feedback: progCfg.feedback,
@@ -750,6 +754,7 @@ function applyFree() {
     streams: { ...freeCfg.streams },
     n: nest ? 1 : freeCfg.n,
     nest,
+    nestWidth: nest && freeCfg.nestWidth >= 2 ? 2 : 1,
     interval: freeCfg.interval,
     lureRate: freeCfg.lureRate,
     feedback: freeCfg.feedback,

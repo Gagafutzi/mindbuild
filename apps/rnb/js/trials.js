@@ -210,6 +210,7 @@ function showLagCue(t) {
   el.classList.toggle('nest-in', t.nest === 'in');
   el.classList.toggle('nest-out', t.nest === 'out');
   el.classList.toggle('nest-stay', t.nest === 'stay');
+  el.classList.toggle('nest-switch', t.nest === 'switch');
   if (!mark && (!cfg.varN || t.n == null)) { el.classList.remove('show'); return; }
   el.textContent = mark || t.n;
   el.classList.remove('show');

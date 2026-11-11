@@ -232,7 +232,7 @@ function renderLadderState() {
   $('rcTier').value = String(rcTier);
   $('rcHint').textContent =
     nestedTier()
-      ? 'Nested reports which way each move went, like first-order, but against the last item of its own level instead of the one N back. The stream opens and closes levels, marked ( to go in, \u00b7 to stay and ) to come out; on the way out the item is compared with one from before the whole inner episode. The ladder\u2019s N digit is the depth here: how many levels can be waiting at once. Its own ladder, staircase and targets, and a higher target than the other tracks, because most returns are to the nearest level and a lower one would clear a depth you were not holding.'
+      ? 'Nested reports which way each move went, like first-order, but against the last item of its own level instead of the one N back. The stream opens and closes levels, marked ( to go in, \u00b7 to stay and ) to come out; on the way out the item is compared with one from before the whole inner episode. With two branches per level a fourth mark, |, switches to the level\u2019s other branch. The ladder\u2019s N digit is the depth here: how many levels can be waiting at once. Its own ladder, staircase and targets, and a higher target than the other tracks, because most returns are to the nearest level and a lower one would clear a depth you were not holding.'
     : rcTier >= 5
       ? 'Two frames asks the second-order relation twice — once against the cube, once against the screen — and a turning cube is what stops the second answer being the first one copied out. Rotation never switches off on this tier. Two judgements held at once, not a deeper one.'
     : rcTier >= 4
@@ -427,6 +427,10 @@ function syncSettingsUI() {
      and come back when nesting goes off. */
   const nestF = nestDepth(freeCfg);
   $('nestDepthF').value = String(nestF);
+  $('nestWidthF').value = String(freeCfg.nestWidth >= 2 ? 2 : 1);
+  $('nestWidthF').disabled = !nestF;
+  $('progNestWidth').value = String(progCfg.nestWidth >= 2 ? 2 : 1);
+  $('progNestWidthRow').style.display = nestedTier() ? '' : 'none';
   $('nestHintF').textContent = nestF
     ? `On at depth ${nestF}. N, meta-relations, the gate, variable N and the retro-cue ` +
       `are set aside until it is off.`

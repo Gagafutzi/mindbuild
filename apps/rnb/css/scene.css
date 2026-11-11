@@ -365,3 +365,5 @@
    help rather than the only signal. */
 .lag-ghost.nest-in  { color: rgba(77, 171, 247, .62); }
 .lag-ghost.nest-out { color: rgba(255, 146, 43, .66); }
+/* The side-branch switch: a third hue, and a bar rather than a bracket. */
+.lag-ghost.nest-switch { color: rgba(105, 219, 124, .66); }

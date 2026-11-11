@@ -294,8 +294,9 @@ function applyInterval(snap, sign) {
      of the item answered exactly). Signed like the rest, so a late press that
      reopens the interval takes its count back out before putting it in again. */
   const tr = snap.trial_;
-  if (tr && (tr.nest === 'out' || tr.nest === 'stay') && judgments.length) {
-    const nt = state.nestTally || (state.nestTally = { out: [0, 0], stay: [0, 0] });
+  if (tr && (tr.nest === 'out' || tr.nest === 'stay' || tr.nest === 'switch') && judgments.length) {
+    const nt = state.nestTally || (state.nestTally = { out: [0, 0], stay: [0, 0], switch: [0, 0] });
+    if (!nt.switch) nt.switch = [0, 0];
     const exact = judgments.every(j =>
       j.options.every(o => j.correct.includes(o) === presses.has(o)));
     nt[tr.nest][1] += sign;
@@ -393,7 +394,7 @@ function chanceKey(stream) {
        levels existed is still the key its configuration looks itself up under.
        Depth is part of it: the deeper the stream, the more of the judged items
        are returns, and the lures a return can carry are not the ones a stay can. */
-    (nestDepth(c) ? '/nest' + nestDepth(c) : '');
+    (nestDepth(c) ? '/nest' + nestDepth(c) + (nestWidth(c) > 1 ? 'w' + nestWidth(c) : '') : '');
 }
 
 function chanceOf(t) {

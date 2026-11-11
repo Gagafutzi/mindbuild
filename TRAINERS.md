@@ -105,6 +105,15 @@ suspended item scored 95% at any depth. As built, that player scores about 68%
 at depth two and 57% at three, and plain 1-back scores nothing
 (`apps/rnb/tools/nest-check.js`). The track's target starts at 85% for the
 same reason, and a block reports returns and stays apart.
+Width is a second dial on top of depth: at two, every level has a side
+branch, reached by a fourth mark, `|`, that switches to the other branch where
+you are. The item is judged against the last item of the branch that was
+waiting, and the branch you left waits in its place. Going in suspends both
+of the level's branches, and coming out returns to the one you were on. This
+is the smallest form of Koechlin's branching that needs no names for the
+branches. Simulated, a player who never holds the side branch scores about
+70% at depth one and 78% at two, and depth still costs at width two
+(`apps/rnb/tools/nest-check.js`).
 
 ### Precision N-back
 **Task.** N-back with a tighter response window. (Chimera Hub calls it Threshold

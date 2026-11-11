@@ -368,7 +368,12 @@ const nestDepth = c => Math.max(0, Math.min(NEST_MAX, Math.round((c || cfg).nest
    is a direction, in a task whose answers are directions, lying along the very
    axis the North arm runs up. A bracket opens and closes a level, which is what
    is being said, and points nowhere on the cube. */
-const NEST_MARK = { in: '(', out: ')', stay: '\u00b7', first: '' };
+const NEST_MARK = { in: '(', out: ')', stay: '\u00b7', switch: '|', first: '' };
+
+/* Branches per level: 1, the line, or 2, a side branch each, reached by the
+   fourth mark, a bar, which says "the other branch, here". Not a direction
+   either, like the brackets. See the sampler, model.js. */
+const nestWidth = c => (nestDepth(c) && ((c || cfg).nestWidth | 0) >= 2 ? 2 : 1);
 
 function relationalComplexity(c) {
   c = c || cfg;

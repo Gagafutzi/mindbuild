@@ -356,8 +356,38 @@ function createSampler(env) {
    */
   const NEST_RUN = env.NEST_RUN ?? 0.78;     // chance of keeping the direction
   const NEST_STAY = env.NEST_STAY ?? 0.12;   // chance of staying on the level
+  /*
+   * WIDTH: a side branch per level.
+   *
+   * At width 2 every level has two branches, and a fourth mark switches to the
+   * other one where you are: the item is judged against the last item of the
+   * branch that was waiting, and the branch just left waits in its place. Two
+   * branches need no names, so the mark is enough to address the return. The
+   * first switch on a level opens its side branch empty and asks nothing, as an
+   * opening bracket does. Going in suspends the level with both its branches;
+   * coming out returns to whichever branch it was on, the other still waiting.
+   *
+   * So at depth 1 there are already three live items (the current branch, its
+   * side and the suspended level), past where Charron & Koechlin (2010) found
+   * people acting as if one had been forgotten. Depth stays the first dial;
+   * width is a second one on top of it.
+   *
+   * A switch does not interrupt a run of dives or climbs (`last` keeps the
+   * direction), so the stream still unwinds several levels in a row and depth
+   * still costs (tools/nest-check.js).
+   */
+  /* A switch back to a waiting branch is the point; one that opens an empty
+     branch asks nothing, and since new levels start without one, an even rate
+     spent most switches opening branches. So it is likelier where a branch waits.
+     0.40 is set by what forgetting the side branch costs: at 0.30 a player who
+     never holds it still scored 84%, a hair under the 85% target, so the branch
+     was optional; at 0.40 it falls to about 70-78%. */
+  const NEST_SWITCH = env.NEST_SWITCH ?? 0.40;        // chance of a switch where a side branch waits
+  const NEST_SWITCH_OPEN = env.NEST_SWITCH_OPEN ?? 0.12;  // and where the level has none yet
   const nestOn = () => (cfg.nest | 0) > 0;
-  const nestState = () => state.nest || (state.nest = { stack: [], anchor: null, last: 'stay' });
+  const nestWidth = () => ((cfg.nestWidth | 0) >= 2 ? 2 : 1);
+  const nestState = () => state.nest ||
+    (state.nest = { stack: [], sides: [], anchor: null, side: null, last: 'stay' });
 
   /* What the next item is to be, decided before it is drawn so that targets and
      lures can be planted against the right partner — the same reason the lag is
@@ -366,6 +396,10 @@ function createSampler(env) {
     const s = nestState(), d = s.stack.length;
     /* A block's first item opens the outermost level and has nothing before it. */
     if (!s.anchor) return { tag: 'first', partner: null, lureA: null, lureB: null };
+    /* The side branch: the branch just left is the lure (not switching), and
+       so is the level waiting below (switching levels instead of branches). */
+    if (nestWidth() >= 2 && Math.random() < (s.side ? NEST_SWITCH : NEST_SWITCH_OPEN))
+      return { tag: 'switch', partner: s.side, lureA: s.anchor, lureB: s.stack[d - 1] || null };
     const canIn = d < (cfg.nest | 0), canOut = d > 0;
     const turn = 1 - NEST_RUN - NEST_STAY, even = (1 - NEST_STAY) / 2;
     let wIn  = s.last === 'in'  ? NEST_RUN : s.last === 'out' ? turn : even;
@@ -390,19 +424,23 @@ function createSampler(env) {
      * On `stay` they are the suspended items: something still pending showing
      * up on the current level, where it is not a match.
      */
+    /* With a side branch, its waiting item is the second lure on a stay, and on
+       a return the other branch of the level returned to: the wrong branch. */
     if (tag === 'stay')
-      return { tag, partner: s.anchor, lureA: s.stack[d - 1] || null, lureB: s.stack[d - 2] || null };
-    return { tag, partner: s.stack[d - 1], lureA: s.anchor, lureB: s.stack[d - 2] || null };
+      return { tag, partner: s.anchor, lureA: s.stack[d - 1] || null, lureB: s.side || s.stack[d - 2] || null };
+    return { tag, partner: s.stack[d - 1], lureA: s.anchor, lureB: s.sides[d - 1] || s.stack[d - 2] || null };
   }
 
   /* Every item becomes the last item of its level, whatever it was judged
      against, so a lost thread mends itself the next time that level is seen. */
   function nestCommit(plan, t) {
     const s = nestState();
-    if (plan.tag === 'in') s.stack.push(s.anchor);
-    else if (plan.tag === 'out') s.stack.pop();
+    if (plan.tag === 'in') { s.stack.push(s.anchor); s.sides.push(s.side); s.side = null; }
+    else if (plan.tag === 'out') { s.stack.pop(); s.side = s.sides.pop() || null; }
+    else if (plan.tag === 'switch') s.side = s.anchor;
     s.anchor = t;
-    s.last = plan.tag === 'first' ? 'stay' : plan.tag;
+    /* A switch keeps the run going: it moves sideways, not up or down. */
+    if (plan.tag !== 'switch') s.last = plan.tag === 'first' ? 'stay' : plan.tag;
     t.nest = plan.tag;
     t.depth = s.stack.length;          // levels suspended while this item is up
     t.partner = plan.partner;
@@ -448,7 +486,8 @@ function createSampler(env) {
        the cell just left IS the lure (see `nestPlan`). */
     const prev = nest ? nestState().anchor : backAt(1);
     const noRepeat = nest
-      ? (prev && (nest.tag === 'in' || (nest.tag === 'out' && rel('position'))) ? prev.cellIdx : null)
+      ? (prev && (nest.tag === 'in' || ((nest.tag === 'out' || nest.tag === 'switch') && rel('position'))
+          || (nest.tag === 'switch' && !nest.partner)) ? prev.cellIdx : null)
       : (prev && n > 1 ? prev.cellIdx : null);
     /* Set by the meta branch when it picks the axis as well as the cell. */
     let metaMove = null;
@@ -630,7 +669,7 @@ function createSampler(env) {
   return {
     randInt, pick, randExcept, sampleIndex, backAt, maxLag, trialLag,
     cardinalNeighbours, pickMetaMove, pickMetaType, sampleTrial,
-    nestPlan, nestCommit, NEST_RUN, NEST_STAY,
+    nestPlan, nestCommit, NEST_RUN, NEST_STAY, NEST_SWITCH, NEST_SWITCH_OPEN,
     moveVectorOf, metaRelationOf,
   };
 }

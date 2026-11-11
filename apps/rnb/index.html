@@ -62,6 +62,20 @@
         it was before moves could combine axes: the relation to the previous move is
         always same, opposite or orthogonal, and there are no diagonals or oblique
         moves to work out.</div>
+      <div id="progNestWidthRow">
+        <label>Branches per level</label>
+        <select id="progNestWidth">
+          <option value="1">One — a line of levels</option>
+          <option value="2">Two — a side branch on every level</option>
+        </select>
+        <div class="hint">Nested track. A <b>side branch</b> per level: a fourth mark, <b>|</b>, switches to the
+          other branch where you are, and the item is judged against the last item
+          of the branch that was waiting; the branch you left waits in its place.
+          The first switch on a level opens its side branch and asks nothing. Going
+          in suspends the level with both its branches, and coming out returns to
+          the one you were on. Already three live items at depth 1. A setting next to depth,
+          not a rung: the ladder climbs depth at whichever width you choose.</div>
+      </div>
     </div>
 
     <details class="sect">
@@ -330,6 +344,17 @@
           turns off meta-relations, the gate, variable N and the retro-cue while it
           is on.</div>
         <div class="hint" id="nestHintF"></div>
+        <label>Branches per level</label>
+        <select id="nestWidthF">
+          <option value="1">One — a line of levels</option>
+          <option value="2">Two — a side branch on every level</option>
+        </select>
+        <div class="hint">A <b>side branch</b> per level: a fourth mark, <b>|</b>, switches to the
+          other branch where you are, and the item is judged against the last item
+          of the branch that was waiting; the branch you left waits in its place.
+          The first switch on a level opens its side branch and asks nothing. Going
+          in suspends the level with both its branches, and coming out returns to
+          the one you were on. Already three live items at depth 1.</div>
       </div>
       <div class="setting-group">
         <label>Gate closing (compare-only trials)</label>
