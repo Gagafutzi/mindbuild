@@ -99,3 +99,4 @@
   box-shadow: 0 0 0 1px var(--bad), 0 0 18px -3px rgba(255, 107, 107, .8);
 }
 .rbtn.reveal { box-shadow: inset 0 0 0 2px var(--btn-color, #fff); }
+body.hide-kbd .rbtn .kbd { display: none; }

@@ -360,6 +360,7 @@ $('dailyGoal').oninput = e => {
   renderDailyTimer(); saveProgress();
 };
 $('hideTimer').onchange = e => { cfg.hideTimer = e.target.checked; renderDailyTimer(); saveProgress(); };
+$('hideKeys').onchange = e => { cfg.hideKeys = e.target.checked; document.body.classList.toggle('hide-kbd', cfg.hideKeys); saveProgress(); };
 $('hideAccuracy').onchange = e => { cfg.hideAccuracy = e.target.checked; updateHUD(); saveProgress(); };
 $('moveTraceOn').onchange = e => { cfg.moveTrace = e.target.checked; saveProgress(); };
 $('autoAdvance').onchange = e => { cfg.autoAdvance = +e.target.value || 0; saveProgress(); };

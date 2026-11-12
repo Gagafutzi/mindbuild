@@ -112,6 +112,7 @@ const cfg = {
   /* The running score kept out of the corner: watching it mid-block pulls
      attention onto the number instead of the items. The report still shows it. */
   hideAccuracy: false,
+  hideKeys: false,
   buzzer: false,
   /* A pulse for a wrong answer on a phone. On by default: unlike the buzzer it
      costs nothing to have on, works with the sound off, and on the desktop where
