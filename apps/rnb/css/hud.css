@@ -1,17 +1,21 @@
 /* ---------- HUD ---------- */
 .hud {
   position: fixed; top: 14px; right: 14px; z-index: 10;
-  font-size: 13px; text-align: right; min-width: 210px;
+  font-size: 12px; text-align: right; line-height: 1.45;
 }
-.hud .mode-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-.hud .row { display: flex; justify-content: flex-end; gap: 8px; color: var(--muted); }
+.hud .row { display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; color: var(--muted); }
 .hud .row b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
-.hud .load {
-  margin-top: 6px; font-size: 11px; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--muted);
-}
-.hud .load b { font-size: 19px; color: var(--hi, #8ab4ff); letter-spacing: 0; }
-.speed-wrap { margin-top: 8px; }
+/* Mode and load share the first line; they were three lines between them. */
+.hud .hud-top { gap: 10px; margin-bottom: 1px; }
+.hud .mode-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.hud .load { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.hud .load b { font-size: 15px; color: var(--hi, #8ab4ff); letter-spacing: 0; }
+.hud .spin, .hud .acc { display: inline-flex; gap: 6px; }
+/* What the tier asks is for reading between blocks; mid-block you already know
+   it, and on the nested track it was the widest line in the corner. */
+.hud .desc { font-size: 11px; max-width: 260px; }
+body.running .hud .desc { display: none; }
+.speed-wrap { margin-top: 5px; }
 .speed-labels {
   display: flex; justify-content: space-between; font-size: 10px; color: var(--muted);
   margin-bottom: 3px; font-variant-numeric: tabular-nums;
@@ -24,6 +28,7 @@
   display: block; height: 100%; width: 0%; transition: width .35s;
   background: linear-gradient(90deg, var(--accent, #4d7fd6), var(--hi, #8ab4ff));
 }
-.hud .next { margin-top: 6px; font-size: 11px; color: var(--muted); max-width: 240px; }
+.hud .next { margin-top: 4px; font-size: 11px; color: var(--muted); max-width: 240px; }
 .hud .next b { color: var(--hi, #8ab4ff); font-weight: 600; }
 
+body.running .hud .next { display: none; }

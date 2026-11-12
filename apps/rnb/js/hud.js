@@ -35,11 +35,14 @@ function updateHUD() {
   $('hudNLabel').textContent = cfg.nest ? 'Depth' : 'N';
   $('hudN').textContent = cfg.nest ? cfg.nest + (nestWidth() > 1 ? ' × 2' : '') : cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
   $('hudSpinLabel').textContent = spinLabel();
+  /* Only what differs from the default earns a place: "still" is the default. */
+  $('hudSpinWrap').style.display = cfg.rotation ? '' : 'none';
   renderPriorityCue();
   $('hudTrial').textContent = `${state.scored}/${cfg.blockLength}`;
   $('hudLoad').textContent = computeLoad();
   $('hudAcc').textContent = Object.keys(state.tally).length
     ? Math.round(blockScore() * 100) + '%' : '—';
+  $('hudAccWrap').style.display = cfg.hideAccuracy ? 'none' : '';
 
   if (isProg) {
     $('speedWrap').style.display = '';

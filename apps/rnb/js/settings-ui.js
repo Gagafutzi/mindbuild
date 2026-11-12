@@ -455,6 +455,7 @@ function syncSettingsUI() {
   $('layoutHint').textContent = LAYOUT_HINT[cfg.layout] || '';
   $('dailyGoal').value = cfg.dailyGoal || 0;
   $('hideTimer').checked = !!cfg.hideTimer;
+  $('hideAccuracy').checked = !!cfg.hideAccuracy;
   $('buzzer').checked = !!cfg.buzzer;
   $('haptics').checked = !!cfg.haptics;
   $('moveTraceOn').checked = !!cfg.moveTrace;

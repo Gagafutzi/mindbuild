@@ -611,6 +611,12 @@
         rather than wait. Has no effect while the goal is 0.</div>
     </div>
     <div class="setting-group">
+      <label><input type="checkbox" id="hideAccuracy" style="width:auto"> Hide the block
+        score while playing</label>
+      <div class="hint">No running percentage in the corner. The score is still kept and
+        still moves you up or down; you see it in the report when the block ends.</div>
+    </div>
+    <div class="setting-group">
       <label>Auto-advance to the next block</label>
       <select id="autoAdvance">
         <option value="0">Off — wait for me</option>
@@ -807,13 +813,11 @@
 </aside>
 
 <div class="hud">
-  <div class="mode-name" id="hudMode">—</div>
-  <div class="row"><b id="hudRC">first-order</b><span id="hudRCName">direction of the move</span></div>
-  <div class="row"><span id="hudNLabel">N</span><b id="hudN">1</b><span>·</span><span id="hudSpinLabel">still</span><span>·</span><span>trial</span><b id="hudTrial">0/20</b></div>
-  <div class="row"><span>block</span><b id="hudAcc">—</b></div>
+  <div class="row hud-top"><span class="mode-name" id="hudMode">—</span><span class="load">Load <b id="hudLoad">0</b></span></div>
+  <div class="row"><b id="hudRC">first-order</b><span>·</span><span id="hudNLabel">N</span><b id="hudN">1</b><span class="spin" id="hudSpinWrap">·<span id="hudSpinLabel">still</span></span><span>·</span><b id="hudTrial">0/20</b></div>
+  <div class="row desc" id="hudRCName">direction of the move</div>
+  <div class="row"><span class="acc" id="hudAccWrap">block <b id="hudAcc">—</b> ·</span><span>today</span><b id="hudToday">0m</b><span id="hudGoal"></span></div>
   <div class="row" id="hudPriority" style="display:none"></div>
-  <div class="row"><span>today</span><b id="hudToday">0m</b><span id="hudGoal"></span></div>
-  <div class="load">Load <b id="hudLoad">0</b></div>
   <div class="speed-wrap" id="speedWrap">
     <div class="speed-labels"><span id="speedNow">5.00s</span><span id="speedGoal">→ 3.00s</span></div>
     <div class="progress-track"><span class="progress-fill" id="hudProgress"></span></div>

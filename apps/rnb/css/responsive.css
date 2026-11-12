@@ -51,9 +51,8 @@
     display: flex; flex-wrap: wrap; justify-content: flex-end;
     align-items: baseline; column-gap: 11px; row-gap: 2px;
   }
-  .hud .mode-name { font-size: 12.5px; margin: 0; }
+  .hud .mode-name { font-size: 12.5px; }
   .hud .row { gap: 5px; }
-  .hud .load { margin: 0; display: flex; align-items: baseline; gap: 5px; }
   .hud .load b { font-size: 14px; }
   .speed-wrap { width: 100%; margin: 3px 0 0; }
   .hud .next { width: 100%; max-width: none; font-size: 10px; line-height: 1.4; }
