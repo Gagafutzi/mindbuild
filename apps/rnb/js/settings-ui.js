@@ -456,8 +456,8 @@ function syncSettingsUI() {
   $('dailyGoal').value = cfg.dailyGoal || 0;
   $('hideTimer').checked = !!cfg.hideTimer;
   $('hideAccuracy').checked = !!cfg.hideAccuracy;
-  $('hideKeys').checked = !!cfg.hideKeys;
-  document.body.classList.toggle('hide-kbd', !!cfg.hideKeys);
+  $('hideDock').checked = !!cfg.hideDock;
+  document.body.classList.toggle('hide-dock', !!cfg.hideDock);
   $('buzzer').checked = !!cfg.buzzer;
   $('haptics').checked = !!cfg.haptics;
   $('moveTraceOn').checked = !!cfg.moveTrace;
