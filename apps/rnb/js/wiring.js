@@ -362,7 +362,8 @@ $('dailyGoal').oninput = e => {
   renderDailyTimer(); saveProgress();
 };
 $('hideTimer').onchange = e => { cfg.hideTimer = e.target.checked; renderDailyTimer(); saveProgress(); };
-$('hideDock').onchange = e => { cfg.hideDock = e.target.checked; document.body.classList.toggle('hide-dock', cfg.hideDock); saveProgress(); };
+$('controlsMode').onchange = e => { cfg.controls = e.target.value; applyControlsMode(); saveProgress(); };
+$('hideHud').onchange = e => { cfg.hideHud = e.target.checked; document.body.classList.toggle('hide-hud', cfg.hideHud); saveProgress(); };
 $('hideAccuracy').onchange = e => { cfg.hideAccuracy = e.target.checked; updateHUD(); saveProgress(); };
 $('moveTraceOn').onchange = e => { cfg.moveTrace = e.target.checked; saveProgress(); };
 $('autoAdvance').onchange = e => { cfg.autoAdvance = +e.target.value || 0; saveProgress(); };
@@ -412,6 +413,8 @@ $('startBtn').onclick = () => {
   else startBlock();
 };
 $('stopBtn').onclick = () => stopBlock(false);
+/* Compact controls: one button, the same two actions by whether a block runs. */
+$('miniRun').onclick = () => (state.running ? $('stopBtn') : $('startBtn')).click();
 
 /* What each shortcut actually does. The guards are the point: Start must not be able
    to restart a block that is already running, and Pause must not fire when there is

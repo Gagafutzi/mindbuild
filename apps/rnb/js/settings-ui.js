@@ -461,8 +461,10 @@ function syncSettingsUI() {
   $('dailyGoal').value = cfg.dailyGoal || 0;
   $('hideTimer').checked = !!cfg.hideTimer;
   $('hideAccuracy').checked = !!cfg.hideAccuracy;
-  $('hideDock').checked = !!cfg.hideDock;
-  document.body.classList.toggle('hide-dock', !!cfg.hideDock);
+  $('controlsMode').value = cfg.controls || 'full';
+  applyControlsMode();
+  $('hideHud').checked = !!cfg.hideHud;
+  document.body.classList.toggle('hide-hud', !!cfg.hideHud);
   $('buzzer').checked = !!cfg.buzzer;
   $('haptics').checked = !!cfg.haptics;
   $('moveTraceOn').checked = !!cfg.moveTrace;
@@ -607,3 +609,10 @@ function importJSON(text) {
   return progress.blocks.length;
 }
 
+
+/* What sits under the cube, as body classes the stylesheet reads. */
+function applyControlsMode() {
+  const m = cfg.controls || 'full';
+  document.body.classList.toggle('hide-dock', m === 'none');
+  document.body.classList.toggle('compact-controls', m === 'compact');
+}

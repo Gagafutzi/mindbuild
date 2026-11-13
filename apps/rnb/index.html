@@ -633,11 +633,25 @@
         rather than wait. Has no effect while the goal is 0.</div>
     </div>
     <div class="setting-group">
-      <label><input type="checkbox" id="hideDock" style="width:auto"> Keyboard only —
-        hide the answer pad and Start / Stop</label>
-      <div class="hint">Nothing under the cube: answer with your keys, start with Enter
-        and stop with Esc (or whatever you have bound them to under Keys). On a touch
-        screen this leaves nothing to tap, so turn it back off here.</div>
+      <label>Controls under the cube</label>
+      <select id="controlsMode">
+        <option value="full">Full — Start, Stop and the Pad switch under the keys</option>
+        <option value="compact">Compact — one small start / stop button beside the keys</option>
+        <option value="none">Keyboard only — no answer keys, no buttons</option>
+      </select>
+      <div class="hint"><b>Compact</b> gives the cube the row the buttons took: one button
+        beside the answer keys starts a block, and stops it while one runs; the keys
+        layout is still under Display. <b>Keyboard only</b> hides everything under the
+        cube: answer with your keys, start with Enter and stop with Esc (or whatever you
+        have bound them to under Keys). On a touch screen that leaves nothing to tap, so
+        turn it back here.</div>
+    </div>
+    <div class="setting-group">
+      <label><input type="checkbox" id="hideHud" style="width:auto"> Hide the stats in
+        the corner</label>
+      <div class="hint">Nothing in the top right: no mode, load, depth, trial count, score,
+        time or speed bar. All of it is still kept, and the report at the end of a
+        block shows it.</div>
     </div>
     <div class="setting-group">
       <label><input type="checkbox" id="hideAccuracy" style="width:auto"> Hide the block
@@ -876,6 +890,8 @@
       <button id="padToggle" class="pad-toggle" type="button" aria-pressed="false"
               title="Answer keys: the compass pad, or one row">Pad<span class="sw" aria-hidden="true"></span></button>
     </div>
+    <button id="miniRun" class="mini-run" type="button" aria-label="Start or stop the block"
+            title="Start / stop"><span class="go" aria-hidden="true">▶</span><span class="halt" aria-hidden="true">■</span></button>
   </div>
 </main>
 

@@ -181,7 +181,10 @@ function loadProgress() {
                      if (p.display.dailyGoal != null) cfg.dailyGoal = p.display.dailyGoal;
                      cfg.hideTimer = !!p.display.hideTimer;
                      cfg.hideAccuracy = !!p.display.hideAccuracy;
-                     cfg.hideDock = !!p.display.hideDock;
+                     /* hideDock was the keyboard-only checkbox before it became a choice. */
+                     cfg.controls = ['full', 'compact', 'none'].includes(p.display.controls)
+                       ? p.display.controls : (p.display.hideDock ? 'none' : 'full');
+                     cfg.hideHud = !!p.display.hideHud;
                      cfg.buzzer = !!p.display.buzzer;
                      if (p.display.haptics != null)
                        cfg.haptics = !!p.display.haptics;
@@ -290,7 +293,7 @@ function saveProgress() {
                        spinPath: cfg.spinPath, voiceSet: cfg.voiceSet,
                        letterVoice: cfg.letterVoice,
                        cubeScale: cfg.cubeScale,
-                       dailyGoal: cfg.dailyGoal, hideTimer: cfg.hideTimer, hideAccuracy: cfg.hideAccuracy, hideDock: cfg.hideDock, buzzer: cfg.buzzer,
+                       dailyGoal: cfg.dailyGoal, hideTimer: cfg.hideTimer, hideAccuracy: cfg.hideAccuracy, controls: cfg.controls, hideHud: cfg.hideHud, buzzer: cfg.buzzer,
                        haptics: cfg.haptics,
                        moveTrace: cfg.moveTrace, autoAdvance: cfg.autoAdvance };
   progress.stair = stairLog ? stairLog.map(v => +v.toFixed(4)) : null;
