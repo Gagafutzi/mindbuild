@@ -114,6 +114,19 @@ is the smallest form of Koechlin's branching that needs no names for the
 branches. Simulated, a player who never holds the side branch scores about
 70% at depth one and 78% at two, and depth still costs at width two
 (`apps/rnb/tools/nest-check.js`).
+Frames are the third dial, and the one that makes the levels depend on each
+other. Without them an outer level only waits; each level is its own 1-back.
+With them, the item that opens a level names an axis (`(N·S`), and inside that
+level a move along it is answered the other way round. The block's first item
+names one for the outermost level. Mirrors stack, the same axis twice reads
+straight, and closing a level drops its own, so every answer depends on the
+whole chain above it, and a return needs to know which axis the closed level
+had mirrored. Simulated, a player who ignores frames scores about 51–57%, one
+who keeps three flip flags without the stack about 50%, and one who holds every
+mirror but one 59–67% (`apps/rnb/tools/frame-check.js`). The nearest research is
+rule remapping inside hierarchical control (Koechlin's cascade, Badre's rule
+hierarchies); nobody has trained this, so the claim is that it loads that, not
+that it transfers.
 
 ### Precision N-back
 **Task.** N-back with a tighter response window. (Chimera Hub calls it Threshold

@@ -367,3 +367,4 @@
 .lag-ghost.nest-out { color: rgba(255, 146, 43, .66); }
 /* The side-branch switch: a third hue, and a bar rather than a bracket. */
 .lag-ghost.nest-switch { color: rgba(105, 219, 124, .66); }
+.lag-ghost .mirror { font-size: .38em; vertical-align: middle; margin-left: .08em; letter-spacing: .02em; }

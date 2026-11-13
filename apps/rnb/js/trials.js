@@ -206,13 +206,22 @@ function showLagCue(t) {
      for THIS item is. There it is which way the nesting just went, and it is
      shown on every item, because the mark is the only thing that says which
      earlier item this one is to be held against. */
+  /* An opener under frames names the axis it mirrors: the only place it is said,
+     so it has to be held from here until the level closes. */
   const mark = t.nest ? NEST_MARK[t.nest] : '';
+  const mirror = t.mirror != null ? MIRROR_NAME[t.mirror] : '';
   el.classList.toggle('nest-in', t.nest === 'in');
   el.classList.toggle('nest-out', t.nest === 'out');
   el.classList.toggle('nest-stay', t.nest === 'stay');
   el.classList.toggle('nest-switch', t.nest === 'switch');
-  if (!mark && (!cfg.varN || t.n == null)) { el.classList.remove('show'); return; }
-  el.textContent = mark || t.n;
+  if (!mark && !mirror && (!cfg.varN || t.n == null)) { el.classList.remove('show'); return; }
+  el.textContent = mark || (mirror ? '' : t.n);
+  /* Smaller than the bracket: at its size the three letters covered the cube. */
+  if (mirror) {
+    const m = document.createElement('span');
+    m.className = 'mirror'; m.textContent = mirror;
+    el.appendChild(m);
+  }
   el.classList.remove('show');
   void el.offsetWidth;                 // reflow, or the animation never replays
   el.classList.add('show');

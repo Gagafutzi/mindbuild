@@ -181,10 +181,18 @@ function buildJudgments(a, b, extra) {
     const raw = [cb.x - ca.x, cb.y - ca.y, cb.z - ca.z];
 
     if (cfg.frame === 'cube' || cfg.frame === 'both') {
-      const v = normalise(raw);
+      /* Nested frames: the item is answered in the frame its levels set, so a
+         mirrored axis is answered the other way round (see the sampler). Marked
+         where the mirror changed the answer, for the report. */
+      const flip = b.flip || [0, 0, 0];
+      const v = normalise(raw).map((x, i) => flip[i] ? -x : x);
+      const before = js.length;
       axisJ('position', v[0], ['east', 'west']);
       axisJ('position', v[1], ['south', 'north']);
       axisJ('position', v[2], ['above', 'below']);
+      if (b.flip) [0, 1, 2].forEach(i => {
+        js[before + i].framed = !!flip[i] && Math.abs(v[i]) > EPS;
+      });
       /*
        * One more independent up/down/neither per coordinate axis, asked exactly
        * as the three cube axes are — never a widening list of options, which is
@@ -303,6 +311,18 @@ function applyInterval(snap, sign) {
     if (exact) nt[tr.nest][0] += sign;
   }
 
+  /* Nested frames: judgments the mirror changed the answer of, apart from the
+     rest. The second figure is plain direction; the first is the frame. */
+  if (tr && tr.flip) {
+    const ft = state.frameTally || (state.frameTally = { framed: [0, 0], plain: [0, 0] });
+    judgments.forEach(j => {
+      if (j.framed == null) return;
+      const exact = j.options.every(o => j.correct.includes(o) === presses.has(o));
+      const row = ft[j.framed ? 'framed' : 'plain'];
+      row[1] += sign; if (exact) row[0] += sign;
+    });
+  }
+
   /* Lure trials get their own tally. Adapting the lure rate on OVERALL accuracy
      would just re-measure what the interval staircase already measures, and the two
      would fight over the same evidence; lure resistance is a separate signal. */
@@ -394,7 +414,8 @@ function chanceKey(stream) {
        levels existed is still the key its configuration looks itself up under.
        Depth is part of it: the deeper the stream, the more of the judged items
        are returns, and the lures a return can carry are not the ones a stay can. */
-    (nestDepth(c) ? '/nest' + nestDepth(c) + (nestWidth(c) > 1 ? 'w' + nestWidth(c) : '') : '');
+    (nestDepth(c) ? '/nest' + nestDepth(c) + (nestWidth(c) > 1 ? 'w' + nestWidth(c) : '') +
+      (nestFrames(c) ? 'f' : '') : '');
 }
 
 function chanceOf(t) {

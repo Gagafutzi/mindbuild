@@ -375,6 +375,17 @@ const NEST_MARK = { in: '(', out: ')', stay: '\u00b7', switch: '|', first: '' };
    either, like the brackets. See the sampler, model.js. */
 const nestWidth = c => (nestDepth(c) && ((c || cfg).nestWidth | 0) >= 2 ? 2 : 1);
 
+/* Frames: each level's opener mirrors an axis, and moves inside are answered in
+   the mirrored frame (see the sampler). Only where a mirror has a meaning: the
+   move's direction, asked at first order. */
+const nestFrames = c => {
+  c = c || cfg;
+  return !!(nestDepth(c) && c.nestFrames && !c.meta && c.streams && c.streams.position === 'relational' &&
+            (c.frame || 'cube') === 'cube');
+};
+/* The axis an opener mirrors, as the mark names it: index 0 x, 1 y, 2 z. */
+const MIRROR_NAME = ['E·W', 'N·S', 'A·B'];
+
 function relationalComplexity(c) {
   c = c || cfg;
   let rc = 0;

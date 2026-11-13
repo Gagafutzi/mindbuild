@@ -118,7 +118,7 @@ function startBlock() {
   state.metaDrawn = null;
   /* The stack of suspended levels and the returns-against-stays tally are the
      block's, like the chain. */
-  state.nest = null; state.nestTally = null;
+  state.nest = null; state.nestTally = null; state.frameTally = null;
   state.presses_log = []; state.stimAt = 0;
   state.tickAt = 0; state.lastSnap = null; clearTimeout(state.buzzTimer);
   state.paused = false; state.interrupted = false; state.ending = false;
@@ -253,6 +253,7 @@ function blockRecord(completed, scored) {
          all, and a block read without this would look like 1-back. */
       nest: nestDepth(cfg),
       nestWidth: nestWidth(cfg),
+      nestFrames: nestFrames(cfg),
       /* One-axis moves only: no oblique relation can come up, so it is a
          different quaternary block from one with diagonals. */
       singleAxis: !!cfg.singleAxis,
@@ -288,6 +289,9 @@ function blockRecord(completed, scored) {
        and this is the only place that shows. */
     ...(state.nestTally ? { nestStats: {
       returns: state.nestTally.out.slice(), stays: state.nestTally.stay.slice() } } : {}),
+    /* Frames: judgments the mirror changed the answer of, and the rest. */
+    ...(state.frameTally ? { frameStats: {
+      framed: state.frameTally.framed.slice(), plain: state.frameTally.plain.slice() } } : {}),
     /* The posterior AFTER this block's observation — endBlock updates the staircase
        before it builds the record. Stored because the posterior is a single evolving
        distribution, not a series: without a stamp per block there is no way to
@@ -484,6 +488,9 @@ function computeLoad() {
   load += 12 * nestDepth(cfg);
   /* A side branch per level is one more live item at every level and the top. */
   if (nestWidth(cfg) > 1) load += 8 * (nestDepth(cfg) + 1);
+  /* Frames: each level holds a mirror as well as an item, and the frame is the
+     composition of all of them, applied to every answer. */
+  if (nestFrames(cfg)) load += 10 * nestDepth(cfg);
   /* A varying lag costs more than its mean depth: the pairing cannot be maintained
      as a rehearsal loop, so the whole recent window has to stay addressable and the
      cue has to be read and applied inside the interval. Scaled with N because the
@@ -680,6 +687,7 @@ function applyProgression() {
     n: nestedTier() ? 1 : prog.n,
     nest: nestedTier() ? Math.min(NEST_MAX, prog.n) : 0,
     nestWidth: nestedTier() && progCfg.nestWidth >= 2 ? 2 : 1,
+    nestFrames: nestedTier() && !!progCfg.nestFrames,
     interval: prog.interval,
     lureRate: prog.lureRate,
     feedback: progCfg.feedback,
@@ -755,6 +763,7 @@ function applyFree() {
     n: nest ? 1 : freeCfg.n,
     nest,
     nestWidth: nest && freeCfg.nestWidth >= 2 ? 2 : 1,
+    nestFrames: !!nest && !!freeCfg.nestFrames,
     interval: freeCfg.interval,
     lureRate: freeCfg.lureRate,
     feedback: freeCfg.feedback,

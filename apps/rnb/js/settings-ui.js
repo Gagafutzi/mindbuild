@@ -430,6 +430,11 @@ function syncSettingsUI() {
   $('nestWidthF').value = String(freeCfg.nestWidth >= 2 ? 2 : 1);
   $('nestWidthF').disabled = !nestF;
   $('progNestWidth').value = String(progCfg.nestWidth >= 2 ? 2 : 1);
+  $('nestFramesF').value = freeCfg.nestFrames ? '1' : '0';
+  /* A mirror means something only for the move's direction, cube frame. */
+  $('nestFramesF').disabled = !nestF || (freeCfg.streams || {}).position !== 'relational' ||
+    (freeCfg.frame || 'cube') !== 'cube';
+  $('progNestFrames').value = progCfg.nestFrames ? '1' : '0';
   $('progNestWidthRow').style.display = nestedTier() ? '' : 'none';
   $('nestHintF').textContent = nestF
     ? `On at depth ${nestF}. N, meta-relations, the gate, variable N and the retro-cue ` +

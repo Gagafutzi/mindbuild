@@ -384,10 +384,30 @@ function createSampler(env) {
      was optional; at 0.40 it falls to about 70-78%. */
   const NEST_SWITCH = env.NEST_SWITCH ?? 0.40;        // chance of a switch where a side branch waits
   const NEST_SWITCH_OPEN = env.NEST_SWITCH_OPEN ?? 0.12;  // and where the level has none yet
+  /*
+   * FRAMES: what a level means depends on the levels around it.
+   *
+   * Without frames the levels are independent: each is its own 1-back, and an
+   * outer level only waits. With them, the item that opens a level mirrors one
+   * axis, and every move inside that level is answered in the mirrored frame:
+   * a move north inside a level that mirrored north–south is answered south.
+   * Mirrors compose — the frame inside is every open level's mirror at once,
+   * and the same axis mirrored twice reads straight — and closing a level drops
+   * its mirror. So an answer depends on the whole chain of levels above it, and
+   * on the way out you need to know which axis the closed level had mirrored:
+   * one flip flag per axis is not enough, the stack itself is (tools/frame-check.js).
+   *
+   * Only the move's spatial direction is mirrored (first order, cube frame):
+   * that is the judgement a mirror has a meaning for.
+   */
+  const NEST_FRAME_BIAS = env.NEST_FRAME_BIAS ?? 0.5;   // see sampleTrial
   const nestOn = () => (cfg.nest | 0) > 0;
   const nestWidth = () => ((cfg.nestWidth | 0) >= 2 ? 2 : 1);
+  const nestFrames = () => nestOn() && !!cfg.nestFrames && !cfg.meta &&
+    cfg.streams && cfg.streams.position === 'relational' && (cfg.frame || 'cube') === 'cube';
   const nestState = () => state.nest ||
-    (state.nest = { stack: [], sides: [], anchor: null, side: null, last: 'stay' });
+    (state.nest = { stack: [], sides: [], anchor: null, side: null, last: 'stay',
+                    flip: [0, 0, 0], flips: [] });
 
   /* What the next item is to be, decided before it is drawn so that targets and
      lures can be planted against the right partner — the same reason the lag is
@@ -395,7 +415,11 @@ function createSampler(env) {
   function nestPlan() {
     const s = nestState(), d = s.stack.length;
     /* A block's first item opens the outermost level and has nothing before it. */
-    if (!s.anchor) return { tag: 'first', partner: null, lureA: null, lureB: null };
+    /* Under frames it also mirrors the outermost level's axis: without that the
+       outer level, where most of a shallow stream is spent, was never mirrored,
+       and at depth one a player ignoring frames still scored 89%. */
+    if (!s.anchor) return { tag: 'first', partner: null, lureA: null, lureB: null,
+                            mirror: nestFrames() ? Math.floor(Math.random() * 3) : null };
     /* The side branch: the branch just left is the lure (not switching), and
        so is the level waiting below (switching levels instead of branches). */
     if (nestWidth() >= 2 && Math.random() < (s.side ? NEST_SWITCH : NEST_SWITCH_OPEN))
@@ -411,7 +435,8 @@ function createSampler(env) {
     if (!canOut) { wIn += wOut; wOut = 0; }
     const r = Math.random() * (wIn + wOut + NEST_STAY);
     const tag = r < wIn ? 'in' : r < wIn + wOut ? 'out' : 'stay';
-    if (tag === 'in') return { tag, partner: null, lureA: null, lureB: null };
+    if (tag === 'in') return { tag, partner: null, lureA: null, lureB: null,
+                               mirror: nestFrames() ? Math.floor(Math.random() * 3) : null };
     /*
      * The lures are the items a wrong reading of the structure would compare
      * with, in the two slots the queue uses for n−1 and n+1.
@@ -435,15 +460,32 @@ function createSampler(env) {
      against, so a lost thread mends itself the next time that level is seen. */
   function nestCommit(plan, t) {
     const s = nestState();
-    if (plan.tag === 'in') { s.stack.push(s.anchor); s.sides.push(s.side); s.side = null; }
-    else if (plan.tag === 'out') { s.stack.pop(); s.side = s.sides.pop() || null; }
+    if (plan.tag === 'in') {
+      s.stack.push(s.anchor); s.sides.push(s.side); s.side = null;
+      s.flips.push(s.flip);
+      s.flip = s.flip.slice();
+      if (plan.mirror != null) s.flip[plan.mirror] ^= 1;
+    }
+    else if (plan.tag === 'out') { s.stack.pop(); s.side = s.sides.pop() || null; s.flip = s.flips.pop() || [0, 0, 0]; }
     else if (plan.tag === 'switch') s.side = s.anchor;
+    else if (plan.tag === 'first') {
+      s.flip = [0, 0, 0]; s.flips = [];
+      if (plan.mirror != null) s.flip[plan.mirror] ^= 1;
+    }
     s.anchor = t;
     /* A switch keeps the run going: it moves sideways, not up or down. */
     if (plan.tag !== 'switch') s.last = plan.tag === 'first' ? 'stay' : plan.tag;
     t.nest = plan.tag;
     t.depth = s.stack.length;          // levels suspended while this item is up
     t.partner = plan.partner;
+    /* The frame the item is answered in, and the axis a level's opener mirrors. */
+    if (nestFrames()) { t.flip = s.flip.slice(); if (plan.mirror != null) t.mirror = plan.mirror; }
+  }
+
+  /* The frame the planned item will be answered in, before nestCommit applies it. */
+  function plannedFlip(plan) {
+    const s = nestState();
+    return plan.tag === 'out' ? (s.flips[s.flips.length - 1] || [0, 0, 0]) : s.flip;
   }
 
   function sampleTrial() {
@@ -512,6 +554,20 @@ function createSampler(env) {
                             .filter(i => i !== nb.cellIdx && i !== noRepeat) : [];
       if (cand.length) { t.cellIdx = pick(cand); usedLure = true; lureTarget = null; }
       else t.cellIdx = randExcept(state.cells.length, noRepeat);
+    } else if (nest && nb && nestFrames() && plannedFlip(nest).some(x => x) &&
+               Math.random() < NEST_FRAME_BIAS) {
+      /* A frame only matters on the axes it flips. Drawn freely, a move touches a
+         given axis about two times in three, so with one axis mirrored most of
+         the answers would read the same either way; half the moves inside a
+         mirrored frame are made to cross a flipped axis. */
+      const f = plannedFlip(nest), from = state.cells[nb.cellIdx];
+      const cand = state.cells.map((c, i) => i).filter(i => {
+        if (i === noRepeat) return false;
+        const c = state.cells[i];
+        const d = [c.x - from.x, c.y - from.y, c.z - from.z];
+        return d.some((v, k) => v && f[k]);
+      });
+      t.cellIdx = cand.length ? pick(cand) : randExcept(state.cells.length, noRepeat);
     } else if (rel('position') || !on('position')) {
       t.cellIdx = randExcept(state.cells.length, noRepeat);
     } else {
@@ -669,7 +725,7 @@ function createSampler(env) {
   return {
     randInt, pick, randExcept, sampleIndex, backAt, maxLag, trialLag,
     cardinalNeighbours, pickMetaMove, pickMetaType, sampleTrial,
-    nestPlan, nestCommit, NEST_RUN, NEST_STAY, NEST_SWITCH, NEST_SWITCH_OPEN,
+    nestPlan, nestCommit, NEST_RUN, NEST_STAY, NEST_SWITCH, NEST_SWITCH_OPEN, NEST_FRAME_BIAS,
     moveVectorOf, metaRelationOf,
   };
 }

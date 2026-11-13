@@ -27,13 +27,14 @@ function updateHUD() {
     (rc >= 4 ? (cfg.singleAxis ? 'one axis at a time' : 'diagonals: angle between moves')
     : rc === 3 ? 'direction of the move' : 'same or different') +
     /* Which earlier item, when it is not the one a lag back. */
-    (cfg.nest ? ' \u00b7 against the last of its level' : '');
+    (cfg.nest ? ' \u00b7 against the last of its level' : '') +
+    (nestFrames() ? ', in the frame its levels set' : '');
   /* In variable mode the single number is a lie — what is fixed is the span the
      lag is drawn from, so that is what the HUD shows. */
   /* Under nested levels the lag is always one and says nothing; the number that
      matters is how many levels may be suspended, so the HUD names that instead. */
   $('hudNLabel').textContent = cfg.nest ? 'Depth' : 'N';
-  $('hudN').textContent = cfg.nest ? cfg.nest + (nestWidth() > 1 ? ' × 2' : '') : cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
+  $('hudN').textContent = cfg.nest ? cfg.nest + (nestWidth() > 1 ? ' × 2' : '') + (nestFrames() ? ' mirrored' : '') : cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
   $('hudSpinLabel').textContent = spinLabel();
   /* Only what differs from the default earns a place: "still" is the default. */
   $('hudSpinWrap').style.display = cfg.rotation ? '' : 'none';
@@ -135,7 +136,20 @@ function nestLine() {
     Returns <b>${pc(nt.out)}</b> <span style="opacity:.6">(${nt.out[0]}/${nt.out[1]})</span> ·
     stays <b>${pc(nt.stay)}</b> <span style="opacity:.6">(${nt.stay[0]}/${nt.stay[1]})</span>
     ${nt.switch && nt.switch[1] ? `· switches <b>${pc(nt.switch)}</b> <span style="opacity:.6">(${nt.switch[0]}/${nt.switch[1]})</span>` : ''}
-    <span style="opacity:.6">— items answered exactly right</span></p>`;
+    <span style="opacity:.6">— items answered exactly right</span></p>` + frameLine();
+}
+
+/* Frames: the answers the mirror changed, against the ones it did not. The gap
+   between the two is what holding the frame costs; a low first figure with a
+   high second is direction read right in the wrong frame. */
+function frameLine() {
+  const ft = state.frameTally;
+  if (!nestFrames() || !ft) return '';
+  const pc = a => a[1] ? Math.round(100 * a[0] / a[1]) + '%' : '\u2014';
+  return `<p style="text-align:center;margin:4px 0 0;font-size:12px">
+    Mirrored <b>${pc(ft.framed)}</b> <span style="opacity:.6">(${ft.framed[0]}/${ft.framed[1]})</span> ·
+    unmirrored <b>${pc(ft.plain)}</b> <span style="opacity:.6">(${ft.plain[0]}/${ft.plain[1]})</span>
+    <span style="opacity:.6">— axis answers, where the frame changed the answer and where it did not</span></p>`;
 }
 
 function showReport(score, verdict, headline, detail, milestone, load) {
@@ -160,7 +174,7 @@ function showReport(score, verdict, headline, detail, milestone, load) {
   modalBox.innerHTML = `
     <h2>Block complete</h2>
     <p>Score <b style="color:${barColor(score)}">${Math.round(score*100)}%</b> ·
-       Load <b>${load}</b> · ${cfg.nest ? 'Depth ' + cfg.nest : 'N ' + cfg.n} · ${spinLabel()}</p>
+       Load <b>${load}</b> · ${cfg.nest ? 'Depth ' + cfg.nest + (nestFrames() ? ' mirrored' : '') : 'N ' + cfg.n} · ${spinLabel()}</p>
     <div class="bars">${rows || '<p>No scored judgments.</p>'}</div>
     ${nestLine()}
     ${headline ? `<div class="verdict ${verdict}">${headline}</div>` : ''}

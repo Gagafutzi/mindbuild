@@ -75,6 +75,16 @@
           in suspends the level with both its branches, and coming out returns to
           the one you were on. Already three live items at depth 1. A setting next to depth,
           not a rung: the ladder climbs depth at whichever width you choose.</div>
+        <label>Frames</label>
+        <select id="progNestFrames">
+          <option value="0">Off — every level reads the same</option>
+          <option value="1">Mirror — each level flips an axis for the levels inside it</option>
+        </select>
+        <div class="hint">Nested track. The item that opens a level (and the block's first
+          item) names an axis, and
+          inside it a move along that axis is answered the other way round; mirrors stack
+          and closing a level drops its own. Not asked while the track is at
+          meta-relations. Like width, a setting rather than a rung.</div>
       </div>
     </div>
 
@@ -355,6 +365,18 @@
           The first switch on a level opens its side branch and asks nothing. Going
           in suspends the level with both its branches, and coming out returns to
           the one you were on. Already three live items at depth 1.</div>
+        <label>Frames</label>
+        <select id="nestFramesF">
+          <option value="0">Off — every level reads the same</option>
+          <option value="1">Mirror — each level flips an axis for the levels inside it</option>
+        </select>
+        <div class="hint">Makes the levels depend on each other. The item that opens a
+          level names an axis — <b>(N·S</b>, <b>(E·W</b> or <b>(A·B</b> — and inside that level
+          a move along it is answered the other way round: north is pressed as south.
+          The block's first item names one too, for the outermost level. Mirrors stack, so inside two levels both axes are flipped, and the same axis
+          flipped twice reads straight again. Closing a level drops its mirror. Nothing
+          on screen shows the frame after the opener, so you hold it. Asked of the
+          move's direction, first order, cube frame.</div>
       </div>
       <div class="setting-group">
         <label>Gate closing (compare-only trials)</label>
