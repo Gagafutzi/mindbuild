@@ -128,12 +128,15 @@ rule remapping inside hierarchical control (Koechlin's cascade, Badre's rule
 hierarchies); nobody has trained this, so the claim is that it loads that, not
 that it transfers.
 Second order works under nesting too (meta-relations in Free Play, "Order" on
-the nested track). Each move is answered same, opposite, orthogonal or none
-against the move that made the last item of its own level, and the move into a
-level counts as its first. So a return is related to the move its level made
-before it was suspended, and every waiting level holds a move as well as an
-item. Simulated, relating each move to the previous trial's move, as plain
-second order would, scores about 20–26% (`apps/rnb/tools/nest-check.js`).
+the nested track). The jump just seen is answered same, opposite, orthogonal or
+none against the jump that brought the cube to the last item of its own level.
+Moves are always the jumps on screen; nesting only picks which earlier jump a
+move is compared with. On a stay that is the jump before; on a return it is the
+jump that reached the level before it was suspended, so every waiting level
+holds that jump as well as its item. (The first version measured moves from the
+partner, which on a return is a step nobody saw.) Simulated, relating each jump
+to the one before, as plain second order would, scores about 17–24%
+(`apps/rnb/tools/nest-check.js`).
 Frames are first order only.
 
 ### Precision N-back

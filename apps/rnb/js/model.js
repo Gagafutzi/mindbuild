@@ -460,12 +460,12 @@ function createSampler(env) {
      against, so a lost thread mends itself the next time that level is seen. */
   function nestCommit(plan, t) {
     const s = nestState();
-    /* The level's last move, for second order: the move that made this item —
-       from its partner when it has one, and for an item that opens a level (or an
-       empty branch) the move into it from the item before. Without the second, an
-       item whose partner opened its level had no move to be related to, and at
-       depth three three items in four asked nothing. */
-    t.levelMove = plan.partner ? [plan.partner, t] : (s.anchor ? [s.anchor, t] : null);
+    /* The jump that brought the cube here, from the item shown before: what second
+       order relates, under nesting. Nesting picks WHICH earlier jump a move is
+       compared with (the one that brought the cube to its partner), never what a
+       move is. The first version used the step from the partner instead, which on
+       a return is a move nobody saw, and it read as the moves not matching up. */
+    t.visMove = s.anchor ? [s.anchor, t] : null;
     if (plan.tag === 'in') {
       s.stack.push(s.anchor); s.sides.push(s.side); s.side = null;
       s.flips.push(s.flip);
@@ -548,9 +548,11 @@ function createSampler(env) {
          uniformly yields same 5% / opposite 28% / different 66%, because four of six
          directions leave the axis and walls block continuing straight; "always answer
          different" would then score 66%. */
-      metaMove = pickMetaMove(nb.cellIdx, nb,
-                              (nest ? nb.levelMove : nb.pair)
-                                ? moveVectorOf(...(nest ? nb.levelMove : nb.pair)) : null,
+      /* Nested, the move to plant is the visible jump, from the item shown last. */
+      const from = nest ? (nestState().anchor || nb) : nb;
+      metaMove = pickMetaMove(from.cellIdx, from,
+                              (nest ? nb.visMove : nb.pair)
+                                ? moveVectorOf(...(nest ? nb.visMove : nb.pair)) : null,
                               noRepeat);
       t.cellIdx = metaMove.cellIdx;
     } else if (rel('position') && nb && lureTarget === 'position') {

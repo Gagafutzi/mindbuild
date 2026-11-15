@@ -79,9 +79,11 @@ function tick() {
   /* Meta compares this move against the move the PARTNER made — not the move made
      on the previous trial. At n≥2 those differ, and using the latter would score a
      completely different question than the one being asked. */
-  /* Nested, the partner's levelMove: the move that made it inside its own level,
-     which for an item that opened the level is the move into it (see nestCommit). */
-  const extra = pair && cfg.meta ? { metaPrev: t.nest ? pair[0].levelMove : pair[0].pair } : null;
+  /* Nested: the jump just seen, against the jump that brought the cube to the
+     partner (see nestCommit). Plain: this pair's move against the partner's. */
+  const extra = pair && cfg.meta
+    ? (t.nest ? { metaPrev: pair[0].visMove, metaCur: t.visMove } : { metaPrev: pair[0].pair })
+    : null;
   state.judgments = pair ? buildJudgments(pair[0], pair[1], extra) : [];
   t.pair = pair;
 

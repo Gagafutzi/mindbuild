@@ -119,6 +119,8 @@ function buildJudgments(a, b, extra) {
     /* Second order: how does this move relate to the previous one? Only defined
        once there IS a previous move, so the first comparison of a block is skipped. */
     const prev = extra && extra.metaPrev;
+    /* The move being related: this pair's, or under nesting the jump just seen. */
+    const [ma, mb] = (extra && extra.metaCur) || [a, b];
     if (prev) {
       /*
        * Oblique is asked, and answered by pressing nothing. The options list is
@@ -160,7 +162,7 @@ function buildJudgments(a, b, extra) {
          * special case of.
          */
         metaJ('position', ['meta-same', 'meta-opp', 'meta-diff'],
-              moveVectorOf(prev[0], prev[1]), moveVectorOf(a, b));
+              moveVectorOf(prev[0], prev[1]), moveVectorOf(ma, mb));
       }
       if (cfg.frame === 'screen' || cfg.frame === 'both') {
         /*
@@ -171,7 +173,7 @@ function buildJudgments(a, b, extra) {
          * has to be held as well as the move.
          */
         metaJ('position2', ['s-meta-same', 's-meta-opp', 's-meta-diff'],
-              screenVectorOf(prev[0], prev[1]), screenVectorOf(a, b));
+              screenVectorOf(prev[0], prev[1]), screenVectorOf(ma, mb));
       }
     }
   } else if (mode('position') === 'identity') {

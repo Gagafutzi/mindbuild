@@ -372,22 +372,23 @@ console.log('\nsecond order\n');
     return { out, M };
   }
 
-  /* The level's last move, from the marks alone: a level holds the move that
-     made its last item, and an item that opens a level made none. */
+  /* From the marks alone: the partner (the level's last item), the jump that
+     brought the cube to it, and the jump just seen. A jump is from the item shown
+     before; nesting only decides which earlier jump a move is compared with. */
   function replayMoves(trials, visit) {
-    let stack = [], cur = { item: null, move: null }, side = null, shown = null;
+    let stack = [], cur = null, side = null, shown = null;
+    const jumpTo = new Map();
     trials.forEach(t => {
-      if (t.nest === 'first') { stack = []; cur = { item: null, move: null }; side = null; shown = null; }
-      let level = null;
+      if (t.nest === 'first') { stack = []; cur = null; side = null; shown = null; }
+      let partner = null;
       if (t.nest === 'in') { stack.push({ cur, side }); side = null; }
-      else if (t.nest === 'stay') level = cur;
-      else if (t.nest === 'out') { const l = stack.pop(); level = l.cur; side = l.side; }
-      else if (t.nest === 'switch') { level = side; side = cur; }
-      const prevTrialMove = cur.move;
-      visit(t, level, prevTrialMove);
-      /* An item that opens a level (or an empty branch) made the move into it. */
-      cur = { item: t, move: level && level.item ? [level.item, t] : shown ? [shown, t] : null };
-      shown = t;
+      else if (t.nest === 'stay') partner = cur;
+      else if (t.nest === 'out') { const l = stack.pop(); partner = l.cur; side = l.side; }
+      else if (t.nest === 'switch') { partner = side; side = cur; }
+      const jump = shown ? [shown, t] : null;
+      jumpTo.set(t, jump);
+      visit(t, partner, partner ? jumpTo.get(partner) : null, jump, shown ? jumpTo.get(shown) : null);
+      cur = t; shown = t;
     });
   }
 
@@ -397,22 +398,23 @@ console.log('\nsecond order\n');
     const shares = { same: 0, opp: 0, diff: 0, obl: 0 };
     let asked = 0, wrongMove = 0, still = 0;
     const players = { full: [0, 0], lastTrial: [0, 0], noWaitingMoves: [0, 0] };
-    replayMoves(s, (t, level, prevTrialMove) => {
-      if (!level || !level.item) return;
-      if (level.item.cellIdx === t.cellIdx) still++;
-      const own = [level.item, t];
-      /* What the app relates the move to: the partner's levelMove (block.js). */
-      const app = t.partner && t.partner.levelMove;
-      const mine = level.move;
-      if ((app && mine && (app[0] !== mine[0] || app[1] !== mine[1])) || (!!app !== !!mine)) wrongMove++;
-      const truth = rel(mine, own);
+    replayMoves(s, (t, partner, ref, jump, prevJump) => {
+      if (!partner) return;
+      /* What the app relates (block.js): the partner's visMove against the item's. */
+      const app = [partner.visMove, t.visMove];
+      const same = (x, y) => (!x && !y) || (x && y && x[0] === y[0] && x[1] === y[1]);
+      if (!same(app[0], ref) || !same(app[1], jump)) wrongMove++;
+      if (jump && jump[0].cellIdx === t.cellIdx) still++;
+      const truth = rel(ref, jump);
       if (truth == null) return;
       asked++; shares[truth]++;
-      const say = (A) => rel(A, own) || 'obl';     // no move held: press nothing
+      const say = (A) => rel(A, jump) || 'obl';     // no move held: press nothing
       const tally = (k, guess) => { players[k][1]++; if (guess === truth) players[k][0]++; };
       tally('full', truth);
-      tally('lastTrial', say(prevTrialMove));
-      /* Holds every waiting level's item but only the current level's move. */
+      /* Plain second order: the jump before this one. Right on a stay, where that
+         is the partner's own jump; wrong whenever the level changed. */
+      tally('lastTrial', say(prevJump));
+      /* Holds every waiting level's item but not the jump that reached it. */
       tally('noWaitingMoves', t.nest === 'stay' ? truth : say(null));
     });
     const tag = `depth ${depth}${width > 1 ? ', width 2' : ''}`;
@@ -420,7 +422,7 @@ console.log('\nsecond order\n');
       const chance = Math.max(...Object.values(shares)) / asked;
       return Math.max(0, (r / n - chance) / (1 - chance));
     };
-    ok(`${tag}: each move is related to the move that made its partner, in its own level`, wrongMove === 0,
+    ok(`${tag}: the jump seen is related to the jump that brought the cube to its partner`, wrongMove === 0,
        `${wrongMove} related to another move`);
     /* pickMetaMove never stands still, so this holds without a rule of its own. */
     ok(`${tag}: a nested item always moves`, still === 0, `${still} stood still`);

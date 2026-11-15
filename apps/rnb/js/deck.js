@@ -339,8 +339,9 @@ function traceMove(trial) {
    * diagonal has none; the arms flash for all of them, which is what says the
    * move was more than one.
    */
-  const names = moveNames(trial && trial.pair
-    ? moveVectorOf(trial.pair[0], trial.pair[1]) : null);
+  /* Under nesting the move judged is the jump seen, not the step from the partner. */
+  const mv = trial && (trial.nest && cfg.meta ? trial.visMove : trial.pair);
+  const names = moveNames(mv ? moveVectorOf(mv[0], mv[1]) : null);
   if (!names.length) return;
   showMoveArrow(names[0]);
   state.traceUntil = state.trial + 1;
