@@ -79,7 +79,9 @@ function tick() {
   /* Meta compares this move against the move the PARTNER made — not the move made
      on the previous trial. At n≥2 those differ, and using the latter would score a
      completely different question than the one being asked. */
-  const extra = pair && cfg.meta ? { metaPrev: pair[0].pair } : null;
+  /* Nested, the partner's levelMove: the move that made it inside its own level,
+     which for an item that opened the level is the move into it (see nestCommit). */
+  const extra = pair && cfg.meta ? { metaPrev: t.nest ? pair[0].levelMove : pair[0].pair } : null;
   state.judgments = pair ? buildJudgments(pair[0], pair[1], extra) : [];
   t.pair = pair;
 
@@ -691,7 +693,8 @@ function applyProgression() {
     interval: prog.interval,
     lureRate: prog.lureRate,
     feedback: progCfg.feedback,
-    meta: rcTier >= 4,             // the tier IS the relational-complexity level
+    meta: rcTier >= 4 ||           // the tier IS the relational-complexity level
+      (nestedTier() && progCfg.nestOrder === 2),   // or, on the nested track, a setting
     /*
      * Quinary is the meta relation asked in both frames at once — see
      * `relationalComplexity`. Below it the cube frame alone, which is what every
@@ -750,7 +753,11 @@ function applyFree() {
    * version should be one new thing rather than two.
    */
   const nest = nestDepth(freeCfg);
-  const meta = !nest && !!freeCfg.meta;
+  /* Second order works under nesting: the move an item is related to is the move
+     that made its partner, inside the partner's own level (see buildJudgments'
+     caller above), so a return is compared with the move its level made before
+     it was suspended. */
+  const meta = !!freeCfg.meta;
   /* Meta and retro-cue ask incompatible questions of the same trial — meta needs a
      fixed n-back pairing to have a "previous move" at all. */
   const retro = (meta || nest) ? 0 : freeCfg.retro;

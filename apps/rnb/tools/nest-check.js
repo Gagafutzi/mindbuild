@@ -341,5 +341,100 @@ for (const depth of [1, 3]) {
   ok('width 2 still makes depth cost', score(s2, () => holds(1)) < 0.75, pct(score(s2, () => holds(1))));
 }
 
+/* ------------------------------------------------------------------ *
+ * Second order: a move against its level's last move                  *
+ * ------------------------------------------------------------------ */
+console.log('\nsecond order\n');
+{
+  /* A stream as the app plays it under meta-relations: block.js gives each judged
+     item its pair, and relates it to the partner's own pair. */
+  function metaStream(depth, width = 1, length = 60000) {
+    const cfg = { n: 1, nest: depth, nestWidth: width, meta: true, frame: 'cube', lureRate: 0.2,
+                  varN: 0, retro: 0, gate: 0, magnitudeCap: 2, coordAxes: [], streams: { position: 'relational' } };
+    const state = { cells: cells(3), chain: [], metaDrawn: null, nest: null };
+    const POOL = [0, 0, 0];
+    const M = createSampler({
+      cfg, state,
+      STREAM_KEYS: ['position', 'pitch', 'timbre', 'pan', 'color', 'size', 'quantity', 'letter'],
+      TARGET_RATE: 0.28, META_SHARE: { same: .25, opp: .25, diff: .25, obl: .25 }, META_FLOOR: 0.05,
+      PANS: POOL, LETTER_KEYS: [0, 0, 0, 0], GLYPH_SET_KEYS: [],
+      dimCount: () => 3, magnitudeCap: () => 2, coordAxes: () => [],
+      poolFor: () => POOL, voiceSet: () => ({ voices: POOL }),
+    });
+    const out = [];
+    for (let i = 0; i < length; i++) {
+      if (i % 40 === 0) { state.chain = []; state.nest = null; }
+      const t = M.sampleTrial();
+      t.pair = t.partner ? [t.partner, t] : null;      // block.js, as written there
+      state.chain.push(t);
+      out.push(t);
+    }
+    return { out, M };
+  }
+
+  /* The level's last move, from the marks alone: a level holds the move that
+     made its last item, and an item that opens a level made none. */
+  function replayMoves(trials, visit) {
+    let stack = [], cur = { item: null, move: null }, side = null, shown = null;
+    trials.forEach(t => {
+      if (t.nest === 'first') { stack = []; cur = { item: null, move: null }; side = null; shown = null; }
+      let level = null;
+      if (t.nest === 'in') { stack.push({ cur, side }); side = null; }
+      else if (t.nest === 'stay') level = cur;
+      else if (t.nest === 'out') { const l = stack.pop(); level = l.cur; side = l.side; }
+      else if (t.nest === 'switch') { level = side; side = cur; }
+      const prevTrialMove = cur.move;
+      visit(t, level, prevTrialMove);
+      /* An item that opens a level (or an empty branch) made the move into it. */
+      cur = { item: t, move: level && level.item ? [level.item, t] : shown ? [shown, t] : null };
+      shown = t;
+    });
+  }
+
+  for (const [depth, width] of [[1, 1], [2, 1], [3, 1], [2, 2]]) {
+    const { out: s, M } = metaStream(depth, width);
+    const rel = (A, B) => A && B ? M.metaRelationOf(M.moveVectorOf(A[0], A[1]), M.moveVectorOf(B[0], B[1])) : null;
+    const shares = { same: 0, opp: 0, diff: 0, obl: 0 };
+    let asked = 0, wrongMove = 0, still = 0;
+    const players = { full: [0, 0], lastTrial: [0, 0], noWaitingMoves: [0, 0] };
+    replayMoves(s, (t, level, prevTrialMove) => {
+      if (!level || !level.item) return;
+      if (level.item.cellIdx === t.cellIdx) still++;
+      const own = [level.item, t];
+      /* What the app relates the move to: the partner's levelMove (block.js). */
+      const app = t.partner && t.partner.levelMove;
+      const mine = level.move;
+      if ((app && mine && (app[0] !== mine[0] || app[1] !== mine[1])) || (!!app !== !!mine)) wrongMove++;
+      const truth = rel(mine, own);
+      if (truth == null) return;
+      asked++; shares[truth]++;
+      const say = (A) => rel(A, own) || 'obl';     // no move held: press nothing
+      const tally = (k, guess) => { players[k][1]++; if (guess === truth) players[k][0]++; };
+      tally('full', truth);
+      tally('lastTrial', say(prevTrialMove));
+      /* Holds every waiting level's item but only the current level's move. */
+      tally('noWaitingMoves', t.nest === 'stay' ? truth : say(null));
+    });
+    const tag = `depth ${depth}${width > 1 ? ', width 2' : ''}`;
+    const score = ([r, n]) => {
+      const chance = Math.max(...Object.values(shares)) / asked;
+      return Math.max(0, (r / n - chance) / (1 - chance));
+    };
+    ok(`${tag}: each move is related to the move that made its partner, in its own level`, wrongMove === 0,
+       `${wrongMove} related to another move`);
+    /* pickMetaMove never stands still, so this holds without a rule of its own. */
+    ok(`${tag}: a nested item always moves`, still === 0, `${still} stood still`);
+    ok(`${tag}: most items are asked`, asked / s.length > 0.45, `${pct(asked / s.length)} of items`);
+    ok(`${tag}: the four relations come up about evenly`, Object.values(shares).every(v => v / asked > 0.15),
+       Object.entries(shares).map(([k, v]) => `${k} ${pct(v / asked)}`).join(', '));
+    console.log(`   ${tag}: relating to the previous trial's move ${pct(score(players.lastTrial))} | ` +
+      `holding only the current level's move ${pct(score(players.noWaitingMoves))}`);
+    ok(`${tag}: relating to the previous trial's move, as plain second order would, scores little`,
+       score(players.lastTrial) < 0.5, pct(score(players.lastTrial)));
+    ok(`${tag}: a waiting level's move has to be held too`, score(players.noWaitingMoves) < 0.8,
+       pct(score(players.noWaitingMoves)));
+  }
+}
+
 console.log(bad ? `\n${bad} FAILED` : '\nall checks passed');
 process.exit(bad ? 1 : 0);

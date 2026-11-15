@@ -75,6 +75,15 @@
           in suspends the level with both its branches, and coming out returns to
           the one you were on. Already three live items at depth 1. A setting next to depth,
           not a rung: the ladder climbs depth at whichever width you choose.</div>
+        <label>Order</label>
+        <select id="progNestOrder">
+          <option value="1">First — which way the move went</option>
+          <option value="2">Second — how the move relates to its level's last move</option>
+        </select>
+        <div class="hint">Nested track. At second order each move is answered same,
+          opposite, orthogonal or none (press nothing) against the move that made the last
+          item of its own level, so every waiting level holds a move as well as an item.
+          Frames are first order only.</div>
         <label>Frames</label>
         <select id="progNestFrames">
           <option value="0">Off — every level reads the same</option>
@@ -351,8 +360,11 @@
         <div class="hint">What it asks that N-back does not: holding something
           <em>pending</em> across an episode you then have to drop. The lures are the
           item you just left behind and the levels still waiting. Replaces N, and
-          turns off meta-relations, the gate, variable N and the retro-cue while it
-          is on.</div>
+          turns off the gate, variable N and the retro-cue while it is on. With
+          <b>meta-relations</b> on it is second order: each move is related to the move
+          that made the last item of its level, so a return is compared with the move
+          its level made before it was suspended, and every waiting level holds a move
+          as well as an item.</div>
         <div class="hint" id="nestHintF"></div>
         <label>Branches per level</label>
         <select id="nestWidthF">

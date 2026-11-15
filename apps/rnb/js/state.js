@@ -165,6 +165,8 @@ const progCfg = {
   nestWidth: 1,
   /* And the third: frames, where each level's opener mirrors an axis. */
   nestFrames: false,
+  /* And the order: 1 the move's direction, 2 its relation to the level's last move. */
+  nestOrder: 1,
 };
 
 /* Free Play keeps its own settings so switching modes doesn't clobber either one. */

@@ -432,16 +432,17 @@ function syncSettingsUI() {
   $('progNestWidth').value = String(progCfg.nestWidth >= 2 ? 2 : 1);
   $('nestFramesF').value = freeCfg.nestFrames ? '1' : '0';
   /* A mirror means something only for the move's direction, cube frame. */
-  $('nestFramesF').disabled = !nestF || (freeCfg.streams || {}).position !== 'relational' ||
+  $('nestFramesF').disabled = !nestF || !!freeCfg.meta || (freeCfg.streams || {}).position !== 'relational' ||
     (freeCfg.frame || 'cube') !== 'cube';
   $('progNestFrames').value = progCfg.nestFrames ? '1' : '0';
+  $('progNestOrder').value = String(progCfg.nestOrder === 2 ? 2 : 1);
+  $('progNestFrames').disabled = progCfg.nestOrder === 2;
   $('progNestWidthRow').style.display = nestedTier() ? '' : 'none';
   $('nestHintF').textContent = nestF
-    ? `On at depth ${nestF}. N, meta-relations, the gate, variable N and the retro-cue ` +
-      `are set aside until it is off.`
+    ? `On at depth ${nestF}${freeCfg.meta ? ', second order' : ''}. N, the gate, variable N ` +
+      `and the retro-cue are set aside until it is off.`
     : '';
   $('nValue').disabled = !!nestF;
-  $('metaOn').disabled = !!nestF;
   $('gateOn').disabled = !!nestF;
   $('retroOn').disabled = !!freeCfg.meta || !!nestF;
   $('varNBack').value = String(freeCfg.varN || 0);

@@ -68,7 +68,7 @@ function resetInMemoryState() {
   keyBinds = {};
   actionBinds = {};
   Object.assign(progCfg, { feedback: 'reveal', coordAxes: [], magnitudeCap: 2,
-    pitchLoudness: false, streams: null, glyphRel: 'map', singleAxis: false, nestWidth: 1, nestFrames: false });
+    pitchLoudness: false, streams: null, glyphRel: 'map', singleAxis: false, nestWidth: 1, nestFrames: false, nestOrder: 1 });
   state.glyphMap = null;
   Object.assign(tune, TUNE_DEFAULTS);
   Object.assign(freeCfg, {

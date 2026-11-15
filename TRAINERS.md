@@ -127,6 +127,14 @@ mirror but one 59–67% (`apps/rnb/tools/frame-check.js`). The nearest research 
 rule remapping inside hierarchical control (Koechlin's cascade, Badre's rule
 hierarchies); nobody has trained this, so the claim is that it loads that, not
 that it transfers.
+Second order works under nesting too (meta-relations in Free Play, "Order" on
+the nested track). Each move is answered same, opposite, orthogonal or none
+against the move that made the last item of its own level, and the move into a
+level counts as its first. So a return is related to the move its level made
+before it was suspended, and every waiting level holds a move as well as an
+item. Simulated, relating each move to the previous trial's move, as plain
+second order would, scores about 20–26% (`apps/rnb/tools/nest-check.js`).
+Frames are first order only.
 
 ### Precision N-back
 **Task.** N-back with a tighter response window. (Chimera Hub calls it Threshold

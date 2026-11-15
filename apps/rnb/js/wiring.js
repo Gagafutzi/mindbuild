@@ -261,6 +261,7 @@ $('gateOn').onchange  = e => { freeCfg.gate = +e.target.value; applyFree(); upda
 $('nestDepthF').onchange = e => { freeCfg.nest = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('nestWidthF').onchange = e => { freeCfg.nestWidth = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('nestFramesF').onchange = e => { freeCfg.nestFrames = e.target.value === '1'; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
+$('progNestOrder').onchange = e => { progCfg.nestOrder = +e.target.value; applyProgression(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('progNestFrames').onchange = e => { progCfg.nestFrames = e.target.value === '1'; applyProgression(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('progNestWidth').onchange = e => { progCfg.nestWidth = +e.target.value; applyProgression(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('retroOn').onchange = e => { freeCfg.retro = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
