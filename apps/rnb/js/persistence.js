@@ -185,6 +185,8 @@ function loadProgress() {
                      cfg.controls = ['full', 'compact', 'none'].includes(p.display.controls)
                        ? p.display.controls : (p.display.hideDock ? 'none' : 'full');
                      cfg.hideHud = !!p.display.hideHud;
+                     cfg.depthView = ['flat', 'perspective', 'strong'].includes(p.display.depthView)
+                       ? p.display.depthView : 'perspective';
                      cfg.buzzer = !!p.display.buzzer;
                      if (p.display.haptics != null)
                        cfg.haptics = !!p.display.haptics;
@@ -293,7 +295,7 @@ function saveProgress() {
                        spinPath: cfg.spinPath, voiceSet: cfg.voiceSet,
                        letterVoice: cfg.letterVoice,
                        cubeScale: cfg.cubeScale,
-                       dailyGoal: cfg.dailyGoal, hideTimer: cfg.hideTimer, hideAccuracy: cfg.hideAccuracy, controls: cfg.controls, hideHud: cfg.hideHud, buzzer: cfg.buzzer,
+                       dailyGoal: cfg.dailyGoal, hideTimer: cfg.hideTimer, hideAccuracy: cfg.hideAccuracy, controls: cfg.controls, hideHud: cfg.hideHud, depthView: cfg.depthView, buzzer: cfg.buzzer,
                        haptics: cfg.haptics,
                        moveTrace: cfg.moveTrace, autoAdvance: cfg.autoAdvance };
   progress.stair = stairLog ? stairLog.map(v => +v.toFixed(4)) : null;

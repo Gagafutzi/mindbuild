@@ -461,6 +461,8 @@ function syncSettingsUI() {
   $('dailyGoal').value = cfg.dailyGoal || 0;
   $('hideTimer').checked = !!cfg.hideTimer;
   $('hideAccuracy').checked = !!cfg.hideAccuracy;
+  $('depthView').value = cfg.depthView || 'perspective';
+  applyDepthView();
   $('controlsMode').value = cfg.controls || 'full';
   applyControlsMode();
   $('hideHud').checked = !!cfg.hideHud;
@@ -615,4 +617,10 @@ function applyControlsMode() {
   const m = cfg.controls || 'full';
   document.body.classList.toggle('hide-dock', m === 'none');
   document.body.classList.toggle('compact-controls', m === 'compact');
+}
+
+function applyDepthView() {
+  const m = cfg.depthView || 'perspective';
+  document.body.classList.toggle('depth-flat', m === 'flat');
+  document.body.classList.toggle('depth-strong', m === 'strong');
 }

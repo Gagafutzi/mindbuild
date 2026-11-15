@@ -633,6 +633,17 @@
         rather than wait. Has no effect while the goal is 0.</div>
     </div>
     <div class="setting-group">
+      <label>Depth</label>
+      <select id="depthView">
+        <option value="flat">Flat — far edges as long as near ones</option>
+        <option value="perspective">Perspective — far edges shorter</option>
+        <option value="strong">Strong perspective — far edges much shorter</option>
+      </select>
+      <div class="hint">How the cube is drawn. With perspective the back of the cube is
+        smaller than the front, so which layer a cell is in reads off its size as well
+        as its place.</div>
+    </div>
+    <div class="setting-group">
       <label>Controls under the cube</label>
       <select id="controlsMode">
         <option value="full">Full — Start, Stop and the Pad switch under the keys</option>

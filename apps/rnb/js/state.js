@@ -115,6 +115,8 @@ const cfg = {
   /* What sits under the cube: 'full' (Start, Stop, Pad), 'compact' (one small
      start/stop beside the keys) or 'none' (keyboard only). */
   controls: 'full',
+  /* How the cube is drawn: 'flat', 'perspective' or 'strong'. */
+  depthView: 'perspective',
   hideHud: false,
   buzzer: false,
   /* A pulse for a wrong answer on a phone. On by default: unlike the buzzer it
