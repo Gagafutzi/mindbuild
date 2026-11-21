@@ -386,6 +386,14 @@ const nestFrames = c => {
 /* The axis an opener mirrors, as the mark names it: index 0 x, 1 y, 2 z. */
 const MIRROR_NAME = ['E·W', 'N·S', 'A·B'];
 
+/* Which kind of frame: 'mirror' (the first; `true` in settings saved before
+   turns existed) or 'turn'. */
+const nestFrameKind = c => (nestFrames(c) ? ((c || cfg).nestFrames === 'turn' ? 'turn' : 'mirror') : null);
+/* Quarter-turns, named by what they do: "N→E" answers north as east (and east as
+   south, south as west, west as north). In the order of TURN_PAIRS in model.js;
+   tools/frame-check.js reads these names to check the two agree. */
+const TURN_NAME = ['N→E', 'N→W', 'E→A', 'E→B', 'N→A', 'N→B'];
+
 function relationalComplexity(c) {
   c = c || cfg;
   let rc = 0;

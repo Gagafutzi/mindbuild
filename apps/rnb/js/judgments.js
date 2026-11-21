@@ -187,13 +187,19 @@ function buildJudgments(a, b, extra) {
          mirrored axis is answered the other way round (see the sampler). Marked
          where the mirror changed the answer, for the report. */
       const flip = b.flip || [0, 0, 0];
-      const v = normalise(raw).map((x, i) => flip[i] ? -x : x);
+      const n = normalise(raw);
+      /* A turn frame is a signed permutation (frameMap, row-major 3×3): the
+         answer is the move carried through every open level's turn. */
+      const M = b.frameMap;
+      const v = M ? [0, 1, 2].map(i => M[3 * i] * n[0] + M[3 * i + 1] * n[1] + M[3 * i + 2] * n[2])
+                  : n.map((x, i) => flip[i] ? -x : x);
       const before = js.length;
       axisJ('position', v[0], ['east', 'west']);
       axisJ('position', v[1], ['south', 'north']);
       axisJ('position', v[2], ['above', 'below']);
-      if (b.flip) [0, 1, 2].forEach(i => {
-        js[before + i].framed = !!flip[i] && Math.abs(v[i]) > EPS;
+      const sgn = x => x > EPS ? 1 : x < -EPS ? -1 : 0;
+      if (b.flip || M) [0, 1, 2].forEach(i => {
+        js[before + i].framed = sgn(v[i]) !== sgn(n[i]);
       });
       /*
        * One more independent up/down/neither per coordinate axis, asked exactly
@@ -315,7 +321,7 @@ function applyInterval(snap, sign) {
 
   /* Nested frames: judgments the mirror changed the answer of, apart from the
      rest. The second figure is plain direction; the first is the frame. */
-  if (tr && tr.flip) {
+  if (tr && (tr.flip || tr.frameMap)) {
     const ft = state.frameTally || (state.frameTally = { framed: [0, 0], plain: [0, 0] });
     judgments.forEach(j => {
       if (j.framed == null) return;
@@ -417,7 +423,7 @@ function chanceKey(stream) {
        Depth is part of it: the deeper the stream, the more of the judged items
        are returns, and the lures a return can carry are not the ones a stay can. */
     (nestDepth(c) ? '/nest' + nestDepth(c) + (nestWidth(c) > 1 ? 'w' + nestWidth(c) : '') +
-      (nestFrames(c) ? 'f' : '') : '');
+      (nestFrames(c) ? (nestFrameKind(c) === 'turn' ? 'ft' : 'f') : '') : '');
 }
 
 function chanceOf(t) {

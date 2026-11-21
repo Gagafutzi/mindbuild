@@ -34,7 +34,7 @@ function updateHUD() {
   /* Under nested levels the lag is always one and says nothing; the number that
      matters is how many levels may be suspended, so the HUD names that instead. */
   $('hudNLabel').textContent = cfg.nest ? 'Depth' : 'N';
-  $('hudN').textContent = cfg.nest ? cfg.nest + (nestWidth() > 1 ? ' × 2' : '') + (nestFrames() ? ' mirrored' : '') : cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
+  $('hudN').textContent = cfg.nest ? cfg.nest + (nestWidth() > 1 ? ' × 2' : '') + (nestFrames() ? (nestFrameKind() === 'turn' ? ' turned' : ' mirrored') : '') : cfg.varN ? `${cfg.n}±${cfg.varN}` : cfg.n;
   $('hudSpinLabel').textContent = spinLabel();
   /* Only what differs from the default earns a place: "still" is the default. */
   $('hudSpinWrap').style.display = cfg.rotation ? '' : 'none';
@@ -147,8 +147,8 @@ function frameLine() {
   if (!nestFrames() || !ft) return '';
   const pc = a => a[1] ? Math.round(100 * a[0] / a[1]) + '%' : '\u2014';
   return `<p style="text-align:center;margin:4px 0 0;font-size:12px">
-    Mirrored <b>${pc(ft.framed)}</b> <span style="opacity:.6">(${ft.framed[0]}/${ft.framed[1]})</span> ·
-    unmirrored <b>${pc(ft.plain)}</b> <span style="opacity:.6">(${ft.plain[0]}/${ft.plain[1]})</span>
+    ${nestFrameKind() === 'turn' ? 'Turned' : 'Mirrored'} <b>${pc(ft.framed)}</b> <span style="opacity:.6">(${ft.framed[0]}/${ft.framed[1]})</span> ·
+    ${nestFrameKind() === 'turn' ? 'unturned' : 'unmirrored'} <b>${pc(ft.plain)}</b> <span style="opacity:.6">(${ft.plain[0]}/${ft.plain[1]})</span>
     <span style="opacity:.6">— axis answers, where the frame changed the answer and where it did not</span></p>`;
 }
 
@@ -174,7 +174,7 @@ function showReport(score, verdict, headline, detail, milestone, load) {
   modalBox.innerHTML = `
     <h2>Block complete</h2>
     <p>Score <b style="color:${barColor(score)}">${Math.round(score*100)}%</b> ·
-       Load <b>${load}</b> · ${cfg.nest ? 'Depth ' + cfg.nest + (nestFrames() ? ' mirrored' : '') : 'N ' + cfg.n} · ${spinLabel()}</p>
+       Load <b>${load}</b> · ${cfg.nest ? 'Depth ' + cfg.nest + (nestFrames() ? (nestFrameKind() === 'turn' ? ' turned' : ' mirrored') : '') : 'N ' + cfg.n} · ${spinLabel()}</p>
     <div class="bars">${rows || '<p>No scored judgments.</p>'}</div>
     ${nestLine()}
     ${headline ? `<div class="verdict ${verdict}">${headline}</div>` : ''}

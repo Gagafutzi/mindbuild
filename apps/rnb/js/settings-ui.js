@@ -430,11 +430,12 @@ function syncSettingsUI() {
   $('nestWidthF').value = String(freeCfg.nestWidth >= 2 ? 2 : 1);
   $('nestWidthF').disabled = !nestF;
   $('progNestWidth').value = String(progCfg.nestWidth >= 2 ? 2 : 1);
-  $('nestFramesF').value = freeCfg.nestFrames ? '1' : '0';
+  const frameVal = v => v === 'turn' ? 'turn' : v ? '1' : '0';
+  $('nestFramesF').value = frameVal(freeCfg.nestFrames);
   /* A mirror means something only for the move's direction, cube frame. */
   $('nestFramesF').disabled = !nestF || !!freeCfg.meta || (freeCfg.streams || {}).position !== 'relational' ||
     (freeCfg.frame || 'cube') !== 'cube';
-  $('progNestFrames').value = progCfg.nestFrames ? '1' : '0';
+  $('progNestFrames').value = frameVal(progCfg.nestFrames);
   $('progNestOrder').value = String(progCfg.nestOrder === 2 ? 2 : 1);
   $('progNestFrames').disabled = progCfg.nestOrder === 2;
   $('progNestWidthRow').style.display = nestedTier() ? '' : 'none';

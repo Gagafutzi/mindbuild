@@ -209,7 +209,7 @@ function showLagCue(t) {
   /* An opener under frames names the axis it mirrors: the only place it is said,
      so it has to be held from here until the level closes. */
   const mark = t.nest ? NEST_MARK[t.nest] : '';
-  const mirror = t.mirror != null ? MIRROR_NAME[t.mirror] : '';
+  const mirror = t.mirror != null ? MIRROR_NAME[t.mirror] : t.turn != null ? TURN_NAME[t.turn] : '';
   el.classList.toggle('nest-in', t.nest === 'in');
   el.classList.toggle('nest-out', t.nest === 'out');
   el.classList.toggle('nest-stay', t.nest === 'stay');

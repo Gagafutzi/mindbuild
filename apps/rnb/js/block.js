@@ -258,6 +258,7 @@ function blockRecord(completed, scored) {
       nest: nestDepth(cfg),
       nestWidth: nestWidth(cfg),
       nestFrames: nestFrames(cfg),
+      nestFrameKind: nestFrameKind(cfg),
       /* One-axis moves only: no oblique relation can come up, so it is a
          different quaternary block from one with diagonals. */
       singleAxis: !!cfg.singleAxis,
@@ -494,7 +495,8 @@ function computeLoad() {
   if (nestWidth(cfg) > 1) load += 8 * (nestDepth(cfg) + 1);
   /* Frames: each level holds a mirror as well as an item, and the frame is the
      composition of all of them, applied to every answer. */
-  if (nestFrames(cfg)) load += 10 * nestDepth(cfg);
+  /* Turns cost more than mirrors: each one moves two axes, and their order counts. */
+  if (nestFrames(cfg)) load += (nestFrameKind(cfg) === 'turn' ? 14 : 10) * nestDepth(cfg);
   /* A varying lag costs more than its mean depth: the pairing cannot be maintained
      as a rehearsal loop, so the whole recent window has to stay addressable and the
      cue has to be read and applied inside the interval. Scaled with N because the
@@ -691,7 +693,7 @@ function applyProgression() {
     n: nestedTier() ? 1 : prog.n,
     nest: nestedTier() ? Math.min(NEST_MAX, prog.n) : 0,
     nestWidth: nestedTier() && progCfg.nestWidth >= 2 ? 2 : 1,
-    nestFrames: nestedTier() && !!progCfg.nestFrames,
+    nestFrames: nestedTier() && progCfg.nestFrames ? (progCfg.nestFrames === 'turn' ? 'turn' : true) : false,
     interval: prog.interval,
     lureRate: prog.lureRate,
     feedback: progCfg.feedback,
@@ -772,7 +774,7 @@ function applyFree() {
     n: nest ? 1 : freeCfg.n,
     nest,
     nestWidth: nest && freeCfg.nestWidth >= 2 ? 2 : 1,
-    nestFrames: !!nest && !!freeCfg.nestFrames,
+    nestFrames: !!nest && freeCfg.nestFrames ? (freeCfg.nestFrames === 'turn' ? 'turn' : true) : false,
     interval: freeCfg.interval,
     lureRate: freeCfg.lureRate,
     feedback: freeCfg.feedback,

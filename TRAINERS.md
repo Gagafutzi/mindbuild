@@ -127,6 +127,14 @@ mirror but one 59–67% (`apps/rnb/tools/frame-check.js`). The nearest research 
 rule remapping inside hierarchical control (Koechlin's cascade, Badre's rule
 hierarchies); nobody has trained this, so the claim is that it loads that, not
 that it transfers.
+Turn frames are the same with quarter-turns. An opener names one by what it
+does (`(N→E` answers north as east, east as south), and the open levels' turns
+apply oldest first. Mirrors commute, so only which axes were open mattered;
+quarter-turns about different axes do not, so the order the levels opened in
+decides the answer as well. From depth two, a player holding the right turns in
+the wrong order scores about 62–64%, and one holding only the innermost turn
+48–62% (`apps/rnb/tools/frame-check.js`). At depth one, two turns are rarely
+open together, so order is asked for from depth two.
 Second order works under nesting too (meta-relations in Free Play, "Order" on
 the nested track). The jump just seen is answered same, opposite, orthogonal or
 none against the jump that brought the cube to the last item of its own level.

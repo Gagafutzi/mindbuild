@@ -248,5 +248,173 @@ ok('holding only the innermost mirror is worth little, and no more the deeper it
 ok('flip flags without the stack lose on returns', [1, 2, 3].every(d => T[d].parityOut < 0.8),
    [1, 2, 3].map(d => pct(T[d].parityOut)).join(' '));
 
+/* ------------------------------------------------------------------ *
+ * Turn frames: quarter-turns, where the order of the levels counts     *
+ * ------------------------------------------------------------------ */
+console.log('\nturn frames\n');
+{
+  const fs = require('fs'), vm = require('vm');
+  const ROOT = path.join(__dirname, '..');
+  /* The names the marks show, read from the app; each is turned into a matrix
+     here, by its own rule, so a name that does not do what it says is caught. */
+  const geo = vm.createContext({ console, Math, Array, Object, JSON });
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/constants.js'), 'utf8').replace(/^"use strict";/, ''), geo);
+  const NAMES = vm.runInContext('TURN_NAME', geo);
+  const DIRS = { E: [1, 0, 0], W: [-1, 0, 0], S: [0, 1, 0], N: [0, -1, 0], A: [0, 0, 1], B: [0, 0, -1] };
+  const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+  /* "u→v": u goes to v, v goes to −u, the third axis stays. As columns. */
+  const fromName = name => {
+    const [a, b] = name.split('\u2192'), u = DIRS[a], v = DIRS[b];
+    const img = e => dot(e, u) ? v.map(x => x * dot(e, u)) : dot(e, v) ? u.map(x => -x * dot(e, v)) : e;
+    const cols = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map(img);
+    return [0, 1, 2].flatMap(i => [0, 1, 2].map(j => cols[j][i]));
+  };
+  const R = NAMES.map(fromName);
+  const I = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const mul = (A, B) => [0, 1, 2].flatMap(i => [0, 1, 2].map(j => A[3 * i] * B[j] + A[3 * i + 1] * B[3 + j] + A[3 * i + 2] * B[6 + j]));
+  const eq = (A, B) => A.every((x, i) => x === B[i]);
+  const ansM = (a, b, M) => {
+    const ca = CELLS[a.cellIdx], cb = CELLS[b.cellIdx];
+    const d = [cb.x - ca.x, cb.y - ca.y, cb.z - ca.z].map(Math.sign);
+    return [0, 1, 2].map(i => Math.sign(M[3 * i] * d[0] + M[3 * i + 1] * d[1] + M[3 * i + 2] * d[2]));
+  };
+
+  ok('the turns are six different quarter-turns, each four steps from straight',
+     R.every(M => !eq(M, I) && !eq(mul(M, M), I) && eq(mul(mul(M, M), mul(M, M)), I)) &&
+     R.every((M, i) => R.every((N, j) => i === j || !eq(M, N))));
+  const nE = NAMES.indexOf('N\u2192E'), eA = NAMES.indexOf('E\u2192A');
+  ok('order matters: N→E then E→A is not E→A then N→E (as the settings say)',
+     !eq(mul(R[eA], R[nE]), mul(R[nE], R[eA])));
+
+  /* Replay from the marks: each level holds the frame it was opened in. */
+  function replayT(trials, visit) {
+    let stack = [], anchor = null, side = null, M = I, turns = [];
+    trials.forEach(t => {
+      if (t.nest === 'first') { stack = []; anchor = null; side = null; M = t.turn != null ? R[t.turn] : I; turns = [t.turn]; }
+      let partner = null;
+      if (t.nest === 'in') {
+        stack.push({ anchor, side, M, turns }); side = null;
+        M = t.turn != null ? mul(R[t.turn], M) : M; turns = turns.concat([t.turn]);
+      } else if (t.nest === 'stay') partner = anchor;
+      else if (t.nest === 'out') { const l = stack.pop(); partner = l.anchor; side = l.side; M = l.M; turns = l.turns; }
+      else if (t.nest === 'switch') { partner = side; side = anchor; }
+      visit(t, partner, M, turns);
+      anchor = t;
+    });
+  }
+  /* Ways of holding the turns. Each is handed the open turns, oldest first. */
+  const compose = (turns, newestFirst) => turns.filter(x => x != null)
+    .reduce((M, k) => newestFirst ? mul(M, R[k]) : mul(R[k], M), I);
+  const PLAYERS = {
+    full: turns => compose(turns, false),
+    ignores: () => I,
+    wrongOrder: turns => compose(turns, true),
+    innermost: turns => { const k = turns.filter(x => x != null).pop(); return k != null ? R[k] : I; },
+  };
+  function scoreT(trials, pick, only) {
+    let right = 0, n = 0, held = I;
+    const counts = { '-1': 0, 0: 0, 1: 0 };
+    replayT(trials, (t, partner, M, turns) => {
+      /* No stack: the frame so far, turned further on the way in and kept as it
+         is on the way out, since it cannot know which turn to take off. */
+      if (pick === 'noStack') {
+        if (t.nest === 'first') held = t.turn != null ? R[t.turn] : I;
+        else if (t.nest === 'in' && t.turn != null) held = mul(R[t.turn], held);
+      }
+      if (!partner || (only && !only(t))) return;
+      const said = pick === 'noStack' ? held : PLAYERS[pick](turns);
+      const truth = ansM(partner, t, M), guess = ansM(partner, t, said);
+      truth.forEach((v, i) => { n++; counts[v]++; if (v === guess[i]) right++; });
+    });
+    const chance = Math.max(...Object.values(counts)) / n;
+    return Math.max(0, (right / n - chance) / (1 - chance));
+  }
+
+  for (const depth of [1, 2, 3]) for (const width of [1, 2]) {
+    const s = stream({ depth, width, frames: 'turn' });
+    let wrong = 0, openers = 0, named = 0, mirrored = 0, changed = 0, axisMoves = 0, orderMatters = 0, judged = 0;
+    replayT(s, (t, partner, M, turns) => {
+      if (!t.frameMap || !eq(t.frameMap, M)) wrong++;
+      if (t.flip || t.mirror != null) mirrored++;
+      if (t.nest === 'in' || t.nest === 'first') { openers++; if (t.turn != null) named++; }
+      if (!partner) return;
+      judged++;
+      const plain = ansM(partner, t, I), framed = ansM(partner, t, M);
+      plain.forEach((v, i) => { if (v) { axisMoves++; if (framed[i] !== v) changed++; } });
+      if (!eq(compose(turns, true), M)) orderMatters++;
+    });
+    const tag = `turns, depth ${depth}, width ${width}`;
+    ok(`${tag}: every item is answered in the turn its marks set`, wrong === 0 && mirrored === 0,
+       `${wrong} in another frame, ${mirrored} carrying a mirror`);
+    ok(`${tag}: every opener names its turn`, named === openers, `${named} of ${openers}`);
+    if (width === 1) {
+      ok(`${tag}: the turn changes a large share of answers`, changed / axisMoves > 0.4, pct(changed / axisMoves));
+      /* At depth one, only the few stays inside the one level have two turns open
+         at once (a level at the ceiling mostly closes on the next item), so order
+         is something depth two and up asks for. */
+      if (depth >= 2)
+        ok(`${tag}: the order of the turns decides a good share of items`, orderMatters / judged > 0.2,
+           pct(orderMatters / judged));
+    }
+  }
+
+  const TT = {};
+  for (const depth of [1, 2, 3]) {
+    const s = stream({ depth, frames: 'turn', length: 120000 });
+    TT[depth] = {
+      full: scoreT(s, 'full'), ignores: scoreT(s, 'ignores'), wrongOrder: scoreT(s, 'wrongOrder'),
+      innermost: scoreT(s, 'innermost'), noStackOut: scoreT(s, 'noStack', t => t.nest === 'out'),
+    };
+    const r = TT[depth];
+    console.log(`   depth ${depth}: holds every turn in order ${pct(r.full)} | ignores turns ${pct(r.ignores)} | ` +
+      `right turns, wrong order ${pct(r.wrongOrder)} | innermost only ${pct(r.innermost)} | no stack, returns ${pct(r.noStackOut)}`);
+  }
+  ok('holding every turn in order is perfect', [1, 2, 3].every(d => TT[d].full > 0.999));
+  ok('ignoring the turns scores well below target', [1, 2, 3].every(d => TT[d].ignores < 0.65),
+     [1, 2, 3].map(d => pct(TT[d].ignores)).join(' '));
+  ok('from depth two, the right turns in the wrong order fall short', [2, 3].every(d => TT[d].wrongOrder < 0.75),
+     [2, 3].map(d => pct(TT[d].wrongOrder)).join(' '));
+  ok('from depth two, holding only the innermost turn is worth little', [2, 3].every(d => TT[d].innermost < 0.65),
+     [2, 3].map(d => pct(TT[d].innermost)).join(' '));
+  ok('the frame so far, without the stack, loses on returns', [1, 2, 3].every(d => TT[d].noStackOut < 0.8),
+     [1, 2, 3].map(d => pct(TT[d].noStackOut)).join(' '));
+
+  /* The reader: the app's own judgments under turns. */
+  geo.CELLS = CELLS;
+  vm.runInContext(`
+    var cfg = { coordAxes: [], magnitudeCap: 2, frame: 'cube', nest: 2, nestFrames: 'turn', meta: false,
+                streams: { position: 'relational' } };
+    var state = { cells: CELLS };
+    var normalise = function (v) {
+      var m = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+      return m < 1e-6 ? [0,0,0] : [v[0]/m, v[1]/m, v[2]/m];
+    };
+    var projectScreen = function (d) { return d; };
+  `, geo);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/judgments.js'), 'utf8').replace(/^"use strict";/, ''), geo);
+  const IDS = [['east', 'west'], ['south', 'north'], ['above', 'below']];
+  let wrongJ = 0, wrongMark = 0, marked = 0, total = 0;
+  replayT(stream({ depth: 2, width: 2, frames: 'turn', length: 20000 }), (t, partner, M) => {
+    if (!partner) return;
+    const js = geo.buildJudgments(partner, t).filter(j => j.stream === 'position');
+    const want = ansM(partner, t, M), plain = ansM(partner, t, I);
+    js.slice(0, 3).forEach((j, i) => {
+      total++;
+      const id = want[i] > 0 ? IDS[i][0] : want[i] < 0 ? IDS[i][1] : null;
+      if (JSON.stringify(j.correct) !== JSON.stringify(id ? [id] : [])) wrongJ++;
+      if (j.framed !== (want[i] !== plain[i])) wrongMark++;
+      if (j.framed) marked++;
+    });
+  });
+  ok('every axis answer the app scores is the one the turns give', wrongJ === 0, `${wrongJ} of ${total} differ`);
+  ok('and the report counts as turned exactly the answers the turn changed', wrongMark === 0 && marked > 0,
+     `${wrongMark} marked wrongly`);
+  const keyT = vm.runInContext(`chanceKey('position')`, geo);
+  const keyM = vm.runInContext(`cfg.nestFrames = true; chanceKey('position')`, geo);
+  ok('turns keep a chance history of their own', keyT.endsWith('ft') && keyM.endsWith('f') && keyT !== keyM, `${keyT} / ${keyM}`);
+  const meta = stream({ depth: 2, frames: 'turn', meta: true, length: 4000 });
+  ok('under meta-relations turns are not asked', meta.every(t => t.frameMap == null && t.turn == null));
+}
+
 console.log(bad ? `\n${bad} FAILED` : '\nall checks passed');
 process.exit(bad ? 1 : 0);

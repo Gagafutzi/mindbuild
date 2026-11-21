@@ -405,9 +405,44 @@ function createSampler(env) {
   const nestWidth = () => ((cfg.nestWidth | 0) >= 2 ? 2 : 1);
   const nestFrames = () => nestOn() && !!cfg.nestFrames && !cfg.meta &&
     cfg.streams && cfg.streams.position === 'relational' && (cfg.frame || 'cube') === 'cube';
+  /*
+   * TURN FRAMES: the same idea with quarter-turns in place of mirrors.
+   *
+   * A level's opener names a quarter-turn by what it does — "N→E" answers north
+   * as east, east as south, south as west, west as north, and leaves A–B alone —
+   * and the turns of the open levels apply oldest first. Mirrors commute, so the
+   * order of the levels never mattered: only which axes were open. Quarter-turns
+   * about different axes do not, so the frame inside depends on the order the
+   * levels opened in, and holding the set of turns without their order is not
+   * enough (tools/frame-check.js). The frame is a 3×3 signed permutation.
+   */
+  const nestFrameKind = () => nestFrames() ? (cfg.nestFrames === 'turn' ? 'turn' : 'mirror') : null;
+  const UNIT = { E: [1, 0, 0], W: [-1, 0, 0], S: [0, 1, 0], N: [0, -1, 0], A: [0, 0, 1], B: [0, 0, -1] };
+  /* In the order constants.js names them (TURN_NAME). */
+  const TURN_PAIRS = [['N', 'E'], ['N', 'W'], ['E', 'A'], ['E', 'B'], ['N', 'A'], ['N', 'B']];
+  const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  /* R u = v, R v = −u, and the third axis fixed: R = I − uuᵀ − vvᵀ + vuᵀ − uvᵀ. */
+  const TURN_M = TURN_PAIRS.map(([a, b]) => {
+    const u = UNIT[a], v = UNIT[b], R = [];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++)
+      R.push((i === j ? 1 : 0) - u[i] * u[j] - v[i] * v[j] + v[i] * u[j] - u[i] * v[j]);
+    return R;
+  });
+  const matMul = (A, B) => {
+    const C = [];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++)
+      C.push(A[3 * i] * B[j] + A[3 * i + 1] * B[3 + j] + A[3 * i + 2] * B[6 + j]);
+    return C;
+  };
+  /* What an opener names, by the kind of frame in play. */
+  const frameDraw = () => {
+    const k = nestFrameKind();
+    return k === 'mirror' ? { mirror: Math.floor(Math.random() * 3) }
+      : k === 'turn' ? { turn: Math.floor(Math.random() * TURN_PAIRS.length) } : {};
+  };
   const nestState = () => state.nest ||
     (state.nest = { stack: [], sides: [], anchor: null, side: null, last: 'stay',
-                    flip: [0, 0, 0], flips: [] });
+                    flip: [0, 0, 0], flips: [], M: IDENTITY, Ms: [] });
 
   /* What the next item is to be, decided before it is drawn so that targets and
      lures can be planted against the right partner — the same reason the lag is
@@ -418,8 +453,7 @@ function createSampler(env) {
     /* Under frames it also mirrors the outermost level's axis: without that the
        outer level, where most of a shallow stream is spent, was never mirrored,
        and at depth one a player ignoring frames still scored 89%. */
-    if (!s.anchor) return { tag: 'first', partner: null, lureA: null, lureB: null,
-                            mirror: nestFrames() ? Math.floor(Math.random() * 3) : null };
+    if (!s.anchor) return { tag: 'first', partner: null, lureA: null, lureB: null, ...frameDraw() };
     /* The side branch: the branch just left is the lure (not switching), and
        so is the level waiting below (switching levels instead of branches). */
     if (nestWidth() >= 2 && Math.random() < (s.side ? NEST_SWITCH : NEST_SWITCH_OPEN))
@@ -435,8 +469,7 @@ function createSampler(env) {
     if (!canOut) { wIn += wOut; wOut = 0; }
     const r = Math.random() * (wIn + wOut + NEST_STAY);
     const tag = r < wIn ? 'in' : r < wIn + wOut ? 'out' : 'stay';
-    if (tag === 'in') return { tag, partner: null, lureA: null, lureB: null,
-                               mirror: nestFrames() ? Math.floor(Math.random() * 3) : null };
+    if (tag === 'in') return { tag, partner: null, lureA: null, lureB: null, ...frameDraw() };
     /*
      * The lures are the items a wrong reading of the structure would compare
      * with, in the two slots the queue uses for n−1 and n+1.
@@ -471,12 +504,19 @@ function createSampler(env) {
       s.flips.push(s.flip);
       s.flip = s.flip.slice();
       if (plan.mirror != null) s.flip[plan.mirror] ^= 1;
+      /* The new level's turn goes on after the ones already open. */
+      s.Ms.push(s.M);
+      s.M = plan.turn != null ? matMul(TURN_M[plan.turn], s.M) : s.M;
     }
-    else if (plan.tag === 'out') { s.stack.pop(); s.side = s.sides.pop() || null; s.flip = s.flips.pop() || [0, 0, 0]; }
+    else if (plan.tag === 'out') {
+      s.stack.pop(); s.side = s.sides.pop() || null; s.flip = s.flips.pop() || [0, 0, 0];
+      s.M = s.Ms.pop() || IDENTITY;
+    }
     else if (plan.tag === 'switch') s.side = s.anchor;
     else if (plan.tag === 'first') {
       s.flip = [0, 0, 0]; s.flips = [];
       if (plan.mirror != null) s.flip[plan.mirror] ^= 1;
+      s.M = plan.turn != null ? TURN_M[plan.turn] : IDENTITY; s.Ms = [];
     }
     s.anchor = t;
     /* A switch keeps the run going: it moves sideways, not up or down. */
@@ -485,7 +525,9 @@ function createSampler(env) {
     t.depth = s.stack.length;          // levels suspended while this item is up
     t.partner = plan.partner;
     /* The frame the item is answered in, and the axis a level's opener mirrors. */
-    if (nestFrames()) { t.flip = s.flip.slice(); if (plan.mirror != null) t.mirror = plan.mirror; }
+    const kind = nestFrameKind();
+    if (kind === 'mirror') { t.flip = s.flip.slice(); if (plan.mirror != null) t.mirror = plan.mirror; }
+    else if (kind === 'turn') { t.frameMap = s.M.slice(); if (plan.turn != null) t.turn = plan.turn; }
   }
 
   /* The frame the planned item will be answered in, before nestCommit applies it. */
@@ -563,7 +605,7 @@ function createSampler(env) {
                             .filter(i => i !== nb.cellIdx && i !== noRepeat) : [];
       if (cand.length) { t.cellIdx = pick(cand); usedLure = true; lureTarget = null; }
       else t.cellIdx = randExcept(state.cells.length, noRepeat);
-    } else if (nest && nb && nestFrames() && plannedFlip(nest).some(x => x) &&
+    } else if (nest && nb && nestFrameKind() === 'mirror' && plannedFlip(nest).some(x => x) &&
                Math.random() < NEST_FRAME_BIAS) {
       /* A frame only matters on the axes it flips. Drawn freely, a move touches a
          given axis about two times in three, so with one axis mirrored most of
@@ -734,7 +776,7 @@ function createSampler(env) {
   return {
     randInt, pick, randExcept, sampleIndex, backAt, maxLag, trialLag,
     cardinalNeighbours, pickMetaMove, pickMetaType, sampleTrial,
-    nestPlan, nestCommit, NEST_RUN, NEST_STAY, NEST_SWITCH, NEST_SWITCH_OPEN, NEST_FRAME_BIAS,
+    nestPlan, nestCommit, NEST_RUN, NEST_STAY, NEST_SWITCH, NEST_SWITCH_OPEN, NEST_FRAME_BIAS, TURN_M,
     moveVectorOf, metaRelationOf,
   };
 }
