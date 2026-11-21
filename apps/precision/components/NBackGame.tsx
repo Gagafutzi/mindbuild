@@ -4,6 +4,7 @@ import { NBackEvent, Score, Settings, Shape, Modality } from '../types';
 import { SYLLABLES } from '../syllableAudio';
 import { MAX_WORD_SYLLABLES, clampSyllableRate, playSyllable, primeSyllables, randomWord } from '../syllableVoice';
 import ShapeDisplay from './ShapeDisplay';
+import { keyLabel, keyOf, modalityForKey, resolveKeys } from '../keys';
 import { REST_ROT, Rot, at, fitFill, latticeLines, solidPatches, view, WORST_FILL } from './box3d';
 import { buildTexture, plainTexture } from './texture3d';
 
@@ -267,33 +268,29 @@ const NBackGame: React.FC<NBackGameProps> = ({ settings, onGameEnd }) => {
     respondedToRef.current.add(responseKey);
   }, [feedbackEnabled]);
 
+  /* The bindings from Settings (keys.ts), with any modality a saved set lacks
+     falling back to its old key. */
+  const keys = useMemo(() => resolveKeys(settings), [settings.keyBindings]);
+
   useEffect(() => {
+    const enabled = {
+      spatial: settings.spatialEnabled, audio: settings.audioEnabled, color: settings.colorEnabled,
+      shape: settings.shapeEnabled, syllable: settings.syllableEnabled,
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat) return;
-      const key = event.key.toLowerCase();
-      switch (key) {
-        case 'a':
-          if (settings.spatialEnabled) handleUserResponse('spatial');
-          break;
-        case 'l':
-          if (settings.audioEnabled) handleUserResponse('audio');
-          break;
-        case 'f':
-          if (settings.colorEnabled) handleUserResponse('color');
-          break;
-        case 'j':
-          if (settings.shapeEnabled) handleUserResponse('shape');
-          break;
-        case 'k':
-          if (settings.syllableEnabled) handleUserResponse('syllable');
-          break;
-      }
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+      const m = modalityForKey(keys, keyOf(event));
+      if (!m || !enabled[m]) return;
+      /* A bound Space or arrow must answer, not scroll the page or press the
+         button that has focus from the last click. */
+      event.preventDefault();
+      handleUserResponse(m);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleUserResponse, settings.spatialEnabled, settings.audioEnabled, settings.colorEnabled, settings.shapeEnabled, settings.syllableEnabled]);
+  }, [handleUserResponse, keys, settings.spatialEnabled, settings.audioEnabled, settings.colorEnabled, settings.shapeEnabled, settings.syllableEnabled]);
 
   const endSession = useCallback((completed: boolean) => {
       Tone.Transport.stop();
@@ -687,11 +684,11 @@ const NBackGame: React.FC<NBackGameProps> = ({ settings, onGameEnd }) => {
   /* One cell across, times the ball size — the same meaning it has in 3D. */
   const stimulusSize = (boardW / gridCols) * ballSize;
   const responseButtons = [
-    settings.spatialEnabled && <button key="spatial" onClick={() => handleUserResponse('spatial')} className={getButtonClass('spatial')}>Position <span className="text-xs opacity-70">(A)</span></button>,
-    settings.colorEnabled && <button key="color" onClick={() => handleUserResponse('color')} className={getButtonClass('color')}>Color <span className="text-xs opacity-70">(F)</span></button>,
-    settings.audioEnabled && <button key="audio" onClick={() => handleUserResponse('audio')} className={getButtonClass('audio')}>Audio <span className="text-xs opacity-70">(L)</span></button>,
-    settings.shapeEnabled && <button key="shape" onClick={() => handleUserResponse('shape')} className={getButtonClass('shape')}>Shape <span className="text-xs opacity-70">(J)</span></button>,
-    settings.syllableEnabled && <button key="syllable" onClick={() => handleUserResponse('syllable')} className={getButtonClass('syllable')}>Syllable <span className="text-xs opacity-70">(K)</span></button>,
+    settings.spatialEnabled && <button key="spatial" onClick={() => handleUserResponse('spatial')} className={getButtonClass('spatial')}>Position <span className="text-xs opacity-70">({keyLabel(keys.spatial)})</span></button>,
+    settings.colorEnabled && <button key="color" onClick={() => handleUserResponse('color')} className={getButtonClass('color')}>Color <span className="text-xs opacity-70">({keyLabel(keys.color)})</span></button>,
+    settings.audioEnabled && <button key="audio" onClick={() => handleUserResponse('audio')} className={getButtonClass('audio')}>Audio <span className="text-xs opacity-70">({keyLabel(keys.audio)})</span></button>,
+    settings.shapeEnabled && <button key="shape" onClick={() => handleUserResponse('shape')} className={getButtonClass('shape')}>Shape <span className="text-xs opacity-70">({keyLabel(keys.shape)})</span></button>,
+    settings.syllableEnabled && <button key="syllable" onClick={() => handleUserResponse('syllable')} className={getButtonClass('syllable')}>Syllable <span className="text-xs opacity-70">({keyLabel(keys.syllable)})</span></button>,
   ].filter(Boolean);
   const leftButtons = responseButtons.slice(0, Math.ceil(responseButtons.length / 2));
   const rightButtons = responseButtons.slice(Math.ceil(responseButtons.length / 2));

@@ -5,6 +5,7 @@ import Calibration from './components/Calibration';
 import NBackGame from './components/NBackGame';
 import SettingsComponent from './components/Settings';
 import Performance from './components/Performance';
+import { DEFAULT_KEYS } from './keys';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { SYLLABLES } from './syllableAudio';
 
@@ -42,6 +43,7 @@ const DEFAULT_SETTINGS: Settings = {
   shapeVertices: 6,
   colorPattern: 'vertical',
   feedbackEnabled: true,
+  keyBindings: { ...DEFAULT_KEYS },
   variableIsiEnabled: false,
   variableIsiRange: 700,
   variableIsiMinRange: 350,

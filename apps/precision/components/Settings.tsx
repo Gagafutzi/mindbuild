@@ -1,6 +1,7 @@
 
-import React, { useState } from 'react';
-import { Settings } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Modality, Settings } from '../types';
+import { DEFAULT_KEYS, MODALITY_LABEL, MODALITY_ORDER, bindable, keyLabel, keyOf, rebind, resolveKeys } from '../keys';
 import { SYLLABLES } from '../syllableAudio';
 import {
   SYLLABLE_RATE_MAX,
@@ -21,12 +22,35 @@ const SettingsComponent: React.FC<SettingsProps> = ({ settings, onSave, onBack }
 
   const handleSave = () => {
     // Ensure at least one modality is enabled
-    if (!localSettings.spatialEnabled && !localSettings.audioEnabled && !localSettings.colorEnabled && !localSettings.shapeEnabled) {
+    if (!localSettings.spatialEnabled && !localSettings.audioEnabled && !localSettings.colorEnabled && !localSettings.shapeEnabled && !localSettings.syllableEnabled) {
       alert("Please enable at least one modality.");
       return;
     }
     onSave(localSettings);
     onBack();
+  };
+
+  /* Key capture: click a modality's key, then press the new one. Escape cancels. */
+  const [capturing, setCapturing] = useState<Modality | null>(null);
+  const keys = resolveKeys(localSettings);
+  useEffect(() => {
+    if (!capturing) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const k = keyOf(e);
+      if (k === 'escape') { setCapturing(null); return; }
+      if (!bindable(k) || e.ctrlKey || e.metaKey || e.altKey) return;
+      setLocalSettings(prev => ({ ...prev, keyBindings: rebind(resolveKeys(prev), capturing, k) }));
+      setCapturing(null);
+    };
+    /* Capture phase, so the key never reaches the button that has focus. */
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [capturing]);
+  const enabledOf: Record<Modality, boolean> = {
+    spatial: localSettings.spatialEnabled, audio: localSettings.audioEnabled, color: localSettings.colorEnabled,
+    shape: localSettings.shapeEnabled, syllable: localSettings.syllableEnabled,
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -74,6 +98,37 @@ const SettingsComponent: React.FC<SettingsProps> = ({ settings, onSave, onBack }
             <div className="flex items-center gap-3"><input type="checkbox" name="syllableEnabled" id="syllableEnabled" checked={localSettings.syllableEnabled} onChange={handleChange} className="w-6 h-6" /><label htmlFor="syllableEnabled">Syllable (Spoken)</label></div>
           </div>
           <p className="text-xs text-gray-400 mt-2 px-1">Note: When Color and Shape are enabled, the shape's contour masks the color pattern.</p>
+        </div>
+
+        {/* Keyboard */}
+        <div className="pt-2">
+          <div className="flex justify-between items-center">
+            <label className="font-bold text-lg">Keyboard</label>
+            <button type="button"
+                    onClick={() => { setCapturing(null); setLocalSettings(prev => ({ ...prev, keyBindings: { ...DEFAULT_KEYS } })); }}
+                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">
+              Reset to A F L J K
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2 p-4 bg-gray-900/50 rounded-lg">
+            {MODALITY_ORDER.map(m => (
+              <div key={m} className={`flex items-center justify-between gap-2 ${enabledOf[m] ? '' : 'opacity-50'}`}>
+                <span>{MODALITY_LABEL[m]}</span>
+                <button type="button" id={`key-${m}`}
+                        onClick={() => setCapturing(capturing === m ? null : m)}
+                        aria-label={`Key for ${MODALITY_LABEL[m]}: ${keyLabel(keys[m])}. Click, then press a new key.`}
+                        className={`min-w-[4.5rem] px-3 py-2 rounded font-mono text-sm border ${capturing === m
+                          ? 'border-cyan-400 bg-cyan-900/40 text-cyan-200 animate-pulse'
+                          : 'border-gray-600 bg-gray-700 hover:bg-gray-600'}`}>
+                  {capturing === m ? 'press…' : keyLabel(keys[m])}
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-2 px-1">
+            Click a key, then press the one you want. Picking a key another modality uses swaps
+            the two. Escape cancels. Letters, digits, Space and the arrow keys all work.
+          </p>
         </div>
         
         {/* Color Pattern */}

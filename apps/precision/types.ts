@@ -49,6 +49,9 @@ export type NBackEvent = {
 
 export type Modality = 'spatial' | 'audio' | 'color' | 'shape' | 'syllable';
 
+/* The key that answers each modality, as KeyboardEvent.key lowercased. */
+export type KeyBindings = Record<Modality, string>;
+
 export type Score = {
   hits: Record<Modality, number>;
   misses: number;
@@ -120,6 +123,8 @@ export type Settings = {
   shapeVertices: number;
   colorPattern: ColorPattern;
   feedbackEnabled: boolean;
+  /* Which key answers which modality (see keys.ts). */
+  keyBindings: KeyBindings;
   variableIsiEnabled: boolean;
   variableIsiRange: number;
   variableIsiMinRange: number;
