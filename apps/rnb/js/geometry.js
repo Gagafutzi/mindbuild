@@ -759,10 +759,20 @@ function applyRotation() {
 
   /* The solved angle is what makes the spaced layout non-overlapping, so it has to be
      applied — the CSS default of -24°/-28° is not the solution. */
-  if (!cfg.rotation && staticView)
+  /* A camera glide in flight belongs to the view stream; a rebuild does not cut it. */
+  if (state.running && cfg.streams && cfg.streams.view && cfg.streams.view !== 'off') {
+    requestAnimationFrame(faceTags);
+    return;
+  }
+  cancelAnimationFrame(viewAnim);
+  if (!cfg.rotation && staticView) {
     cubeWrapper.style.transform = `rotateX(${staticView.ax}deg) rotateY(${staticView.ay}deg)`;
-  else
+    viewNow.pitch = staticView.ax; viewNow.yaw = staticView.ay;
+  } else {
     cubeWrapper.style.transform = '';
+    /* The stylesheet's resting angle, which is the middle view. */
+    viewNow.pitch = VIEW_PITCH[1]; viewNow.yaw = VIEW_YAW[1];
+  }
   requestAnimationFrame(faceTags);
 }
 
@@ -790,11 +800,39 @@ function normalise(v) {
 }
 
 
-/* Turn the space to one of the view stream's nine viewpoints (constants.js,
-   VIEW_YAW / VIEW_PITCH). A jump, not a glide: the change of view is the stimulus,
-   and a slow turn would smear it across the interval. */
-function applyView(i) {
-  cubeWrapper.style.transform =
-    `rotateX(${VIEW_PITCH[viewPitch(i)]}deg) rotateY(${VIEW_YAW[viewYaw(i)]}deg)`;
-  faceTags();
+/*
+ * Move the camera to one of the view stream's nine viewpoints (constants.js,
+ * VIEW_YAW / VIEW_PITCH). It travels there — along the orbit, easing in and out —
+ * rather than cutting: a camera in a space does not teleport, and the way it
+ * travels is what the relational answer is about. Half the interval, as 3D Hyper
+ * N-back spends two of its three seconds, held between a quarter second and 1.6.
+ * The trial's matrix is the view it arrives at (viewMatrix), not wherever the
+ * camera happens to be when the stimulus is drawn.
+ */
+const viewNow = { pitch: VIEW_PITCH[1], yaw: VIEW_YAW[1] };   // where the camera is
+let viewAnim = 0;
+const viewTransform = (p, y) => `rotateX(${p}deg) rotateY(${y}deg)`;
+const viewTarget = i => ({ pitch: VIEW_PITCH[viewPitch(i)], yaw: VIEW_YAW[viewYaw(i)] });
+const viewGlideMs = () => Math.max(250, Math.min(1600, (cfg.interval || 2500) * 0.5));
+
+function applyView(i, ms = viewGlideMs()) {
+  const to = viewTarget(i), from = { ...viewNow };
+  cancelAnimationFrame(viewAnim);
+  const t0 = performance.now();
+  const step = now => {
+    const k = ms > 0 ? Math.min(1, (now - t0) / ms) : 1;
+    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    viewNow.pitch = from.pitch + (to.pitch - from.pitch) * e;
+    viewNow.yaw = from.yaw + (to.yaw - from.yaw) * e;
+    cubeWrapper.style.transform = viewTransform(viewNow.pitch, viewNow.yaw);
+    faceTags();
+    if (k < 1) viewAnim = requestAnimationFrame(step);
+  };
+  viewAnim = requestAnimationFrame(step);
+}
+
+/* The rotation a trial is seen from once the camera has arrived. */
+function viewMatrix(i) {
+  const to = viewTarget(i);
+  try { return new DOMMatrixReadOnly(viewTransform(to.pitch, to.yaw)); } catch (e) { return currentMatrix(); }
 }

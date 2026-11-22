@@ -160,10 +160,10 @@ function renderTrial(t) {
   if (t.pitch != null || t.timbre != null || (t.pan != null && t.letter == null))
     playTone(t);
   if (t.letter != null) playLetter(t);
-  /* The viewpoint, before the matrix is read: the screen frame is answered in the
-     view the trial was seen from. */
+  /* The camera sets off for the trial's viewpoint, and the screen frame is answered
+     in the view it arrives at. */
   if (t.view != null) applyView(t.view);
-  t.matrix = currentMatrix();
+  t.matrix = t.view != null ? viewMatrix(t.view) : currentMatrix();
 }
 
 /* Repaint the lit slot from the colour stream by overriding the same variables the
