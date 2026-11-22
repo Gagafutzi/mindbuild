@@ -284,7 +284,7 @@ function blockRecord(completed, scored) {
          either is not the same score. */
       cellFill: cfg.cellFill,
       slotReadout: cfg.slotReadout,
-      componentLines: !!cfg.componentLines,
+      componentLines: componentLinesOn(),
       gizmo: cfg.gizmo,
       /* Layout belongs here, not with the cosmetics: flat panels remove the depth
          ambiguity entirely, so the same score means something different. */

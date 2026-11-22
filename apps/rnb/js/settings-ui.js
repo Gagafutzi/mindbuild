@@ -469,6 +469,7 @@ function syncSettingsUI() {
   $('cellFill').value = cfg.cellFill || 'solid';
   $('slotReadout').value = cfg.slotReadout || 'off';
   $('componentLines').checked = !!cfg.componentLines;
+  $('componentLines').disabled = !openSpaceOn();
   $('cubeLayout').value = cfg.layout;
   $('layoutHint').textContent = LAYOUT_HINT[cfg.layout] || '';
   $('dailyGoal').value = cfg.dailyGoal || 0;

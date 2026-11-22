@@ -456,8 +456,11 @@ function positionComponents(p) {
   gridCube.classList.add('components-shown');
 }
 
+/* Open space only: on the cube the lattice already says where a place is, and
+   the lines were one more thing drawn through it. */
+const componentLinesOn = () => !!cfg.componentLines && openSpaceOn();
 function applyComponentLines() {
-  gridCube.classList.toggle('components-on', !!cfg.componentLines);
+  gridCube.classList.toggle('components-on', componentLinesOn());
 }
 
 /* Three rails through the active slot, one per axis, each running the full width of
