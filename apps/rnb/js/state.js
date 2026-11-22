@@ -103,6 +103,8 @@ const cfg = {
    * instead of making it easier.
    */
   slotReadout: 'off',
+  /* Grey lines from the middle to the lit place, one axis at a time (an assist). */
+  componentLines: false,
   layout: 'dense',
   cubeScale: 1,
   dailyGoal: 20,

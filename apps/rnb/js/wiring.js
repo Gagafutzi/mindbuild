@@ -350,6 +350,7 @@ $('spinPath').onchange  = e => {
 };
 $('cellVis').onchange   = e => { cfg.cellVis = e.target.value; applyCellVis(); saveProgress(); };
 $('cellFill').onchange  = e => { cfg.cellFill = e.target.value; applyCellVis(); saveProgress(); };
+$('componentLines').onchange = e => { cfg.componentLines = e.target.checked; applyComponentLines(); saveProgress(); };
 $('slotReadout').onchange = e => {
   cfg.slotReadout = e.target.value;
   applyCellVis();

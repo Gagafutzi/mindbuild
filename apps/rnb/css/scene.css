@@ -397,3 +397,9 @@ body.depth-strong .cube-stage { --open-persp: .9; }
 :root.open-space-view body.depth-flat .cube-stage { perspective: none; }
 :root.open-space-view .cube-wrapper { width: min(100vw, 100vh); height: min(100vw, 100vh); }
 :root.open-space-view .dock { margin-top: auto; margin-bottom: 0; }
+
+/* Component lines (geometry.js): grey, from the middle to the lit place, one axis
+   at a time. Only while a place is lit, and only with the setting on. */
+.components { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; display: none; }
+.components-on.components-shown .components { display: block; }
+.component { position: absolute; top: calc(50% - 1px); height: 2px; background: rgba(176, 184, 192, .72); }

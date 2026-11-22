@@ -268,11 +268,15 @@ function buildCube(dim) {
       }
 
   state.builtSize = size;
+  /* The distance between neighbouring places as built: in the spaced layout it is
+     not size / dim, and anything drawn to a place has to use this one. */
+  state.cellStep = step;
   state.latticeDim = grid;
   state.latticePitch = open ? step : null;
   if (open) buildAxisLines(grid, step, openAxisLength());
   else buildCubeFrame(size);
   buildGuides(open ? grid * step : size);
+  buildComponentLines();
   buildMoveArrow(size);
   buildGizmo();
   applyCellVis();
@@ -411,6 +415,51 @@ function buildAxisLines(grid, step, length) {
   gridCube.appendChild(g);
 }
 
+/*
+ * Component lines: the lit place taken apart into its three components, the way a
+ * vector is drawn — grey lines from the middle along east–west, then along A–B,
+ * then up or down to the cube. The two flat axes first and the vertical last, so
+ * the path walks the floor to the spot under the cube and climbs to it.
+ */
+function buildComponentLines() {
+  const g = document.createElement('div');
+  g.className = 'components';
+  state.componentSegs = [0, 2, 1].map(axis => ({
+    axis,
+    pair: [0, 90].map(roll => {
+      const e = document.createElement('div');
+      e.className = 'component';
+      g.appendChild(e);
+      return { el: e, roll };
+    }),
+  }));
+  gridCube.appendChild(g);
+  applyComponentLines();
+}
+
+/* `p` is the lit place's centre, in the lattice's own pixels. */
+function positionComponents(p) {
+  if (!state.componentSegs) return;
+  const at = [0, 0, 0];
+  state.componentSegs.forEach(seg => {
+    const a = seg.axis, L = p[a], len = Math.abs(L);
+    const mid = at.slice(); mid[a] += L / 2;
+    seg.pair.forEach(r => {
+      r.el.style.display = len < 0.5 ? 'none' : '';
+      r.el.style.width = len + 'px';
+      r.el.style.left = `calc(50% - ${len / 2}px)`;
+      r.el.style.transform =
+        `translate3d(${mid[0]}px, ${mid[1]}px, ${mid[2]}px) ${RAIL_AXES[a].orient} rotateX(${r.roll}deg)`;
+    });
+    at[a] += L;
+  });
+  gridCube.classList.add('components-shown');
+}
+
+function applyComponentLines() {
+  gridCube.classList.toggle('components-on', !!cfg.componentLines);
+}
+
 /* Three rails through the active slot, one per axis, each running the full width of
    the cube. The gradient runs between the two axis colours, so a rail reads as
    "this slot sits here on the West→East line". */
@@ -527,7 +576,8 @@ function hideMoveArrow() {
 function positionGuides(cellIdx) {
   if (!state.rails) return;
   const dim = latticeDim(), size = gridCube.clientWidth || 240;
-  const cs = state.latticePitch || size / dim, off = (dim - 1) / 2;
+  /* The built step: size / dim put the rails beside the cells in the spaced layout. */
+  const cs = state.cellStep || size / dim, off = (dim - 1) / 2;
   const c = state.cells[cellIdx];
   const p = [(c.x - off) * cs, (c.y - off) * cs, (c.z - off) * cs];
   /* Each rail spans its own axis, so it is only offset along the other two. */
@@ -539,6 +589,7 @@ function positionGuides(cellIdx) {
         `translate3d(${tx}px, ${ty}px, ${tz}px) ${r.orient} rotateX(${r.roll}deg)`;
     });
   });
+  positionComponents(p);
 }
 
 const CELL_VIS_MODES = ['lattice', 'contrast', 'guides', 'rails', 'solo'];

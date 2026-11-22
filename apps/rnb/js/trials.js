@@ -234,6 +234,7 @@ const hideLagCue = () => $('lagGhost').classList.remove('show');
 
 function clearCells() {
   state.stimShown = false;
+  gridCube.classList.remove('components-shown');
   $('gateBanner').classList.remove('show');
   state.cells.forEach(c => {
     c.el.classList.remove('active', 'gate-closed');

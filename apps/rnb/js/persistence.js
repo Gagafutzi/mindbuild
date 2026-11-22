@@ -173,6 +173,7 @@ function loadProgress() {
                      cfg.cellVis = p.display.cellVis || cfg.cellVis;
                      cfg.cellFill = p.display.cellFill || cfg.cellFill;
                      cfg.slotReadout = p.display.slotReadout || cfg.slotReadout;
+                     cfg.componentLines = !!p.display.componentLines;
                      cfg.layout = p.display.layout || cfg.layout;
                      cfg.spinPath = p.display.spinPath || cfg.spinPath;
                      cfg.voiceSet = p.display.voiceSet || cfg.voiceSet;
@@ -290,7 +291,7 @@ function saveProgress() {
   progress.actionBinds = actionBinds;
   progress.progCfg = progCfg;
   progress.display = { gizmo: cfg.gizmo, cellVis: cfg.cellVis,
-                       cellFill: cfg.cellFill, slotReadout: cfg.slotReadout,
+                       cellFill: cfg.cellFill, slotReadout: cfg.slotReadout, componentLines: cfg.componentLines,
                        layout: cfg.layout,
                        spinPath: cfg.spinPath, voiceSet: cfg.voiceSet,
                        letterVoice: cfg.letterVoice,
