@@ -61,6 +61,31 @@ function createSampler(env) {
     return i;
   }
 
+  /*
+   * A place for the cube, drawn evenly — except in open space, where the lattice
+   * is one layer wider on every side and 98 of the 125 places are outside the old
+   * cube. Drawn evenly there, the cube was outside nine trials in ten and the old
+   * cube stopped being the frame anything happened in. So an outer place is drawn
+   * OPEN_OUTSIDE of the time, and the old cube's places the rest.
+   */
+  const OPEN_OUTSIDE = env.OPEN_OUTSIDE ?? 0.35;
+  let placeCache = null;
+  function randCell(forbid, avoid) {
+    const cells = state.cells;
+    if (!placeCache || placeCache.cells !== cells)
+      placeCache = { cells, out: cells.map((c, i) => c.outside ? i : -1).filter(i => i >= 0),
+                     inn: cells.map((c, i) => c.outside ? -1 : i).filter(i => i >= 0) };
+    if (!placeCache.out.length) {
+      let i, guard = 0;
+      do { i = randInt(cells.length); guard++; }
+      while ((i === forbid || i === avoid) && guard < 40 && cells.length > 1);
+      return i;
+    }
+    const side = Math.random() < OPEN_OUTSIDE ? placeCache.out : placeCache.inn;
+    const cand = side.filter(i => i !== forbid && i !== avoid);
+    return cand.length ? pick(cand) : randExcept(cells.length, forbid);
+  }
+
   function sampleIndex(streamKey, len, nbackIdx, lureIdxs, forbid) {
     /* Lure is checked BEFORE the target-match roll. A lure is by definition not an
        n-back match, so rolling for a match first would silently eat the lure on 28% of
@@ -76,6 +101,7 @@ function createSampler(env) {
     if (nbackIdx != null && nbackIdx !== forbid && Math.random() < TARGET_RATE) {
       return nbackIdx;
     }
+    if (streamKey === 'position') return randCell(forbid, nbackIdx);
     let i, guard = 0;
     do { i = randInt(len); guard++; }
     while ((i === nbackIdx || i === forbid) && guard < 40 && len > 1);
@@ -232,7 +258,7 @@ function createSampler(env) {
     if (!A || !moves.length) {
       return moves.length
         ? pick(moves)
-        : { cellIdx: randExcept(state.cells.length, forbid), levels: {} };
+        : { cellIdx: randCell(forbid), levels: {} };
     }
 
     /*
@@ -604,7 +630,7 @@ function createSampler(env) {
       const cand = lureA ? cardinalNeighbours(lureA.cellIdx)
                             .filter(i => i !== nb.cellIdx && i !== noRepeat) : [];
       if (cand.length) { t.cellIdx = pick(cand); usedLure = true; lureTarget = null; }
-      else t.cellIdx = randExcept(state.cells.length, noRepeat);
+      else t.cellIdx = randCell(noRepeat);
     } else if (nest && nb && nestFrameKind() === 'mirror' && plannedFlip(nest).some(x => x) &&
                Math.random() < NEST_FRAME_BIAS) {
       /* A frame only matters on the axes it flips. Drawn freely, a move touches a
@@ -618,9 +644,9 @@ function createSampler(env) {
         const d = [c.x - from.x, c.y - from.y, c.z - from.z];
         return d.some((v, k) => v && f[k]);
       });
-      t.cellIdx = cand.length ? pick(cand) : randExcept(state.cells.length, noRepeat);
+      t.cellIdx = cand.length ? pick(cand) : randCell(noRepeat);
     } else if (rel('position') || !on('position')) {
-      t.cellIdx = randExcept(state.cells.length, noRepeat);
+      t.cellIdx = randCell(noRepeat);
     } else {
       t.cellIdx = sampleIndex('position', state.cells.length, nb ? nb.cellIdx : null,
                               [lureA && lureA.cellIdx, lureB && lureB.cellIdx],

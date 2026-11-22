@@ -778,3 +778,13 @@ function clearActionBind(id) {
   delete actionBinds[id];                       // back to the built-in default
   buildDeck(); renderKeybinds(); renderShortcuts(); saveProgress();
 }
+
+/* Open space: the lattice one layer wider on every side, with the old cube drawn as
+   its frame and edge lines. The dense layout's only (see buildCube). */
+const openSpaceOn = c => {
+  c = c || cfg;
+  return !!c.openSpace && (c.layout || 'dense') !== 'spaced';
+};
+/* The lattice actually built, and the distance between neighbouring places. */
+const latticeDim = () => state.latticeDim || cfg.dim;
+const latticePitch = () => state.latticePitch || ((gridCube.clientWidth || 240) / cfg.dim);

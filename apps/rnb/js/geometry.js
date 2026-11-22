@@ -180,9 +180,15 @@ function buildCube(dim) {
   gridCube.innerHTML = '';
   state.cells = [];
   const size = gridCube.clientWidth || 240;
-  const off = (dim - 1) / 2;
+  /* Open space: one more layer on every side. The whole space keeps the stage's
+     footprint a quarter past the old cube's, so the old cube is drawn at three
+     quarters of its usual size and the outer layer reaches a quarter beyond. */
+  const open = openSpaceOn() && layout !== 'spaced';
+  const grid = dim + (open ? 2 : 0);
+  const off = (grid - 1) / 2;
+  gridCube.classList.toggle('open-space', open);
 
-  let step = size / dim;
+  let step = open ? size / (dim + 1) : size / dim;
   let cellSize = step;
 
   /* Solved whenever the cube spins, layout aside: the gizmo arms are aimed at it too. */
@@ -228,11 +234,13 @@ function buildCube(dim) {
     staticView = null;
   }
 
-  for (let x = 0; x < dim; x++)
-    for (let y = 0; y < dim; y++)
-      for (let z = 0; z < dim; z++) {
+  for (let x = 0; x < grid; x++)
+    for (let y = 0; y < grid; y++)
+      for (let z = 0; z < grid; z++) {
         const cell = document.createElement('div');
-        cell.className = 'cell';
+        /* A place outside the old lattice: drawn only while the cube is in it. */
+        const outside = open && [x, y, z].some(c => c === 0 || c === grid - 1);
+        cell.className = outside ? 'cell outside' : 'cell';
         cell.style.width = cell.style.height = cellSize + 'px';
         cell.style.left = cell.style.top = `calc(50% - ${cellSize / 2}px)`;
         cell.style.transform =
@@ -246,12 +254,15 @@ function buildCube(dim) {
           faces.forEach(f => { f.style.setProperty('--depth-edge', col); });
         }
         gridCube.appendChild(cell);
-        state.cells.push({ el: cell, x, y, z });
+        state.cells.push(outside ? { el: cell, x, y, z, outside: true } : { el: cell, x, y, z });
       }
 
   state.builtSize = size;
-  buildCubeFrame(size);
-  buildGuides(size);
+  state.latticeDim = grid;
+  state.latticePitch = open ? step : null;
+  buildCubeFrame(open ? dim * step : size);
+  if (open) buildEdgeLines(dim * step, step);
+  buildGuides(open ? grid * step : size);
   buildMoveArrow(size);
   buildGizmo();
   applyCellVis();
@@ -271,6 +282,32 @@ function buildCubeFrame(size) {
     frame.appendChild(f);
   });
   gridCube.appendChild(frame);
+}
+
+/* Open space: the old cube's twelve edges, carried on a step past each corner so
+   the places outside it can be read against them. Each edge is two crossed strips,
+   like the rails, so it never vanishes edge-on. */
+function buildEdgeLines(side, beyond) {
+  const g = document.createElement('div');
+  g.className = 'edge-lines';
+  const h = side / 2, L = side + 2 * beyond;
+  const along = [
+    { orient: '',                at: (a, b) => [0, a, b] },   // x edges at y, z = ±h
+    { orient: 'rotateZ(90deg)',  at: (a, b) => [a, 0, b] },   // y edges
+    { orient: 'rotateY(-90deg)', at: (a, b) => [a, b, 0] },   // z edges
+  ];
+  along.forEach(ax => [[-h, -h], [-h, h], [h, -h], [h, h]].forEach(([a, b]) => {
+    const [tx, ty, tz] = ax.at(a, b);
+    [0, 90].forEach(roll => {
+      const e = document.createElement('div');
+      e.className = 'edge-line';
+      e.style.width = L + 'px';
+      e.style.left = `calc(50% - ${L / 2}px)`;
+      e.style.transform = `translate3d(${tx}px, ${ty}px, ${tz}px) ${ax.orient} rotateX(${roll}deg)`;
+      g.appendChild(e);
+    });
+  }));
+  gridCube.appendChild(g);
 }
 
 /* Three rails through the active slot, one per axis, each running the full width of
@@ -388,8 +425,8 @@ function hideMoveArrow() {
    pivots about the slot centre rather than the cube centre. */
 function positionGuides(cellIdx) {
   if (!state.rails) return;
-  const dim = cfg.dim, size = gridCube.clientWidth || 240;
-  const cs = size / dim, off = (dim - 1) / 2;
+  const dim = latticeDim(), size = gridCube.clientWidth || 240;
+  const cs = state.latticePitch || size / dim, off = (dim - 1) / 2;
   const c = state.cells[cellIdx];
   const p = [(c.x - off) * cs, (c.y - off) * cs, (c.z - off) * cs];
   /* Each rail spans its own axis, so it is only offset along the other two. */

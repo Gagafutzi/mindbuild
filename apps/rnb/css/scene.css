@@ -376,3 +376,12 @@ body.depth-strong .cube-stage { --persp-k: 1.7; }
 /* The side-branch switch: a third hue, and a bar rather than a bracket. */
 .lag-ghost.nest-switch { color: rgba(105, 219, 124, .66); }
 .lag-ghost .mirror { font-size: .38em; vertical-align: middle; margin-left: .08em; letter-spacing: .02em; }
+
+/* Open space: the places outside the old lattice are drawn only while the cube is in
+   one, and the old cube's edges run on past its corners as lines. */
+.open-space .cell.outside:not(.active) { visibility: hidden; }
+.edge-lines { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; }
+.edge-line {
+  position: absolute; top: 50%; height: 0;
+  border-top: 1px dashed var(--frame-edge, rgba(160, 190, 175, .55));
+}

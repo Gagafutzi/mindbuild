@@ -47,7 +47,7 @@ function readoutHTML(cellIdx, cellW) {
   if (!mode || mode === 'off') return '';
   const c = state.cells[cellIdx];
   if (!c) return '';
-  const dim = cfg.dim, off = (dim - 1) / 2;
+  const dim = latticeDim(), off = (dim - 1) / 2;
   /* Sized off the cell it is printed on, divided by roughly how many characters
      wide the form is, and clamped: a 4-cube's slots are small enough to need the
      floor, and a scaled-up 3-cube big enough to need the ceiling. */
@@ -127,7 +127,7 @@ function renderTrial(t) {
      cells small enough that the largest size plus a quantity row overflows the face.
      Scale the whole ladder rather than clamping it — clamping would collapse adjacent
      size levels into each other and make the size judgement unanswerable. */
-  const cellPx = (gridCube.clientWidth || 240) / cfg.dim;
+  const cellPx = latticePitch();
   const maxFont = (cellPx - 4) / (t.quantity != null ? 1.4 : 1.1);
   const sizePool = poolFor('size');
   const scale = Math.min(1, maxFont / sizePool[sizePool.length - 1]);

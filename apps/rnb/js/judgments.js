@@ -423,7 +423,9 @@ function chanceKey(stream) {
        Depth is part of it: the deeper the stream, the more of the judged items
        are returns, and the lures a return can carry are not the ones a stay can. */
     (nestDepth(c) ? '/nest' + nestDepth(c) + (nestWidth(c) > 1 ? 'w' + nestWidth(c) : '') +
-      (nestFrames(c) ? (nestFrameKind(c) === 'turn' ? 'ft' : 'f') : '') : '');
+      (nestFrames(c) ? (nestFrameKind(c) === 'turn' ? 'ft' : 'f') : '') : '') +
+    /* More places, so other base rates for an identity position. */
+    (c.openSpace && (c.layout || 'dense') !== 'spaced' ? '/open' : '');
 }
 
 function chanceOf(t) {

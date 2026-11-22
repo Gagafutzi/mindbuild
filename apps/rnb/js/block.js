@@ -249,7 +249,7 @@ function blockRecord(completed, scored) {
     /* Full config snapshot: a score is meaningless without knowing what produced it,
        and settings drift between blocks. */
     cfg: {
-      streams: { ...cfg.streams }, dim: cfg.dim, frame: cfg.frame,
+      streams: { ...cfg.streams }, dim: cfg.dim, openSpace: openSpaceOn(), frame: cfg.frame,
       interval: cfg.interval, blockLength: cfg.blockLength, rotation: cfg.rotation,
       spin: cfg.spin, feedback: cfg.feedback, lureRate: cfg.lureRate,
       meta: cfg.meta, gate: cfg.gate, retro: cfg.retro, varN: cfg.varN,
@@ -509,6 +509,9 @@ function computeLoad() {
     else if (cfg.streams[k] === 'cross') load += 11;
   });
   if (cfg.dim === 4) load += 12;
+  /* One more layer on every side: 125 places around a 3-cube, judged against
+     lines rather than a drawn lattice. */
+  if (openSpaceOn()) load += 12;
   /*
    * A finer tone pool, on the stream that has to place it. Every note added
    * narrows the step, so both questions the stream can ask get harder: "the same
@@ -693,6 +696,7 @@ function applyProgression() {
     n: nestedTier() ? 1 : prog.n,
     nest: nestedTier() ? Math.min(NEST_MAX, prog.n) : 0,
     nestWidth: nestedTier() && progCfg.nestWidth >= 2 ? 2 : 1,
+    openSpace: false,              // a Free Play setting; the ladder's places are the lattice's
     nestFrames: nestedTier() && progCfg.nestFrames ? (progCfg.nestFrames === 'turn' ? 'turn' : true) : false,
     interval: prog.interval,
     lureRate: prog.lureRate,
@@ -783,6 +787,9 @@ function applyFree() {
     glyphRel: freeCfg.glyphRel === 'rank' ? 'rank' : 'map',
     varPriority: !!freeCfg.varPriority,
     dim: freeCfg.dim,
+    /* A bigger lattice around the old one; the spaced layout solves its own
+       spacing for the lattice it draws, so open space is the dense layout's. */
+    openSpace: !!freeCfg.openSpace,
     coordAxes: (freeCfg.coordAxes || []).slice(),
     magnitudeCap: freeCfg.magnitudeCap === 3 ? 3 : 2,
     singleAxis: !!freeCfg.singleAxis,
