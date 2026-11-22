@@ -176,21 +176,26 @@ function buildCube(dim) {
   const solvedSpin = cfg.rotation && cfg.spinPath !== 'free';
   document.documentElement.classList.toggle('spin-stage', solvedSpin);
   document.documentElement.classList.toggle('tumble-stage', cfg.rotation && !solvedSpin);
+  /* Open space fills the screen, so the stage it measures has to be full-screen
+     before the lattice reads its width (scene.css, .open-space-view). */
+  document.documentElement.classList.toggle('open-space-view', openSpaceOn() && layout !== 'spaced');
 
   gridCube.innerHTML = '';
   state.cells = [];
   const size = gridCube.clientWidth || 240;
   /* Open space: one more layer on every side, and nothing drawn of the lattice —
      only the three coordinate axes through the middle, ticked at every place, so
-     where the cube is is read against the axes. The whole space reaches a quarter
-     past the usual cube's footprint. */
+     where the cube is is read against the axes. The space fills the screen: the
+     wrapper is as wide as the screen's short side, the outer places sit about two
+     fifths of it from the middle, and the cube is half a place across, an object
+     in a space rather than a cell in a grid. */
   const open = openSpaceOn() && layout !== 'spaced';
   const grid = dim + (open ? 2 : 0);
   const off = (grid - 1) / 2;
   gridCube.classList.toggle('open-space', open);
 
-  let step = open ? size / (dim + 1) : size / dim;
-  let cellSize = step;
+  let step = open ? size * 0.8 / (dim + 1) : size / dim;
+  let cellSize = open ? step * 0.5 : step;
 
   /* Solved whenever the cube spins, layout aside: the gizmo arms are aimed at it too. */
   spinView = solvedSpin ? solveSpinView(dim) : null;
@@ -261,7 +266,7 @@ function buildCube(dim) {
   state.builtSize = size;
   state.latticeDim = grid;
   state.latticePitch = open ? step : null;
-  if (open) buildAxisLines(grid, step);
+  if (open) buildAxisLines(grid, step, openAxisLength());
   else buildCubeFrame(size);
   buildGuides(open ? grid * step : size);
   buildMoveArrow(size);
@@ -285,14 +290,26 @@ function buildCubeFrame(size) {
   gridCube.appendChild(frame);
 }
 
+/*
+ * How long open space's axes are drawn: past every edge of the screen. They are
+ * chains of short segments (buildAxisLines), so neither of the limits on one long
+ * strip applies — a strip several screens long vanished on a phone, wider than the
+ * GPU would draw, and one past the viewer's position was cut by the 3D sorting.
+ * A segment that ends up behind the viewer is simply not drawn.
+ */
+function openAxisLength() {
+  return 2.4 * Math.max(window.innerWidth, window.innerHeight);
+}
+
 /* Open space: the three coordinate axes through the middle of the space, each the
    full width of it in its own pair of axis colours, with a tick at every place so a
    position can be counted off them. Each line and tick is two crossed strips, like
    the rails, so none of them vanishes edge-on. */
-function buildAxisLines(grid, step) {
+function buildAxisLines(grid, step, length) {
   const g = document.createElement('div');
   g.className = 'axis-lines';
-  const L = grid * step, off = (grid - 1) / 2, TICK = Math.max(6, step * 0.16);
+  /* Long enough to run off every edge of the screen at any angle. */
+  const L = length || grid * step, off = (grid - 1) / 2, TICK = Math.max(6, step * 0.16);
   const strip = (len, transform, cls, bg) => [0, 90].forEach(roll => {
     const e = document.createElement('div');
     e.className = cls;
@@ -302,8 +319,21 @@ function buildAxisLines(grid, step) {
     e.style.transform = `${transform} rotateX(${roll}deg)`;
     g.appendChild(e);
   });
+  /* Each axis is a chain of short segments, one place long, not one long strip:
+     Chrome's 3D sorting cut a strip longer than about 1.4 perspective distances in
+     half whenever the lit cell was in the scene, and the near half of the axis
+     vanished mid-block. The colour runs from one pole's to the other's along the
+     chain, as it did along the single strip. */
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const mix = (A, B, t) => `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`;
+  const segs = Math.max(1, Math.ceil(L / step)), seg = L / segs;
   RAIL_AXES.forEach((ax, a) => {
-    strip(L, ax.orient, 'axis-line', `linear-gradient(to right, ${ax.grad[0]}, ${ax.grad[1]})`);
+    const c0 = hex(ax.grad[0]), c1 = hex(ax.grad[1]);
+    for (let s = 0; s < segs; s++) {
+      const mid = -L / 2 + (s + 0.5) * seg, at = [0, 0, 0]; at[a] = mid;
+      strip(seg + 0.5, `translate3d(${at[0]}px, ${at[1]}px, ${at[2]}px) ${ax.orient}`, 'axis-line',
+        `linear-gradient(to right, ${mix(c0, c1, s / segs)}, ${mix(c0, c1, (s + 1) / segs)})`);
+    }
     /* Ticks across the axis, along the next axis round. */
     const across = RAIL_AXES[(a + 1) % 3].orient;
     for (let k = 0; k < grid; k++) {
@@ -526,6 +556,8 @@ function buildGizmo() {
     proj = { x: Math.hypot(cb, sa * sb), y: Math.abs(ca), z: Math.hypot(sb, sa * cb) };
   }
   const armLength = ax => {
+    /* Open space: just past the outermost places, on the axis that is drawn. */
+    if (openSpaceOn() && state.latticePitch) return state.latticePitch * (((state.latticeDim || 5) - 1) / 2 + 0.75);
     if (!proj) return cubeSize * 0.62;
     const k = ax.vec[0] ? 'x' : ax.vec[1] ? 'y' : 'z';
     /* Puts every badge at the same screen radius, clear of the lattice's half-extent.

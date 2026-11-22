@@ -365,7 +365,7 @@ $('dailyGoal').oninput = e => {
   renderDailyTimer(); saveProgress();
 };
 $('hideTimer').onchange = e => { cfg.hideTimer = e.target.checked; renderDailyTimer(); saveProgress(); };
-$('depthView').onchange = e => { cfg.depthView = e.target.value; applyDepthView(); saveProgress(); };
+$('depthView').onchange = e => { cfg.depthView = e.target.value; applyDepthView(); if (openSpaceOn()) buildCube(cfg.dim); saveProgress(); };
 $('controlsMode').onchange = e => { cfg.controls = e.target.value; applyControlsMode(); saveProgress(); };
 $('hideHud').onchange = e => { cfg.hideHud = e.target.checked; document.body.classList.toggle('hide-hud', cfg.hideHud); saveProgress(); };
 $('hideAccuracy').onchange = e => { cfg.hideAccuracy = e.target.checked; updateHUD(); saveProgress(); };
