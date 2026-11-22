@@ -629,6 +629,8 @@ function applyControlsMode() {
   const m = cfg.controls || 'full';
   document.body.classList.toggle('hide-dock', m === 'none');
   document.body.classList.toggle('compact-controls', m === 'compact');
+  /* Open space is fitted to the screen above the controls (openSpaceFit). */
+  if (openSpaceOn() && state.cells.length && !state.running) buildCube(cfg.dim);
 }
 
 function applyDepthView() {

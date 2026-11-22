@@ -198,7 +198,7 @@ function buildCube(dim) {
   const off = (grid - 1) / 2;
   gridCube.classList.toggle('open-space', open);
 
-  let step = open ? size * 0.8 / (dim + 1) : size / dim;
+  let step = open ? openSpaceFit(grid, size * 0.8 / (dim + 1)) : size / dim;
   let cellSize = open ? step * 0.5 : step;
 
   /* Solved whenever the cube spins, layout aside: the gizmo arms are aimed at it too. */
@@ -292,6 +292,69 @@ function buildCubeFrame(size) {
     frame.appendChild(f);
   });
   gridCube.appendChild(frame);
+}
+
+/*
+ * Open space's pitch: as wide as the design allows (`cap`), and no wider than
+ * keeps the cube in full view at every place, from every angle the camera takes.
+ *
+ * The free area is the screen above the answer keys and below the top bar; the
+ * stage is resized to it (--open-bottom), so the space is centred in what can be
+ * seen. The angles are the view stream's whole range, sampled between its
+ * viewpoints because the camera glides through them, or a whole turn while the
+ * cube spins, or the resting view. Perspective keeps a convex shape convex, so the
+ * eight outer corners of the box every cube sits in are the only points to test:
+ * each has to land inside the free area and stay in front of the camera.
+ */
+function openSpaceFit(grid, cap) {
+  const root = document.documentElement;
+  const dock = document.querySelector('.dock');
+  const dr = dock ? dock.getBoundingClientRect() : null;
+  const bottom = dr && dr.height ? Math.max(0, window.innerHeight - dr.top + 8) : 0;
+  root.style.setProperty('--open-bottom', bottom + 'px');
+  state.openBottom = bottom;
+  const stage = gridCube.closest('.cube-stage');
+  const sr = stage.getBoundingClientRect();
+  const cx = sr.left + sr.width / 2, cy = sr.top + sr.height / 2;
+  const box = { l: 10, r: window.innerWidth - 10, t: 58, b: sr.bottom - 6 };
+  const pv = getComputedStyle(stage).perspective;
+  const P = pv && pv !== 'none' ? parseFloat(pv) : 0;
+
+  const M = t => { try { return new DOMMatrixReadOnly(t); } catch (e) { return null; } };
+  const mats = [];
+  if (cfg.streams && cfg.streams.view && cfg.streams.view !== 'off') {
+    const span = (a, n) => { const lo = Math.min(...a), hi = Math.max(...a);
+      return Array.from({ length: n }, (_, i) => lo + (hi - lo) * i / (n - 1)); };
+    span(VIEW_PITCH, 5).forEach(p => span(VIEW_YAW, 5).forEach(y => mats.push(M(viewTransform(p, y)))));
+  } else if (cfg.rotation) {
+    const free = cfg.spinPath === 'free';
+    const sv = free ? null : solveSpinView(cfg.dim);
+    const pitch = sv ? sv.ax : -30;
+    for (let i = 0; i < 36; i++) {
+      const a = 360 * i / 36;
+      mats.push(M(free ? `rotateX(${-30 + a}deg) rotateY(${a}deg)`
+                       : `rotateZ(${-a}deg) rotateX(${pitch}deg) rotateY(${a}deg)`));
+    }
+  } else {
+    mats.push(M(viewTransform(VIEW_PITCH[1], VIEW_YAW[1])));
+  }
+  const views = mats.filter(Boolean);
+  const off = (grid - 1) / 2;
+  const fits = s => {
+    const R = off * s + 0.25 * s;              // the cube is half a place across
+    for (const m of views) for (const X of [-R, R]) for (const Y of [-R, R]) for (const Z of [-R, R]) {
+      const p = m.transformPoint({ x: X, y: Y, z: Z, w: 1 });
+      if (P && p.z > 0.85 * P) return false;
+      const k = P ? P / (P - p.z) : 1;
+      const sx = cx + p.x * k, sy = cy + p.y * k;
+      if (sx < box.l || sx > box.r || sy < box.t || sy > box.b) return false;
+    }
+    return true;
+  };
+  if (!views.length || fits(cap)) return cap;
+  let lo = 0, hi = cap;
+  for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+  return lo;
 }
 
 /*

@@ -276,6 +276,13 @@ function buildDeck() {
      row was one, and the cube gives back the height on a phone (responsive.css). */
   document.documentElement.classList.toggle('deck-compass', anyCompass);
   measureDock();
+  /* Open space is fitted to the screen above these keys (openSpaceFit); keys of
+     another height move that line, so the space is fitted again. */
+  if (openSpaceOn() && state.cells.length) {
+    const dr = document.querySelector('.dock').getBoundingClientRect();
+    const bottom = dr.height ? Math.max(0, window.innerHeight - dr.top + 8) : 0;
+    if (Math.abs(bottom - (state.openBottom || 0)) > 2) buildCube(cfg.dim);
+  }
 }
 
 /*
