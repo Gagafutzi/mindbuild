@@ -445,7 +445,7 @@ function chanceKey(stream) {
     (nestDepth(c) ? '/nest' + nestDepth(c) + (nestWidth(c) > 1 ? 'w' + nestWidth(c) : '') +
       (nestFrames(c) ? (nestFrameKind(c) === 'turn' ? 'ft' : 'f') : '') : '') +
     /* More places, so other base rates for an identity position. */
-    (c.openSpace && (c.layout || 'dense') !== 'spaced' ? '/open' : '');
+    (c.openSpace ? '/open' : '');
 }
 
 function chanceOf(t) {

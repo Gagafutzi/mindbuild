@@ -357,7 +357,8 @@ function syncSettingsUI() {
   $('blockLengthF').value = freeCfg.blockLength;
   $('cubeDimension').value = freeCfg.dim;
   $('openSpaceF').checked = !!freeCfg.openSpace;
-  $('openSpaceF').disabled = (cfg.layout || 'dense') === 'spaced';
+  /* Open space draws its own way; the layout only matters with it off. */
+  $('cubeLayout').disabled = openSpaceOn();
   $('letterVoice').value = cfg.letterVoice;
   $('letterVoiceHint').textContent = cfg.letterVoice === 'mix'
     ? 'A new speaker every trial. The letter is still the whole question, so the voice '

@@ -791,8 +791,8 @@ function applyFree() {
     glyphRel: freeCfg.glyphRel === 'rank' ? 'rank' : 'map',
     varPriority: !!freeCfg.varPriority,
     dim: freeCfg.dim,
-    /* A bigger lattice around the old one; the spaced layout solves its own
-       spacing for the lattice it draws, so open space is the dense layout's. */
+    /* A bigger lattice around the old one, drawn as axes only, whatever the
+       cube layout says (see buildCube). */
     openSpace: !!freeCfg.openSpace,
     coordAxes: (freeCfg.coordAxes || []).slice(),
     magnitudeCap: freeCfg.magnitudeCap === 3 ? 3 : 2,

@@ -164,7 +164,12 @@ function solveSpinView(dim) {
 }
 
 function buildCube(dim) {
-  const layout = cfg.layout || 'dense';
+  /* Open space draws its own way, so the cube layout has no say while it is on.
+     It used to be the dense layout's only, and under Spaced it switched itself off
+     without a word: the lattice came back, spaced and full-size, and turned with
+     the view stream. */
+  const open = openSpaceOn();
+  const layout = open ? 'dense' : (cfg.layout || 'dense');
   /* Set BEFORE the lattice is measured. On a phone the stage footprint is what the
      screen affords and --cube-size is derived from it, so these classes decide the
      width that `size` is about to read — flipping them afterwards builds the cube at
@@ -178,7 +183,7 @@ function buildCube(dim) {
   document.documentElement.classList.toggle('tumble-stage', cfg.rotation && !solvedSpin);
   /* Open space fills the screen, so the stage it measures has to be full-screen
      before the lattice reads its width (scene.css, .open-space-view). */
-  document.documentElement.classList.toggle('open-space-view', openSpaceOn() && layout !== 'spaced');
+  document.documentElement.classList.toggle('open-space-view', open);
 
   gridCube.innerHTML = '';
   state.cells = [];
@@ -189,7 +194,6 @@ function buildCube(dim) {
      wrapper is as wide as the screen's short side, the outer places sit about two
      fifths of it from the middle, and the cube is half a place across, an object
      in a space rather than a cell in a grid. */
-  const open = openSpaceOn() && layout !== 'spaced';
   const grid = dim + (open ? 2 : 0);
   const off = (grid - 1) / 2;
   gridCube.classList.toggle('open-space', open);

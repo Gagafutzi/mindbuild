@@ -269,7 +269,7 @@ $('retroOn').onchange = e => { freeCfg.retro = +e.target.value; applyFree(); syn
 $('varNBack').onchange = e => { freeCfg.varN = +e.target.value; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 
 $('cubeDimension').onchange = e => { freeCfg.dim = +e.target.value; applyFree(); buildCube(cfg.dim); updateHUD(); saveProgress(); };
-$('openSpaceF').onchange = e => { freeCfg.openSpace = e.target.checked; applyFree(); buildCube(cfg.dim); updateHUD(); saveProgress(); };
+$('openSpaceF').onchange = e => { freeCfg.openSpace = e.target.checked; applyFree(); buildCube(cfg.dim); syncSettingsUI(); updateHUD(); saveProgress(); };
 /* syncSettingsUI, because rotation is what decides whether the second frame of a
    meta block asks anything of its own — and the hint that says so is in this panel. */
 $('rotationOn').onchange    = e => { freeCfg.rotation = e.target.checked; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };

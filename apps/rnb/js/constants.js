@@ -810,10 +810,10 @@ function clearActionBind(id) {
 }
 
 /* Open space: the lattice one layer wider on every side, drawn only as the three
-   coordinate axes. The dense layout's only (see buildCube). */
+   coordinate axes. Any cube layout: open space draws its own way (see buildCube). */
 const openSpaceOn = c => {
   c = c || cfg;
-  return !!c.openSpace && (c.layout || 'dense') !== 'spaced';
+  return !!c.openSpace;
 };
 /* The lattice actually built, and the distance between neighbouring places. */
 const latticeDim = () => state.latticeDim || cfg.dim;
