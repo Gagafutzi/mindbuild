@@ -306,9 +306,12 @@ function createSampler(env) {
    * score is corrected against is the block's too: `chanceOf` reads the answer
    * pattern this draw produces, so the two have to be counting the same trials.
    */
-  function pickMetaType(avail) {
-    const seen = state.metaDrawn ||
-      (state.metaDrawn = { same: 0, opp: 0, diff: 0, obl: 0 });
+  /* `slot` is the tally it balances against: position's by default, and the view
+     stream keeps its own, since the two relations are drawn on different trials'
+     grids and one must not pay off the other's deficit. */
+  function pickMetaType(avail, slot = 'metaDrawn') {
+    const seen = state[slot] ||
+      (state[slot] = { same: 0, opp: 0, diff: 0, obl: 0 });
     const drawn = seen.same + seen.opp + seen.diff + seen.obl;
     /* `drawn + 1` counts the trial being drawn now, so the first of a block has a
        deficit to work with rather than four zeroes and a coin toss. */
@@ -562,6 +565,46 @@ function createSampler(env) {
     return plan.tag === 'out' ? (s.flips[s.flips.length - 1] || [0, 0, 0]) : s.flip;
   }
 
+  /*
+   * THE VIEWPOINT (constants.js, STREAMS.view): one of nine, three across by
+   * three high. Identity draws matches and lures like any identity stream, and
+   * relational draws freely, since every pair of views answers something.
+   *
+   * Second order relates a change of view to the change that led to the partner,
+   * as position's second order relates moves: from the partner (plain N-back) or
+   * from the view just shown (nested, where the jumps are the ones seen). Drawn
+   * freely on a 3 × 3 grid, "same" and "opposite" are rare — most pairs of moves
+   * are oblique — so the relation is chosen first, evenly among those reachable
+   * from here, and then a view that realises it (tools/view-check.js).
+   */
+  const VIEWS = 9;
+  const vVec = (i, j) => [j % 3 - i % 3, Math.floor(j / 3) - Math.floor(i / 3)];
+  function drawView(nest, nb, lureA, lureB) {
+    const m = cfg.streams.view;
+    if (m === 'identity')
+      return sampleIndex('view', VIEWS, nb ? nb.view : null, [lureA && lureA.view, lureB && lureB.view]);
+    if (m !== 'meta') return randInt(VIEWS);
+    const from = nest ? nestState().anchor : nb;
+    if (!from || from.view == null) return randInt(VIEWS);
+    const refPair = nb && (nest ? nb.visMove : nb.pair);
+    const ref = refPair && refPair[0].view != null && refPair[1].view != null
+      ? vVec(refPair[0].view, refPair[1].view) : null;
+    const cands = [];
+    for (let v = 0; v < VIEWS; v++) if (v !== from.view) cands.push(v);
+    if (!ref || (!ref[0] && !ref[1])) return pick(cands);
+    const byRel = {};
+    cands.forEach(v => {
+      const r = metaRelationOf(ref, vVec(from.view, v));
+      if (r) (byRel[r] = byRel[r] || []).push(v);
+    });
+    const kinds = Object.keys(byRel);
+    /* From the end of a change, carrying on the same way is often off the grid
+       while going back never is, so an even pick among what is reachable still
+       gave "same" 5% and "opposite" 37%. Balanced against the running tally, as
+       position's relations are. */
+    return kinds.length ? pick(byRel[pickMetaType(kinds, 'viewMetaDrawn')]) : pick(cands);
+  }
+
   function sampleTrial() {
     /* Nested levels replace the lag: the plan names the partner and the lures. */
     const nest = nestOn() ? nestPlan() : null;
@@ -673,6 +716,7 @@ function createSampler(env) {
     t.size     = feature('size',     poolFor('size'));
     t.quantity = feature('quantity', poolFor('quantity'));
     t.letter   = feature('letter',   LETTER_KEYS);
+    t.view     = on('view') ? drawView(nest, nb, lureA, lureB) : null;
 
     /*
      * The coordinates, once the features have had their say.

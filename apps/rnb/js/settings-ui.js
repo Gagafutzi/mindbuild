@@ -18,13 +18,18 @@ function renderStreamRows() {
         <option value="identity">Identity</option>
         ${spec.idOnly ? '' : '<option value="relational">Relational</option>'}
         ${CROSS_STREAMS.includes(k) ? '<option value="cross">Same way as position</option>' : ''}
+        ${spec.metaMode ? '<option value="meta">Second order</option>' : ''}
       </select>`;
     const sel = row.querySelector('select');
     /* A profile saved before this stream existed, or hand-edited, could still name a
        mode the stream cannot serve. */
     if (spec.idOnly && freeCfg.streams[k] === 'relational') freeCfg.streams[k] = 'identity';
     sel.value = freeCfg.streams[k] || 'off';
-    sel.onchange = () => { freeCfg.streams[k] = sel.value; applyFree(); updateHUD(); saveProgress(); };
+    sel.onchange = () => {
+      freeCfg.streams[k] = sel.value; applyFree(); updateHUD(); saveProgress();
+      /* The view stream switches the spin off, and the spin's checkbox has to say so. */
+      if (k === 'view') syncSettingsUI();
+    };
     wrap.appendChild(row);
   });
 }
@@ -379,6 +384,8 @@ function syncSettingsUI() {
       + 'and every axis still sweeps every screen direction. Costs the exploded '
       + 'layout about half its slot size, since cells must fit the tightest moment.';
   $('rotationOn').checked = freeCfg.rotation;
+  /* The view stream turns the space itself, trial by trial. */
+  $('rotationOn').disabled = !!(freeCfg.streams.view && freeCfg.streams.view !== 'off');
   $('rotationSpeed').value = freeCfg.spin;
   syncCoordUI('coordAxes', 'magnitudeCap', 'coordCount', 'pitchLoudness', freeCfg);
   const tc = toneCount(freeCfg);

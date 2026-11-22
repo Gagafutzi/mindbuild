@@ -81,9 +81,15 @@ function tick() {
      completely different question than the one being asked. */
   /* Nested: the jump just seen, against the jump that brought the cube to the
      partner (see nestCommit). Plain: this pair's move against the partner's. */
-  const extra = pair && cfg.meta
+  let extra = pair && cfg.meta
     ? (t.nest ? { metaPrev: pair[0].visMove, metaCur: t.visMove } : { metaPrev: pair[0].pair })
     : null;
+  /* The view's second order pairs the same way, whether or not position's is on. */
+  if (pair && cfg.streams.view === 'meta') {
+    extra = extra || {};
+    extra.viewPrev = t.nest ? pair[0].visMove : pair[0].pair;
+    extra.viewCur = t.nest ? t.visMove : null;
+  }
   state.judgments = pair ? buildJudgments(pair[0], pair[1], extra) : [];
   t.pair = pair;
 
@@ -119,7 +125,7 @@ function startBlock() {
   state.history = []; state.chain = []; state.judgments = []; state.presses.clear();
   state.trial = 0; state.scored = 0; state.tally = {};
   state.lureTally = null; state.currentTrial = null; state.cued = true;
-  state.metaDrawn = null;
+  state.metaDrawn = null; state.viewMetaDrawn = null;
   /* The stack of suspended levels and the returns-against-stays tally are the
      block's, like the chain. */
   state.nest = null; state.nestTally = null; state.frameTally = null;
@@ -507,6 +513,7 @@ function computeLoad() {
     if (cfg.streams[k] === 'identity') load += 4;
     else if (cfg.streams[k] === 'relational') load += 9;
     else if (cfg.streams[k] === 'cross') load += 11;
+    else if (cfg.streams[k] === 'meta') load += 13;
   });
   if (cfg.dim === 4) load += 12;
   /* One more layer on every side: 125 places around a 3-cube, judged against
@@ -793,7 +800,9 @@ function applyFree() {
     pitchLoudness: !!freeCfg.pitchLoudness,
     toneCount: toneCount(freeCfg),
     frame: freeCfg.frame,
-    rotation: freeCfg.rotation,
+    /* A spinning space and a viewpoint that jumps each trial turn the same thing;
+       the view stream wins. */
+    rotation: freeCfg.rotation && !(freeCfg.streams.view && freeCfg.streams.view !== 'off'),
     spin: freeCfg.spin,
     blockLength: freeCfg.blockLength,
   });

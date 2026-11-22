@@ -789,3 +789,12 @@ function normalise(v) {
   return m < 1e-6 ? [0, 0, 0] : [v[0]/m, v[1]/m, v[2]/m];
 }
 
+
+/* Turn the space to one of the view stream's nine viewpoints (constants.js,
+   VIEW_YAW / VIEW_PITCH). A jump, not a glide: the change of view is the stimulus,
+   and a slow turn would smear it across the interval. */
+function applyView(i) {
+  cubeWrapper.style.transform =
+    `rotateX(${VIEW_PITCH[viewPitch(i)]}deg) rotateY(${VIEW_YAW[viewYaw(i)]}deg)`;
+  faceTags();
+}

@@ -224,6 +224,26 @@ function buildJudgments(a, b, extra) {
     }
   }
 
+  /* --- the viewpoint (STREAMS.view) --- */
+  const vm = mode('view');
+  if (vm !== 'off' && a.view != null && b.view != null) {
+    if (vm === 'identity') push('view', ['view'], a.view === b.view ? ['view'] : []);
+    else if (vm === 'relational') {
+      const d = viewVec(a.view, b.view);
+      axisJ('view', d[0], ['view-right', 'view-left']);
+      axisJ('view', d[1], ['view-up', 'view-down']);
+    } else if (vm === 'meta') {
+      /* This change of view against the change that led to the partner: the
+         pairs come from the caller (block.js), as position's second order does. */
+      const P = extra && extra.viewPrev, C = (extra && extra.viewCur) || [a, b];
+      if (P && P[0].view != null && P[1].view != null && C[0].view != null) {
+        const rel = metaRelationOf(viewVec(P[0].view, P[1].view), viewVec(C[0].view, C[1].view));
+        if (rel) push('view', ['view-same', 'view-opp', 'view-orth'],
+          rel === 'same' ? ['view-same'] : rel === 'opp' ? ['view-opp'] : rel === 'diff' ? ['view-orth'] : []);
+      }
+    }
+  }
+
   /* --- ordered scalar features --- */
   const scalar = (key, idCommon, idUp, idDown) => {
     const m = mode(key);

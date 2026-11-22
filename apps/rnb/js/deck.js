@@ -9,6 +9,11 @@ function deckGroups() {
   const groups = [];
   STREAM_KEYS.forEach(k => {
     const m = cfg.streams[k];
+    if (k === 'view' && m === 'meta') {
+      groups.push({ key: 'view', label: 'View turn vs. the turn before ↺', color: STREAMS.view.color,
+                    channels: STREAMS.view.meta });
+      return;
+    }
     if (m !== 'identity' && m !== 'relational' && m !== 'cross') return;
     const spec = STREAMS[k];
 

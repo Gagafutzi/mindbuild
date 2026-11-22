@@ -102,6 +102,8 @@ const FREE_PRESETS = [
     set: { nest: 2, nestFrames: 'turn', streams: { position: 'relational' } } },
   { id: 'open',     label: 'Open space — relational, N 2, the cube can leave the lattice',
     set: { n: 2, openSpace: true, streams: { position: 'relational' } } },
+  { id: 'openView', label: 'Open space with a changing view — position and view relational, N 2',
+    set: { n: 2, openSpace: true, streams: { position: 'relational', view: 'relational' } } },
 ];
 
 function applyFreePreset(id) {

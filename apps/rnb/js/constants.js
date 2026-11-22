@@ -614,7 +614,37 @@ const STREAMS = {
     identity: [{ id:'letter', glyph:'\u{1F5E3}', label:'Same', key:'j' }],
     relational: [],
   },
+  /* The viewpoint, after 3D Hyper N-back's camera: each trial the space is seen
+     from one of nine places, three across by three high (VIEW_YAW, VIEW_PITCH).
+     Identity asks whether it is the same view as N back; relational, which way
+     the viewpoint moved from there; second order (`metaMode`), how this change of
+     view relates to the change that led to the partner — the same scheme as
+     position's second order, in two dimensions. */
+  view: {
+    label: 'View', color: '#e6c86e', metaMode: true,
+    identity:   [{ id:'view', glyph:'◎', label:'Same view', key:'g' }],
+    relational: [{ id:'view-left',  glyph:'◎←', label:'Viewpoint moved left',  key:'f' },
+                 { id:'view-right', glyph:'◎→', label:'Viewpoint moved right', key:'g' },
+                 { id:'view-up',    glyph:'◎↑', label:'Viewpoint moved up',    key:'t' },
+                 { id:'view-down',  glyph:'◎↓', label:'Viewpoint moved down',  key:'b' }],
+    meta:       [{ id:'view-same', glyph:'⇉', label:'Same turn as before',       key:'r' },
+                 { id:'view-opp',  glyph:'⇄', label:'Opposite turn',             key:'f' },
+                 { id:'view-orth', glyph:'⤢', label:'Turn at right angles',      key:'v' }],
+  },
 };
+
+/* The nine viewpoints. Index = yaw + 3 × pitch; yaw 0 is the viewpoint furthest
+   left, pitch 0 the lowest. Angles are the wrapper's rotateY and rotateX: a more
+   negative rotateY turns the space's right side toward you, which is the view
+   from further right, and a more negative rotateX shows more of the top, which is
+   the view from higher up. The middle one is the usual view. */
+const VIEW_YAW = [12, -28, -68];
+const VIEW_PITCH = [4, -24, -52];
+const VIEW_COUNT = 9;
+const viewYaw = i => i % 3;
+const viewPitch = i => Math.floor(i / 3);
+/* How the viewpoint moved from view i to view j: [right, up] in steps. */
+const viewVec = (i, j) => [viewYaw(j) - viewYaw(i), viewPitch(j) - viewPitch(i)];
 /*
  * Cross-stream relations: "did this stream change the same way as the position?"
  *

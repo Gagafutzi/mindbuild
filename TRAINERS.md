@@ -147,6 +147,17 @@ to the one before, as plain second order would, scores about 17–24%
 (`apps/rnb/tools/nest-check.js`).
 Frames are first order only.
 
+**View** is a stream after 3D Hyper N-back's camera: each trial the space is
+seen from one of nine viewpoints, three across by three high. Identity asks
+whether it is the same view as N back; relational, which way the viewpoint moved
+(left/right, up/down); second order, how this change of view relates to the
+change before it, paired as position's second order is (visible jumps under
+nesting). On a 3 × 3 grid carrying on the same way is often off the edge while
+going back never is, so the relations are balanced against a running tally, as
+position's are; `apps/rnb/tools/view-check.js` holds them even and checks the
+labels against the angles. With open space it is the closest RNB comes to that
+trainer; the view stream stops the cube's spin.
+
 ### Precision N-back
 **Task.** N-back with a tighter response window. (Chimera Hub calls it Threshold
 N-back.)

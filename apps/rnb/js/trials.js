@@ -160,6 +160,9 @@ function renderTrial(t) {
   if (t.pitch != null || t.timbre != null || (t.pan != null && t.letter == null))
     playTone(t);
   if (t.letter != null) playLetter(t);
+  /* The viewpoint, before the matrix is read: the screen frame is answered in the
+     view the trial was seen from. */
+  if (t.view != null) applyView(t.view);
   t.matrix = currentMatrix();
 }
 
