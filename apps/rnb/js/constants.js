@@ -779,8 +779,8 @@ function clearActionBind(id) {
   buildDeck(); renderKeybinds(); renderShortcuts(); saveProgress();
 }
 
-/* Open space: the lattice one layer wider on every side, with the old cube drawn as
-   its frame and edge lines. The dense layout's only (see buildCube). */
+/* Open space: the lattice one layer wider on every side, drawn only as the three
+   coordinate axes. The dense layout's only (see buildCube). */
 const openSpaceOn = c => {
   c = c || cfg;
   return !!c.openSpace && (c.layout || 'dense') !== 'spaced';

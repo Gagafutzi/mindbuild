@@ -756,15 +756,12 @@ function applyFree() {
    * level, not by lag — so everything that varies or bends the lag is off while
    * they are on: there is no lag for a variable N to vary, no adjacent pair for
    * a retro-cue to name, and no chain for a closed gate to keep an item out of.
-   * Second-order is off too, for now: it would ask how this move relates to the
-   * last move on its own level, which is well defined and untried, and a first
-   * version should be one new thing rather than two.
    */
   const nest = nestDepth(freeCfg);
-  /* Second order works under nesting: the move an item is related to is the move
-     that made its partner, inside the partner's own level (see buildJudgments'
-     caller above), so a return is compared with the move its level made before
-     it was suspended. */
+  /* Second order works under nesting: the jump just seen is related to the jump
+     that brought the cube to the item's partner (t.visMove, see nestCommit), so a
+     return is compared with the jump that reached its level before it was
+     suspended. */
   const meta = !!freeCfg.meta;
   /* Meta and retro-cue ask incompatible questions of the same trial — meta needs a
      fixed n-back pairing to have a "previous move" at all. */

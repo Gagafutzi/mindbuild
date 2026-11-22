@@ -64,8 +64,8 @@ function createSampler(env) {
   /*
    * A place for the cube, drawn evenly — except in open space, where the lattice
    * is one layer wider on every side and 98 of the 125 places are outside the old
-   * cube. Drawn evenly there, the cube was outside nine trials in ten and the old
-   * cube stopped being the frame anything happened in. So an outer place is drawn
+   * cube. Drawn evenly there, the cube was outside nine trials in ten, mostly out at
+   * the corners, far from the axes it is read against. So an outer place is drawn
    * OPEN_OUTSIDE of the time, and the old cube's places the rest.
    */
   const OPEN_OUTSIDE = env.OPEN_OUTSIDE ?? 0.35;

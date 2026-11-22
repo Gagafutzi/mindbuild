@@ -180,9 +180,10 @@ function buildCube(dim) {
   gridCube.innerHTML = '';
   state.cells = [];
   const size = gridCube.clientWidth || 240;
-  /* Open space: one more layer on every side. The whole space keeps the stage's
-     footprint a quarter past the old cube's, so the old cube is drawn at three
-     quarters of its usual size and the outer layer reaches a quarter beyond. */
+  /* Open space: one more layer on every side, and nothing drawn of the lattice —
+     only the three coordinate axes through the middle, ticked at every place, so
+     where the cube is is read against the axes. The whole space reaches a quarter
+     past the usual cube's footprint. */
   const open = openSpaceOn() && layout !== 'spaced';
   const grid = dim + (open ? 2 : 0);
   const off = (grid - 1) / 2;
@@ -260,8 +261,8 @@ function buildCube(dim) {
   state.builtSize = size;
   state.latticeDim = grid;
   state.latticePitch = open ? step : null;
-  buildCubeFrame(open ? dim * step : size);
-  if (open) buildEdgeLines(dim * step, step);
+  if (open) buildAxisLines(grid, step);
+  else buildCubeFrame(size);
   buildGuides(open ? grid * step : size);
   buildMoveArrow(size);
   buildGizmo();
@@ -284,29 +285,32 @@ function buildCubeFrame(size) {
   gridCube.appendChild(frame);
 }
 
-/* Open space: the old cube's twelve edges, carried on a step past each corner so
-   the places outside it can be read against them. Each edge is two crossed strips,
-   like the rails, so it never vanishes edge-on. */
-function buildEdgeLines(side, beyond) {
+/* Open space: the three coordinate axes through the middle of the space, each the
+   full width of it in its own pair of axis colours, with a tick at every place so a
+   position can be counted off them. Each line and tick is two crossed strips, like
+   the rails, so none of them vanishes edge-on. */
+function buildAxisLines(grid, step) {
   const g = document.createElement('div');
-  g.className = 'edge-lines';
-  const h = side / 2, L = side + 2 * beyond;
-  const along = [
-    { orient: '',                at: (a, b) => [0, a, b] },   // x edges at y, z = ±h
-    { orient: 'rotateZ(90deg)',  at: (a, b) => [a, 0, b] },   // y edges
-    { orient: 'rotateY(-90deg)', at: (a, b) => [a, b, 0] },   // z edges
-  ];
-  along.forEach(ax => [[-h, -h], [-h, h], [h, -h], [h, h]].forEach(([a, b]) => {
-    const [tx, ty, tz] = ax.at(a, b);
-    [0, 90].forEach(roll => {
-      const e = document.createElement('div');
-      e.className = 'edge-line';
-      e.style.width = L + 'px';
-      e.style.left = `calc(50% - ${L / 2}px)`;
-      e.style.transform = `translate3d(${tx}px, ${ty}px, ${tz}px) ${ax.orient} rotateX(${roll}deg)`;
-      g.appendChild(e);
-    });
-  }));
+  g.className = 'axis-lines';
+  const L = grid * step, off = (grid - 1) / 2, TICK = Math.max(6, step * 0.16);
+  const strip = (len, transform, cls, bg) => [0, 90].forEach(roll => {
+    const e = document.createElement('div');
+    e.className = cls;
+    e.style.width = len + 'px';
+    e.style.left = `calc(50% - ${len / 2}px)`;
+    if (bg) e.style.background = bg;
+    e.style.transform = `${transform} rotateX(${roll}deg)`;
+    g.appendChild(e);
+  });
+  RAIL_AXES.forEach((ax, a) => {
+    strip(L, ax.orient, 'axis-line', `linear-gradient(to right, ${ax.grad[0]}, ${ax.grad[1]})`);
+    /* Ticks across the axis, along the next axis round. */
+    const across = RAIL_AXES[(a + 1) % 3].orient;
+    for (let k = 0; k < grid; k++) {
+      const d = (k - off) * step, at = [0, 0, 0]; at[a] = d;
+      strip(TICK, `translate3d(${at[0]}px, ${at[1]}px, ${at[2]}px) ${across}`, 'axis-tick');
+    }
+  });
   gridCube.appendChild(g);
 }
 

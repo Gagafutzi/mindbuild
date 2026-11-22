@@ -31,3 +31,4 @@ setMode(cfg.mode);
 renderDataPanel();
 renderProfileUI();
 renderDailyTimer();
+initSettingsTidy();

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
- * Open space: the lattice one layer wider on every side, with the old cube drawn
- * as its frame and edge lines (geometry.js, buildCube).
+ * Open space: the lattice one layer wider on every side, drawn as nothing but the
+ * three coordinate axes through the middle (geometry.js, buildCube).
  *
  * The thing that could go quietly wrong is where the cube goes. 98 of the 125
  * places around a 3-cube are outside the old one, so an even draw put the cube

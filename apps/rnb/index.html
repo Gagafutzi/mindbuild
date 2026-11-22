@@ -319,28 +319,8 @@
     </details>
 
     <details class="sect">
-      <summary>Advanced mechanics</summary>
+      <summary>Nested levels</summary>
       <div class="sect-body">
-      <div class="setting-group">
-        <label><input type="checkbox" id="varPriority" style="width:auto"> Variable
-          priority</label>
-        <div class="hint">Each block cues one stream to <b>focus on without dropping the
-          others</b>, rotating through them. Practising the priority shift itself is what
-          transfers better than steady equal emphasis.</div>
-      </div>
-      <div class="setting-group">
-        <label><input type="checkbox" id="metaOn" style="width:auto"> Meta-relations
-          (2nd order)</label>
-        <label class="row"><input type="checkbox" id="singleAxis"> One axis per move —
-          no diagonals, so never "none of those"</label>
-        <div class="hint">Report how this move relates to the move you reported N trials
-          ago — <b>same</b>, <b>opposite</b>, <b>orthogonal</b>, or <b>none of
-          those</b> — instead of which way it went. A move may run on several axes
-          at once, so the relation is an angle rather than a choice of axis: when
-          it is neither 0°, 180° nor square, <b>press nothing</b>. That fourth
-          answer has no button, which is what keeps it a derivation — you cannot
-          reach it by elimination across the deck. Punishing above N=2.</div>
-      </div>
       <div class="setting-group">
         <label>Nested levels</label>
         <select id="nestDepthF">
@@ -399,6 +379,32 @@
           unlike mirrors their order matters: N→E then E→A is not E→A then N→E. The
           block's first item names a turn too. Order starts to count at depth 2, where
           three turns can be open at once.</div>
+      </div>
+      </div>
+    </details>
+
+    <details class="sect">
+      <summary>Advanced mechanics</summary>
+      <div class="sect-body">
+      <div class="setting-group">
+        <label><input type="checkbox" id="varPriority" style="width:auto"> Variable
+          priority</label>
+        <div class="hint">Each block cues one stream to <b>focus on without dropping the
+          others</b>, rotating through them. Practising the priority shift itself is what
+          transfers better than steady equal emphasis.</div>
+      </div>
+      <div class="setting-group">
+        <label><input type="checkbox" id="metaOn" style="width:auto"> Meta-relations
+          (2nd order)</label>
+        <label class="row"><input type="checkbox" id="singleAxis"> One axis per move —
+          no diagonals, so never "none of those"</label>
+        <div class="hint">Report how this move relates to the move you reported N trials
+          ago — <b>same</b>, <b>opposite</b>, <b>orthogonal</b>, or <b>none of
+          those</b> — instead of which way it went. A move may run on several axes
+          at once, so the relation is an angle rather than a choice of axis: when
+          it is neither 0°, 180° nor square, <b>press nothing</b>. That fourth
+          answer has no button, which is what keeps it a derivation — you cannot
+          reach it by elimination across the deck. Punishing above N=2.</div>
       </div>
       <div class="setting-group">
         <label>Gate closing (compare-only trials)</label>
@@ -479,10 +485,10 @@
         </select>
         <label class="row"><input type="checkbox" id="openSpaceF"> Open space — the cube can
           also move one step outside the lattice</label>
-        <div class="hint">The lattice stays where it was, drawn as its frame with the edges
-          carried on out as lines, and the cube can sit one step beyond it on any side:
-          5 × 5 × 5 places around a 3-cube. The outer places are only drawn when the cube
-          is in one, so the lines are what tell you how far out it is. Dense layout only.</div>
+        <div class="hint">One more place on every side — 5 × 5 × 5 around a 3-cube — and no
+          lattice drawn: only the three coordinate axes through the middle, with a tick at
+          every place, and the cube wherever it is. The cube stays within the old cube's
+          places about two trials in three. Dense layout only.</div>
       <div class="setting-group">
         <label><input type="checkbox" id="rotationOn" style="width:auto"> Rotate cube</label>
       </div>
@@ -583,8 +589,35 @@
   </details>
 
   <details class="sect">
-    <summary>Display</summary>
+    <summary>View</summary>
     <div class="sect-body">
+    <div class="setting-group">
+      <label>Depth</label>
+      <select id="depthView">
+        <option value="flat">Flat — far edges as long as near ones</option>
+        <option value="perspective">Perspective — far edges shorter</option>
+        <option value="strong">Strong perspective — far edges much shorter</option>
+      </select>
+      <div class="hint">How the cube is drawn. With perspective the back of the cube is
+        smaller than the front, so which layer a cell is in reads off its size as well
+        as its place.</div>
+    </div>
+    <div class="setting-group">
+      <label>Cube layout</label>
+      <select id="cubeLayout">
+        <option value="dense">Dense — true cube</option>
+        <option value="spaced">Spaced — gaps between cells</option>
+      </select>
+      <div class="hint" id="layoutHint"></div>
+    </div>
+    <div class="setting-group">
+      <label>Cube size: <span id="cubeSizeVal">100</span>%</label>
+      <input type="range" id="cubeSize" min="60" max="400" step="5" value="100" />
+      <div class="hint">Spaced layout scales its spread to match, so a bigger cube means
+        bigger gaps rather than just bigger cells. Nothing clamps this: past the width of
+        the screen the lattice simply runs off the edges, and the size you ask for is the
+        size you get.</div>
+    </div>
     <div class="setting-group">
       <label>Slot visibility</label>
       <select id="cellVis">
@@ -627,49 +660,19 @@
       <div class="hint" id="slotReadoutHint"></div>
     </div>
     <div class="setting-group">
-      <label>Letter voice</label>
-      <select id="letterVoice">
-        <option value="slt">Female</option>
-        <option value="rms">Male</option>
-        <option value="awb">Male, Scottish</option>
-        <option value="kal">Synthetic</option>
-        <option value="mix">Mixed — a different speaker each trial</option>
+      <label>Axis gizmo</label>
+      <select id="gizmoMode">
+        <option value="full">Arrows + letters</option>
+        <option value="letters">Letters only</option>
+        <option value="off">Off (hard mode)</option>
       </select>
-      <div class="hint" id="letterVoiceHint"></div>
     </div>
-    <div class="setting-group">
-      <label>Timbre voices</label>
-      <select id="voiceSet">
-        <option value="waves">Waveforms — sine, triangle, square, saw</option>
-        <option value="reeds">Instruments — flute, clarinet, horn, bell</option>
-        <option value="vowels">Vowels — oo, ah, eh, ee</option>
-      </select>
-      <div class="hint" id="voiceSetHint"></div>
     </div>
-    <div class="setting-group">
-      <label>Daily goal (minutes, 0 = off)</label>
-      <input type="number" id="dailyGoal" value="20" min="0" max="240" step="5" />
-      <div class="hint">Counts time inside blocks only, and ticks live while you play.
-        Turns green once you hit it.</div>
-    </div>
-    <div class="setting-group">
-      <label><input type="checkbox" id="hideTimer" style="width:auto"> Hide the time
-        until the goal is met</label>
-      <div class="hint">No minutes anywhere — in the corner or under Data — until today's
-        goal is reached; then it shows, green, as usual. Nothing to watch, so you train
-        rather than wait. Has no effect while the goal is 0.</div>
-    </div>
-    <div class="setting-group">
-      <label>Depth</label>
-      <select id="depthView">
-        <option value="flat">Flat — far edges as long as near ones</option>
-        <option value="perspective">Perspective — far edges shorter</option>
-        <option value="strong">Strong perspective — far edges much shorter</option>
-      </select>
-      <div class="hint">How the cube is drawn. With perspective the back of the cube is
-        smaller than the front, so which layer a cell is in reads off its size as well
-        as its place.</div>
-    </div>
+  </details>
+
+  <details class="sect">
+    <summary>While playing</summary>
+    <div class="sect-body">
     <div class="setting-group">
       <label>Controls under the cube</label>
       <select id="controlsMode">
@@ -679,10 +682,25 @@
       </select>
       <div class="hint"><b>Compact</b> gives the cube the row the buttons took: one button
         beside the answer keys starts a block, and stops it while one runs; the keys
-        layout is still under Display. <b>Keyboard only</b> hides everything under the
+        layout is the next setting. <b>Keyboard only</b> hides everything under the
         cube: answer with your keys, start with Enter and stop with Esc (or whatever you
         have bound them to under Keys). On a touch screen that leaves nothing to tap, so
         turn it back here.</div>
+    </div>
+    <div class="setting-group">
+      <label>Answer keys</label>
+      <select id="keyLayout">
+        <option value="auto">Auto — pad on a phone or touch screen, row elsewhere</option>
+        <option value="pad">Pad — directions where they point</option>
+        <option value="row">Row — one line of keys</option>
+      </select>
+      <div class="hint">How the direction keys are laid out. The <b>pad</b> puts
+        north, south, east and west where they point, with the corners between them
+        pressing two at once and above/below as a pair beside it; the <b>row</b> is
+        the single line a keyboard player sees. Scoring is the same either way: a
+        corner is two taps in one. The <b>Pad</b> switch beside Start block flips
+        between the two between blocks; choose Auto here to hand the decision back
+        to the device. Kept for this device only.</div>
     </div>
     <div class="setting-group">
       <label><input type="checkbox" id="hideHud" style="width:auto"> Hide the stats in
@@ -724,6 +742,32 @@
         you are told you were wrong and nothing else. Never shown under
         <b>None (test conditions)</b>.</div>
     </div>
+    </div>
+  </details>
+
+  <details class="sect">
+    <summary>Sound and buzz</summary>
+    <div class="sect-body">
+    <div class="setting-group">
+      <label>Letter voice</label>
+      <select id="letterVoice">
+        <option value="slt">Female</option>
+        <option value="rms">Male</option>
+        <option value="awb">Male, Scottish</option>
+        <option value="kal">Synthetic</option>
+        <option value="mix">Mixed — a different speaker each trial</option>
+      </select>
+      <div class="hint" id="letterVoiceHint"></div>
+    </div>
+    <div class="setting-group">
+      <label>Timbre voices</label>
+      <select id="voiceSet">
+        <option value="waves">Waveforms — sine, triangle, square, saw</option>
+        <option value="reeds">Instruments — flute, clarinet, horn, bell</option>
+        <option value="vowels">Vowels — oo, ah, eh, ee</option>
+      </select>
+      <div class="hint" id="voiceSetHint"></div>
+    </div>
     <div class="setting-group">
       <label><input type="checkbox" id="buzzer" style="width:auto"> Buzz on wrong
         answer</label>
@@ -739,45 +783,24 @@
         <b>wrong press</b>, three for a <b>miss</b>. Works with the sound off, and does
         nothing on a device with no vibrator — which is why it ships on.</div>
     </div>
-    <div class="setting-group">
-      <label>Axis gizmo</label>
-      <select id="gizmoMode">
-        <option value="full">Arrows + letters</option>
-        <option value="letters">Letters only</option>
-        <option value="off">Off (hard mode)</option>
-      </select>
     </div>
+  </details>
 
+  <details class="sect">
+    <summary>Daily goal</summary>
+    <div class="sect-body">
     <div class="setting-group">
-      <label>Cube layout</label>
-      <select id="cubeLayout">
-        <option value="dense">Dense — true cube</option>
-        <option value="spaced">Spaced — gaps between cells</option>
-      </select>
-      <div class="hint" id="layoutHint"></div>
+      <label>Daily goal (minutes, 0 = off)</label>
+      <input type="number" id="dailyGoal" value="20" min="0" max="240" step="5" />
+      <div class="hint">Counts time inside blocks only, and ticks live while you play.
+        Turns green once you hit it.</div>
     </div>
     <div class="setting-group">
-      <label>Cube size: <span id="cubeSizeVal">100</span>%</label>
-      <input type="range" id="cubeSize" min="60" max="400" step="5" value="100" />
-      <div class="hint">Spaced layout scales its spread to match, so a bigger cube means
-        bigger gaps rather than just bigger cells. Nothing clamps this: past the width of
-        the screen the lattice simply runs off the edges, and the size you ask for is the
-        size you get.</div>
-    </div>
-    <div class="setting-group">
-      <label>Answer keys</label>
-      <select id="keyLayout">
-        <option value="auto">Auto — pad on a phone or touch screen, row elsewhere</option>
-        <option value="pad">Pad — directions where they point</option>
-        <option value="row">Row — one line of keys</option>
-      </select>
-      <div class="hint">How the direction keys are laid out. The <b>pad</b> puts
-        north, south, east and west where they point, with the corners between them
-        pressing two at once and above/below as a pair beside it; the <b>row</b> is
-        the single line a keyboard player sees. Scoring is the same either way: a
-        corner is two taps in one. The <b>Pad</b> switch beside Start block flips
-        between the two between blocks; choose Auto here to hand the decision back
-        to the device. Kept for this device only.</div>
+      <label><input type="checkbox" id="hideTimer" style="width:auto"> Hide the time
+        until the goal is met</label>
+      <div class="hint">No minutes anywhere — in the corner or under Data — until today's
+        goal is reached; then it shows, green, as usual. Nothing to watch, so you train
+        rather than wait. Has no effect while the goal is 0.</div>
     </div>
     </div>
   </details>
@@ -968,6 +991,7 @@
 <script src="js/block.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/settings-ui.js"></script>
+<script src="js/settings-tidy.js"></script>
 <script src="js/wiring.js"></script>
 <script src="js/boot.js"></script>
 </body>
