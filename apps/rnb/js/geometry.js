@@ -490,10 +490,17 @@ const READOUT_HINT = {
   pips:    'One row per axis — W→E, N→S, B→A — with the slot\'s own position filled in. A picture rather than a word, so it survives being read at a glance or upside down.',
 };
 
+/* Which way the axes are labelled. 'plain' is a bare letter at each end, turned to
+   face you: no arrow and no box. Open space always uses it, since its axes are
+   already drawn and an arrow would lie on top of each one. */
+const gizmoStyle = () => (cfg.gizmo !== 'off' && openSpaceOn()) ? 'plain' : cfg.gizmo;
+
 function buildGizmo() {
   gizmoEl.innerHTML = '';
   const cubeSize = gridCube.clientWidth || 240;
-  const HEAD = cubeSize * 0.10, BADGE = 26;
+  const plain = gizmoStyle() === 'plain';
+  /* No arrowhead to clear in plain style; the letter sits a little past the end. */
+  const HEAD = plain ? cubeSize * 0.04 : cubeSize * 0.10, BADGE = 26;
 
   /* How far one cube unit travels on screen along each axis at the solved static
      view. The angle that best separates the slots foreshortens the depth axis to
@@ -540,7 +547,7 @@ function buildGizmo() {
     arm.style.transform = AXIS_ORIENT[ax.id];   // local +X now points along this axis
 
     /* Shaft: two planes crossed at 90° about the arm, so it never vanishes edge-on. */
-    [0, 90].forEach(roll => {
+    if (!plain) [0, 90].forEach(roll => {
       const s = document.createElement('div');
       s.className = 'shaft';
       s.style.width = L + 'px';
@@ -559,19 +566,49 @@ function buildGizmo() {
       arm.appendChild(h);
     });
 
-    const badge = document.createElement('div');
-    badge.className = 'badge';
-    badge.style.width = badge.style.height = BADGE + 'px';
-    badge.style.left = `${L + HEAD}px`;
-    badge.style.top = `${-BADGE / 2}px`;
-    badge.style.transform = invertOrient(ax.id);   // keep the letter upright
-    const faces = addFaces(badge, BADGE, 'badge-face', ax.letter);
-    faces.forEach(f => { f.style.color = ax.color; f.style.border = `1px solid ${ax.color}`; });
-    arm.appendChild(badge);
+    if (plain) {
+      /* One flat letter. Turned to face the screen by faceTags(), which undoes the
+         cube's rotation on top of the arm's; a box was only there so the letter
+         stayed readable from any angle, and facing it does that directly. */
+      const tag = document.createElement('div');
+      tag.className = 'axis-tag';
+      tag.textContent = ax.letter;
+      tag.style.color = ax.color;
+      tag.style.width = tag.style.height = BADGE + 'px';
+      tag.style.left = `${L + HEAD}px`;
+      tag.style.top = `${-BADGE / 2}px`;
+      tag.dataset.orient = invertOrient(ax.id);
+      arm.appendChild(tag);
+    } else {
+      const badge = document.createElement('div');
+      badge.className = 'badge';
+      badge.style.width = badge.style.height = BADGE + 'px';
+      badge.style.left = `${L + HEAD}px`;
+      badge.style.top = `${-BADGE / 2}px`;
+      badge.style.transform = invertOrient(ax.id);   // keep the letter upright
+      const faces = addFaces(badge, BADGE, 'badge-face', ax.letter);
+      faces.forEach(f => { f.style.color = ax.color; f.style.border = `1px solid ${ax.color}`; });
+      arm.appendChild(badge);
+    }
 
     gizmoEl.appendChild(arm);
   });
   applyGizmoMode();
+  requestAnimationFrame(faceTags);
+}
+
+/* Turn every plain letter to face the screen: back into cube space past its arm,
+   then back past the cube's own rotation. While the cube spins that rotation
+   changes every frame, so the letters are turned every frame; otherwise once. */
+let tagLoop = 0;
+function faceTags() {
+  cancelAnimationFrame(tagLoop);
+  const tags = gizmoEl.querySelectorAll('.axis-tag');
+  if (!tags.length) return;
+  const m = currentMatrix();
+  const undo = m ? m.inverse().toString() : '';
+  tags.forEach(t => { t.style.transform = `${t.dataset.orient} ${undo}`; });
+  if (cfg.rotation) tagLoop = requestAnimationFrame(faceTags);
 }
 
 function invertOrient(id) {
@@ -587,6 +624,7 @@ function applyGizmoMode() {
   const intro = gizmoEl.classList.contains('intro');
   gizmoEl.classList.toggle('hidden', cfg.gizmo === 'off' && !intro);
   gizmoEl.classList.toggle('letters-only', cfg.gizmo === 'letters');
+  gizmoEl.classList.toggle('plain', gizmoStyle() === 'plain');
   /* Redundant when buildCube set it a moment ago, but this runs on its own too. */
   document.documentElement.classList.toggle('gizmo-off', cfg.gizmo === 'off');
 }
@@ -693,6 +731,7 @@ function applyRotation() {
     cubeWrapper.style.transform = `rotateX(${staticView.ax}deg) rotateY(${staticView.ay}deg)`;
   else
     cubeWrapper.style.transform = '';
+  requestAnimationFrame(faceTags);
 }
 
 /* ============================================================
