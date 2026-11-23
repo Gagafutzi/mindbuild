@@ -429,7 +429,8 @@ function syncSettingsUI() {
   $('metaOn').checked = !!freeCfg.meta;
   $('singleAxis').checked = !!freeCfg.singleAxis;
   $('metaPairsF').checked = !!freeCfg.metaPairs;
-  $('metaPairsF').disabled = !freeCfg.meta || !!nestDepth(freeCfg);
+  const pairsBlocked = !freeCfg.meta || !!nestDepth(freeCfg) || !!(freeCfg.coordAxes || []).length;
+  $('metaPairsF').disabled = pairsBlocked;
   $('progSingleAxis').checked = !!progCfg.singleAxis;
   $('gateOn').value = String(freeCfg.gate || 0);
   $('retroOn').value = String(freeCfg.retro || 0);
@@ -456,7 +457,7 @@ function syncSettingsUI() {
       `and the retro-cue are set aside until it is off.`
     : '';
   /* Pairs mode replaces N too: each move is against the one before it. */
-  $('nValue').disabled = !!nestF || (!!freeCfg.meta && !!freeCfg.metaPairs);
+  $('nValue').disabled = !!nestF || (!pairsBlocked && !!freeCfg.metaPairs);
   $('gateOn').disabled = !!nestF;
   $('retroOn').disabled = !!freeCfg.meta || !!nestF;
   $('varNBack').value = String(freeCfg.varN || 0);

@@ -397,7 +397,7 @@ $('cubeSize').oninput = e => {
      new pixel width or the spaced solve is scaled to the old one. */
   buildCube(cfg.dim);
   const cur = state.history[state.history.length - 1];
-  if (state.running && cur) state.cells[cur.cellIdx].el.classList.add('active');
+  if (state.running && cur) relightCurrent(cur);
   saveProgress();
 };
 
@@ -407,7 +407,7 @@ $('cubeLayout').onchange = e => {
   applyGizmoMode();
   /* A layout change mid-block would strand the lit cell on a destroyed element. */
   const cur = state.history[state.history.length - 1];
-  if (state.running && cur) state.cells[cur.cellIdx].el.classList.add('active');
+  if (state.running && cur) relightCurrent(cur);
   $('layoutHint').textContent = LAYOUT_HINT[cfg.layout] || '';
   updateHUD(); saveProgress();
 };

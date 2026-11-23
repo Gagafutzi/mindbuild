@@ -379,6 +379,14 @@ body.depth-strong .cube-stage { --persp-k: 1.7; }
 
 /* Open space: no lattice at all, only the lit place and the coordinate axes. */
 .open-space .cell:not(.active) { visibility: hidden; }
+/* Pairs mode: where the move started, as an outline beside the lit end. Shown
+   whatever else hides the empty places. */
+.cell.from .cell-face {
+  background: none !important;
+  border: 2px dashed var(--cell-active-solid, #7ad7ff) !important;
+  box-shadow: none !important;
+}
+.open-space .cell.from, .vis-solo .cell.from, .vis-rails .cell.from { visibility: visible; }
 .axis-lines { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; }
 .axis-line { position: absolute; top: calc(50% - 1px); height: 2px; opacity: .75; }
 .axis-tick { position: absolute; top: calc(50% - .5px); height: 1px; background: var(--muted, #8a9a93); opacity: .8; }
@@ -404,5 +412,3 @@ body.depth-strong .cube-stage { --open-persp: .9; }
 .components-on.components-shown .components { display: block; }
 .component { position: absolute; top: calc(50% - 1px); height: 2px; background: rgba(176, 184, 192, .72); }
 
-/* Pairs mode: move 4 carries the sums' question too. */
-.lag-ghost.pair-sum { color: rgba(255, 212, 59, .66); }

@@ -115,9 +115,11 @@ function renderTrial(t) {
   state.stimShown = true;
   const cell = state.cells[t.cellIdx];
   cell.el.classList.add('active');
+  /* Pairs mode: a move is a vector of its own, so where it started is drawn too. */
+  if (t.fromIdx != null) state.cells[t.fromIdx].el.classList.add('from');
   if (t.gate === 'compare') cell.el.classList.add('gate-closed');
   $('gateBanner').classList.toggle('show', t.gate === 'compare');
-  positionGuides(t.cellIdx);
+  positionGuides(t.cellIdx, t.fromIdx);
   const faces = cell.el.querySelectorAll('.cell-face');
 
   const glyphChar = t.glyphSet != null ? GLYPH_SETS[GLYPH_SET_KEYS[t.glyphSet]][t.glyphIdx]
@@ -211,14 +213,12 @@ function showLagCue(t) {
      earlier item this one is to be held against. */
   /* An opener under frames names the axis it mirrors: the only place it is said,
      so it has to be held from here until the level closes. */
-  /* Pairs mode: which of the four moves this is. */
-  const mark = t.nest ? NEST_MARK[t.nest] : (t.pairStep ? String(t.pairStep) : '');
+  const mark = t.nest ? NEST_MARK[t.nest] : '';
   const mirror = t.mirror != null ? MIRROR_NAME[t.mirror] : t.turn != null ? TURN_NAME[t.turn] : '';
   el.classList.toggle('nest-in', t.nest === 'in');
   el.classList.toggle('nest-out', t.nest === 'out');
   el.classList.toggle('nest-stay', t.nest === 'stay');
   el.classList.toggle('nest-switch', t.nest === 'switch');
-  el.classList.toggle('pair-sum', t.pairStep === 4);
   if (!mark && !mirror && (!cfg.varN || t.n == null)) { el.classList.remove('show'); return; }
   el.textContent = mark || (mirror ? '' : t.n);
   /* Smaller than the bracket: at its size the three letters covered the cube. */
@@ -234,12 +234,18 @@ function showLagCue(t) {
 
 const hideLagCue = () => $('lagGhost').classList.remove('show');
 
+/* After the lattice is rebuilt mid-trial: the lit place again, and the move's start. */
+function relightCurrent(t) {
+  state.cells[t.cellIdx].el.classList.add('active');
+  if (t.fromIdx != null) state.cells[t.fromIdx].el.classList.add('from');
+}
+
 function clearCells() {
   state.stimShown = false;
   gridCube.classList.remove('components-shown');
   $('gateBanner').classList.remove('show');
   state.cells.forEach(c => {
-    c.el.classList.remove('active', 'gate-closed');
+    c.el.classList.remove('active', 'gate-closed', 'from');
     c.el.querySelectorAll('.cell-face').forEach(f => {
       f.style.background = ''; f.innerHTML = '';
       LIT_VARS.forEach(k => f.style.removeProperty(k));

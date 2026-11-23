@@ -120,23 +120,27 @@ function buildJudgments(a, b, extra) {
        once there IS a previous move, so the first comparison of a block is skipped. */
     const prev = extra && extra.metaPrev;
     /* Pairs mode: after move 2, 1 against 2; after move 4, 3 against 4 and the sum
-       1 + 2 against the sum 3 + 4. `cycle` is the four moves' positions so far, from
-       where move 1 started (block.js). Moves 1 and 3 ask nothing of position. */
+       1 + 2 against the sum 3 + 4. `cycle` is the four's trials so far (block.js).
+       Each is a vector of its own, from its outlined start to the lit place, so
+       nothing is read off where one move ended and the next began. Moves 1 and 3
+       ask nothing of position. */
     const cycle = extra && extra.cycle;
     if (cycle) {
-      const v = (i, j) => moveVectorOf(cycle[i], cycle[j]);
+      const one = i => cycle[i].fromIdx == null ? null
+        : moveVectorOf({ cellIdx: cycle[i].fromIdx }, { cellIdx: cycle[i].cellIdx });
+      const sum = (i, j) => { const A = one(i), B = one(j); return A && B ? A.map((x, k) => x + B[k]) : null; };
       const ids = ['meta-same', 'meta-opp', 'meta-diff'];
       const relJ = (bucket, ids, A, B) => {
         const r = metaRelationOf(A, B);
         const id = r && { same: ids[0], opp: ids[1], diff: ids[2] }[r];
         push(bucket, ids, id ? [id] : []);
       };
-      if (extra.role === 1) relJ('position', ids, v(0, 1), v(1, 2));
+      if (extra.role === 1) relJ('position', ids, one(0), one(1));
       if (extra.role === 3) {
-        relJ('position', ids, v(2, 3), v(3, 4));
+        relJ('position', ids, one(2), one(3));
         /* A sum can be nothing at all (a move and its reverse): then there is no
            relation, and the answer is to press nothing. */
-        relJ('position3', ['sum-same', 'sum-opp', 'sum-orth'], v(0, 2), v(2, 4));
+        relJ('position3', ['sum-same', 'sum-opp', 'sum-orth'], sum(0, 1), sum(2, 3));
       }
     }
     /* The move being related: this pair's, or under nesting the jump just seen. */

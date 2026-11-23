@@ -827,9 +827,11 @@ const latticeDim = () => state.latticeDim || cfg.dim;
 const latticePitch = () => state.latticePitch || ((gridCube.clientWidth || 240) / cfg.dim);
 
 /* Pairs mode (model.js, pairPlan): second order in fours — 1 with 2, 3 with 4,
-   then the sum 1 + 2 with the sum 3 + 4. Cube frame, plain N-back only. */
+   then the sum 1 + 2 with the sum 3 + 4. Cube frame, plain N-back, and moves in
+   space only: the planner plants spatial vectors, so a property axis would add a
+   component nothing chose. */
 const metaPairsOn = c => {
   c = c || cfg;
   return !!(c.meta && c.metaPairs && c.streams && c.streams.position === 'relational' &&
-            !nestDepth(c) && (c.frame || 'cube') === 'cube');
+            !nestDepth(c) && (c.frame || 'cube') === 'cube' && !(c.coordAxes || []).length);
 };

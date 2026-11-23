@@ -437,12 +437,13 @@ function buildComponentLines() {
   applyComponentLines();
 }
 
-/* `p` is the lit place's centre, in the lattice's own pixels. */
-function positionComponents(p) {
+/* `p` is the lit place's centre, in the lattice's own pixels; `from` where the
+   lines start, the origin unless the move has a start of its own (pairs mode). */
+function positionComponents(p, from = [0, 0, 0]) {
   if (!state.componentSegs) return;
-  const at = [0, 0, 0];
+  const at = from.slice();
   state.componentSegs.forEach(seg => {
-    const a = seg.axis, L = p[a], len = Math.abs(L);
+    const a = seg.axis, L = p[a] - from[a], len = Math.abs(L);
     const mid = at.slice(); mid[a] += L / 2;
     seg.pair.forEach(r => {
       r.el.style.display = len < 0.5 ? 'none' : '';
@@ -576,13 +577,13 @@ function hideMoveArrow() {
 
 /* Slide the rails onto the lit cell. Translate first, then orient, so each rail
    pivots about the slot centre rather than the cube centre. */
-function positionGuides(cellIdx) {
+function positionGuides(cellIdx, fromIdx) {
   if (!state.rails) return;
   const dim = latticeDim(), size = gridCube.clientWidth || 240;
   /* The built step: size / dim put the rails beside the cells in the spaced layout. */
   const cs = state.cellStep || size / dim, off = (dim - 1) / 2;
-  const c = state.cells[cellIdx];
-  const p = [(c.x - off) * cs, (c.y - off) * cs, (c.z - off) * cs];
+  const px = c => [(c.x - off) * cs, (c.y - off) * cs, (c.z - off) * cs];
+  const p = px(state.cells[cellIdx]);
   /* Each rail spans its own axis, so it is only offset along the other two. */
   const offsets = [[0, p[1], p[2]], [p[0], 0, p[2]], [p[0], p[1], 0]];
   state.rails.forEach((pair, i) => {
@@ -592,7 +593,7 @@ function positionGuides(cellIdx) {
         `translate3d(${tx}px, ${ty}px, ${tz}px) ${r.orient} rotateX(${r.roll}deg)`;
     });
   });
-  positionComponents(p);
+  positionComponents(p, fromIdx != null ? px(state.cells[fromIdx]) : undefined);
 }
 
 const CELL_VIS_MODES = ['lattice', 'contrast', 'guides', 'rails', 'solo'];

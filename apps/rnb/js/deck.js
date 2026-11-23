@@ -355,7 +355,9 @@ function traceMove(trial) {
    * move was more than one.
    */
   /* Under nesting the move judged is the jump seen, not the step from the partner. */
-  const mv = trial && (trial.nest && cfg.meta ? trial.visMove : trial.pair);
+  /* Pairs mode: the move is its own vector, from its outlined start. */
+  const mv = trial && (trial.fromIdx != null ? [{ cellIdx: trial.fromIdx }, trial]
+    : trial.nest && cfg.meta ? trial.visMove : trial.pair);
   const names = moveNames(mv ? moveVectorOf(mv[0], mv[1]) : null);
   if (!names.length) return;
   showMoveArrow(names[0]);

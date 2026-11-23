@@ -84,11 +84,11 @@ function tick() {
   let extra = pair && cfg.meta
     ? (t.nest ? { metaPrev: pair[0].visMove, metaCur: t.visMove } : { metaPrev: pair[0].pair })
     : null;
-  /* Pairs mode: where this move sits in its four, and the positions from where
-     move 1 started (judgments.js reads the relations off them). */
+  /* Pairs mode: where this move sits in its four, counted from the block's first
+     trial, and the four's moves so far (judgments.js reads each one's own vector). */
   if (pair && metaPairsOn() && !t.nest) {
-    const k = C.length, role = (k - 1) % 4;
-    extra = { role, cycle: C.slice(k - 1 - role, k).concat([t]) };
+    const k = C.length, role = k % 4;
+    extra = { role, cycle: C.slice(k - role, k).concat([t]) };
   }
   /* The view's second order pairs the same way, whether or not position's is on. */
   if (pair && cfg.streams.view === 'meta') {
@@ -788,7 +788,7 @@ function applyFree() {
      n-back rule — there is no lag left for a variable one to vary. */
   /* Pairs mode counts moves in fours from the block's first, so the lag is one and
      nothing may bend it (see pairPlan). */
-  const pairs = meta && !nest && !!freeCfg.metaPairs;
+  const pairs = meta && !nest && !(freeCfg.coordAxes || []).length && !!freeCfg.metaPairs;
   const varN = (retro > 0 || nest || pairs) ? 0 : freeCfg.varN;
 
   Object.assign(cfg, {
