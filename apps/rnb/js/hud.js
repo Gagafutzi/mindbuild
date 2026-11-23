@@ -28,7 +28,8 @@ function updateHUD() {
     : rc === 3 ? 'direction of the move' : 'same or different') +
     /* Which earlier item, when it is not the one a lag back. */
     (cfg.nest ? ' \u00b7 against the last of its level' : '') +
-    (nestFrames() ? ', in the frame its levels set' : '');
+    (nestFrames() ? ', in the frame its levels set' : '') +
+    (metaPairsOn() ? ' · pairs: 1 with 2, 3 with 4, then the sums' : '');
   /* In variable mode the single number is a lie — what is fixed is the span the
      lag is drawn from, so that is what the HUD shows. */
   /* Under nested levels the lag is always one and says nothing; the number that

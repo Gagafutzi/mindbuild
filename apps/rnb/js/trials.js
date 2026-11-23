@@ -211,12 +211,14 @@ function showLagCue(t) {
      earlier item this one is to be held against. */
   /* An opener under frames names the axis it mirrors: the only place it is said,
      so it has to be held from here until the level closes. */
-  const mark = t.nest ? NEST_MARK[t.nest] : '';
+  /* Pairs mode: which of the four moves this is. */
+  const mark = t.nest ? NEST_MARK[t.nest] : (t.pairStep ? String(t.pairStep) : '');
   const mirror = t.mirror != null ? MIRROR_NAME[t.mirror] : t.turn != null ? TURN_NAME[t.turn] : '';
   el.classList.toggle('nest-in', t.nest === 'in');
   el.classList.toggle('nest-out', t.nest === 'out');
   el.classList.toggle('nest-stay', t.nest === 'stay');
   el.classList.toggle('nest-switch', t.nest === 'switch');
+  el.classList.toggle('pair-sum', t.pairStep === 4);
   if (!mark && !mirror && (!cfg.varN || t.n == null)) { el.classList.remove('show'); return; }
   el.textContent = mark || (mirror ? '' : t.n);
   /* Smaller than the bracket: at its size the three letters covered the cube. */

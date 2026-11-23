@@ -175,7 +175,9 @@ function createSampler(env) {
    * `from` is the reference trial rather than a cell index, because a move starts
    * from a position on every axis.
    */
-  function pickMetaMove(fromIdx, from, A, forbid) {
+  /* `choose`, when given, picks among the reachable moves instead of the relation
+     to A — the pairs mode plants two relations on one move (pairPlan). */
+  function pickMetaMove(fromIdx, from, A, forbid, choose) {
     const dims = dimCount();
     const f = state.cells[fromIdx];
 
@@ -255,6 +257,7 @@ function createSampler(env) {
       moves.push({ cellIdx: idx, levels: levels, vec: o });
     });
 
+    if (choose && moves.length) return choose(moves);
     if (!A || !moves.length) {
       return moves.length
         ? pick(moves)
@@ -605,6 +608,114 @@ function createSampler(env) {
     return kinds.length ? pick(byRel[pickMetaType(kinds, 'viewMetaDrawn')]) : pick(cands);
   }
 
+  /*
+   * PAIRS: second order taken a layer further (Free Play, `metaPairs`).
+   *
+   * The moves come in fours, 1 2 3 4. After move 2 it asks how 1 relates to 2,
+   * after move 4 how 3 relates to 4, and also how the sum 1 + 2 relates to the sum
+   * 3 + 4 — the jump from where the first pair started to where it ended, against
+   * the same for the second pair. So the first pair's sum has to be formed and
+   * held through two more moves before it is used; within a pair it is ordinary
+   * second order between neighbours.
+   *
+   * The four is planned whole when move 1 is drawn. Planted a move at a time, the
+   * early moves decided what the late ones could still reach: "same" sums came up
+   * 2% of fours, and a pair that reversed itself summed to nothing on two fours in
+   * five, leaving the sums' question empty. So the three relations are drawn
+   * first, each against its running tally (the pair relations share position's,
+   * the sums keep their own), and four places are searched for that give all
+   * three, with moves up to two places on any axis and neither pair summing to
+   * nothing. What cannot be met is given up in order: the second pair's relation,
+   * then the first's; the sums' is kept (tools/pairs-check.js).
+   */
+  const rel0 = k => cfg.streams && cfg.streams[k] === 'relational';
+  const pairsOn = () => !!cfg.meta && !!cfg.metaPairs && rel0('position') && (cfg.frame || 'cube') === 'cube';
+  const KINDS = ['same', 'opp', 'diff', 'obl'];
+  function drawKind(slot) {
+    const seen = state[slot] || (state[slot] = { same: 0, opp: 0, diff: 0, obl: 0 });
+    const drawn = KINDS.reduce((t, k) => t + seen[k], 0);
+    const w = KINDS.map(k => Math.max(META_FLOOR, META_SHARE[k] * (drawn + 1) - seen[k]));
+    let r = Math.random() * w.reduce((t, v) => t + v, 0);
+    return KINDS[w.findIndex(v => (r -= v) < 0)] ?? KINDS[3];
+  }
+  const tally = (slot, k) => { if (k && state[slot]) state[slot][k]++; };
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = randInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const reachCache = new Map();
+  function reach(i) {
+    const cells = state.cells;
+    let c = reachCache.get(cells);
+    if (!c) reachCache.set(cells, c = []);
+    if (!c[i]) {
+      const p = cells[i];
+      c[i] = cells.map((q, j) => j).filter(j => j !== i &&
+        Math.abs(cells[j].x - p.x) <= 2 && Math.abs(cells[j].y - p.y) <= 2 && Math.abs(cells[j].z - p.z) <= 2);
+    }
+    return c[i];
+  }
+  function planFour(p0) {
+    const cells = state.cells;
+    const V = (i, j) => [cells[j].x - cells[i].x, cells[j].y - cells[i].y, cells[j].z - cells[i].z];
+    const zero = v => !v[0] && !v[1] && !v[2];
+    const add = (u, v) => [u[0] + v[0], u[1] + v[1], u[2] + v[2]];
+    const want12 = drawKind('metaDrawn'), want34 = drawKind('metaDrawn'), wantS = drawKind('sumDrawn');
+    const firsts = [];
+    reach(p0).forEach(p1 => reach(p1).forEach(p2 => {
+      const A = V(p0, p1), B = V(p1, p2), S1 = add(A, B);
+      firsts.push({ p1, p2, S1, r12: metaRelationOf(A, B) });   // an empty S1 fails the sums' test below
+    }));
+    shuffle(firsts);
+    const second = (f, need34) => {
+      const p3s = shuffle(reach(f.p2).slice());
+      for (const p3 of p3s) {
+        const C = V(f.p2, p3);
+        const p4s = shuffle(reach(p3).slice());
+        for (const p4 of p4s) {
+          const D = V(p3, p4), S2 = add(C, D);
+          if (zero(S2)) continue;
+          if (metaRelationOf(f.S1, S2) !== wantS) continue;
+          const r34 = metaRelationOf(C, D);
+          if (need34 && r34 !== want34) continue;
+          return { p3, p4, r34 };
+        }
+      }
+      return null;
+    };
+    const matching = firsts.filter(f => f.r12 === want12);
+    const tries = [
+      [matching, f => second(f, true)],
+      [matching, f => second(f, false)],
+      [firsts, f => second(f, false)],
+    ];
+    for (const [list, attempt] of tries) {
+      let n = 0;
+      for (const f of list) {
+        const s = attempt(f);
+        if (s) {
+          tally('metaDrawn', f.r12); tally('metaDrawn', s.r34); tally('sumDrawn', wantS);
+          return [f.p1, f.p2, s.p3, s.p4];
+        }
+        if (++n > 60) break;
+      }
+    }
+    /* Nothing fits: any four whose pairs sum to something. */
+    const f = firsts[0];
+    const p3 = pick(reach(f.p2)), p4 = reach(p3).find(j => !zero(add(V(f.p2, p3), V(p3, j)))) ?? pick(reach(p3));
+    return [f.p1, f.p2, p3, p4];
+  }
+  function pairPlan(nest) {
+    if (nest || !pairsOn()) return null;
+    const C = state.chain, k = C.length;
+    if (k < 1) return null;
+    const role = (k - 1) % 4;
+    const move = () => {
+      const q = state.pairQueue;
+      if (role === 0 || !q || q.start !== k - role || q.cells !== state.cells)
+        state.pairQueue = { start: k - role, cells: state.cells, plan: planFour(C[k - 1 - role].cellIdx) };
+      return { cellIdx: state.pairQueue.plan[role], levels: {} };
+    };
+    return { step: role + 1, move };
+  }
+
   function sampleTrial() {
     /* Nested levels replace the lag: the plan names the partner and the lures. */
     const nest = nestOn() ? nestPlan() : null;
@@ -653,7 +764,12 @@ function createSampler(env) {
 
     /* Identity mode needs forced matches (1/27 is far too rare otherwise);
        relational mode is dense by construction, so sample freely. */
-    if (cfg.meta && rel('position') && nb) {
+    const pairs = pairPlan(nest);
+    if (pairs) {
+      metaMove = pairs.move(noRepeat);
+      t.cellIdx = metaMove.cellIdx;
+      t.pairStep = pairs.step;
+    } else if (cfg.meta && rel('position') && nb) {
       /* Every delta cardinal, so both first-order directions are unambiguous — and the
          target is chosen by RELATION type, not by neighbour. Sampling neighbours
          uniformly yields same 5% / opposite 28% / different 66%, because four of six
@@ -846,7 +962,7 @@ function createSampler(env) {
   return {
     randInt, pick, randExcept, sampleIndex, backAt, maxLag, trialLag,
     cardinalNeighbours, pickMetaMove, pickMetaType, sampleTrial,
-    nestPlan, nestCommit, NEST_RUN, NEST_STAY, NEST_SWITCH, NEST_SWITCH_OPEN, NEST_FRAME_BIAS, TURN_M,
+    pairPlan, nestPlan, nestCommit, NEST_RUN, NEST_STAY, NEST_SWITCH, NEST_SWITCH_OPEN, NEST_FRAME_BIAS, TURN_M,
     moveVectorOf, metaRelationOf,
   };
 }

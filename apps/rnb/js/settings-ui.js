@@ -428,6 +428,8 @@ function syncSettingsUI() {
   $('fixedGlyphMap').disabled = freeCfg.glyphRel === 'rank';
   $('metaOn').checked = !!freeCfg.meta;
   $('singleAxis').checked = !!freeCfg.singleAxis;
+  $('metaPairsF').checked = !!freeCfg.metaPairs;
+  $('metaPairsF').disabled = !freeCfg.meta || !!nestDepth(freeCfg);
   $('progSingleAxis').checked = !!progCfg.singleAxis;
   $('gateOn').value = String(freeCfg.gate || 0);
   $('retroOn').value = String(freeCfg.retro || 0);
@@ -453,7 +455,8 @@ function syncSettingsUI() {
     ? `On at depth ${nestF}${freeCfg.meta ? ', second order' : ''}. N, the gate, variable N ` +
       `and the retro-cue are set aside until it is off.`
     : '';
-  $('nValue').disabled = !!nestF;
+  /* Pairs mode replaces N too: each move is against the one before it. */
+  $('nValue').disabled = !!nestF || (!!freeCfg.meta && !!freeCfg.metaPairs);
   $('gateOn').disabled = !!nestF;
   $('retroOn').disabled = !!freeCfg.meta || !!nestF;
   $('varNBack').value = String(freeCfg.varN || 0);

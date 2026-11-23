@@ -549,6 +549,13 @@ const STREAMS = {
       { id:'s-meta-opp',  glyph:'⇄', label:'Opposite',        key:'k', color:'#ff6b6b' },
       { id:'s-meta-diff', glyph:'⤢', label:'Orthogonal',      key:'l', color:'#fcc419' },
     ],
+    /* Pairs mode: the sum of moves 1 + 2 against the sum of 3 + 4, asked after
+       move 4 beside the pair's own relation (model.js, pairPlan). */
+    metaSum: [
+      { id:'sum-same', glyph:'Σ⇉', label:'Sums the same way',    key:'i', color:'#51cf66' },
+      { id:'sum-opp',  glyph:'Σ⇄', label:'Sums opposite',        key:'k', color:'#ff6b6b' },
+      { id:'sum-orth', glyph:'Σ⤢', label:'Sums at right angles', key:'l', color:'#fcc419' },
+    ],
     /* Screen-frame twins. Separate channels so "both frames" can ask for the same
        movement twice, once per reference frame. */
     relationalScreen: [
@@ -692,7 +699,7 @@ const LETTER_KEYS = ['C', 'H', 'J', 'O', 'S', 'U', 'W', 'Y'];
 const LETTER_VOICES = { slt: 'Female', rms: 'Male', awb: 'Male, Scottish', kal: 'Synthetic' };
 
 /* Extra scoring buckets that aren't user-configurable streams. */
-const EXTRA_LABELS = { position2: 'Position (screen)' };
+const EXTRA_LABELS = { position2: 'Position (screen)', position3: 'Pair sums' };
 const labelFor = k => (STREAMS[k] ? STREAMS[k].label : EXTRA_LABELS[k]) || k;
 const colorFor = k => (STREAMS[k] ? STREAMS[k].color : '#9ccc65');
 
@@ -705,7 +712,7 @@ const KEY_POOL = ('qwertyuiopasdfghjkl;zxcvbnm,./1234567890').split('');
 /* The meta modes belong here as much as the first-order ones: they are response
    buttons with default keys, and leaving them out meant the keybind editor could
    not see the only channels in the app that a quaternary block is answered on. */
-const CHANNEL_MODES = ['identity', 'relational', 'cross', 'relationalScreen', 'meta', 'metaScreen'];
+const CHANNEL_MODES = ['identity', 'relational', 'cross', 'relationalScreen', 'meta', 'metaScreen', 'metaSum'];
 const CHANNELS = STREAM_KEYS.flatMap(k =>
   CHANNEL_MODES.flatMap(mode =>
     (STREAMS[k][mode] || []).map(c => ({ ...c, stream: k, mode }))));
@@ -725,7 +732,7 @@ function canCoOccur(a, b) {
      at a time, so a shared default key there is deliberate. */
   const pair = [a.mode, b.mode].sort().join('|');
   return a.stream === 'position' &&
-         (pair === 'relational|relationalScreen' || pair === 'meta|metaScreen');
+         (pair === 'relational|relationalScreen' || pair === 'meta|metaScreen' || pair === 'meta|metaSum');
 }
 
 let keyBinds = {};                                   // channelId -> key (persisted)
@@ -818,3 +825,11 @@ const openSpaceOn = c => {
 /* The lattice actually built, and the distance between neighbouring places. */
 const latticeDim = () => state.latticeDim || cfg.dim;
 const latticePitch = () => state.latticePitch || ((gridCube.clientWidth || 240) / cfg.dim);
+
+/* Pairs mode (model.js, pairPlan): second order in fours — 1 with 2, 3 with 4,
+   then the sum 1 + 2 with the sum 3 + 4. Cube frame, plain N-back only. */
+const metaPairsOn = c => {
+  c = c || cfg;
+  return !!(c.meta && c.metaPairs && c.streams && c.streams.position === 'relational' &&
+            !nestDepth(c) && (c.frame || 'cube') === 'cube');
+};

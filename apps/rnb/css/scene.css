@@ -403,3 +403,6 @@ body.depth-strong .cube-stage { --open-persp: .9; }
 .components { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; display: none; }
 .components-on.components-shown .components { display: block; }
 .component { position: absolute; top: calc(50% - 1px); height: 2px; background: rgba(176, 184, 192, .72); }
+
+/* Pairs mode: move 4 carries the sums' question too. */
+.lag-ghost.pair-sum { color: rgba(255, 212, 59, .66); }

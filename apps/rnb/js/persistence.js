@@ -75,7 +75,7 @@ function resetInMemoryState() {
     n:2, streams:{ position:'relational' }, dim:3, rotation:false, spin:60,
     coordAxes:[], magnitudeCap:2, pitchLoudness:false, toneCount:TONE_DEFAULT,
     frame:'cube', interval:2500, blockLength:20, feedback:'reveal',
-    lureRate:0.20, meta:false, gate:0, retro:0, varN:0, nest:0, nestWidth:1, nestFrames:false, openSpace:false,
+    lureRate:0.20, meta:false, gate:0, retro:0, varN:0, nest:0, nestWidth:1, nestFrames:false, openSpace:false, metaPairs:false,
     varPriority:true, fixedGlyphMap:false, glyphRel:'map', singleAxis:false,
   });
 }

@@ -17,7 +17,10 @@ function deckGroups() {
     if (m !== 'identity' && m !== 'relational' && m !== 'cross') return;
     const spec = STREAMS[k];
 
-    if (k === 'position' && m === 'relational' && cfg.meta) {
+    if (k === 'position' && m === 'relational' && metaPairsOn()) {
+      groups.push({ key:'position', label:'Move vs. its pair partner ↺', color: spec.color, channels: spec.meta });
+      groups.push({ key:'position3', label:'Σ 1+2 vs. Σ 3+4', color:'#ffd43b', channels: spec.metaSum });
+    } else if (k === 'position' && m === 'relational' && cfg.meta) {
       /* One group per frame the relation is asked in, exactly as the first-order
          judgement splits — at quinary both are live on the same trial and two
          answers have to be statable at once. */

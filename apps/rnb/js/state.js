@@ -141,6 +141,7 @@ const cfg = {
   nest: 0,            // 0 = the queue, else how many levels may be suspended at once
   nestWidth: 1,       // branches per level under nesting: 1 a line, 2 a side branch each
   openSpace: false,   // the cube may also move one step outside the lattice (Free Play)
+  metaPairs: false,   // second order in fours: 1 with 2, 3 with 4, then the pair sums
   nestFrames: false,  // each level's opener mirrors an axis for the moves inside it
   varPriority: true,  // cue one stream to prioritise per block
   fixedGlyphMap: false,   // live rule; Progression forces it off, see applyProgression
@@ -180,7 +181,7 @@ const freeCfg = {
      the ladder, where it is earned rather than chosen. */
   toneCount: TONE_DEFAULT,
   spin: 60, frame: 'cube', interval: 2500, blockLength: 20, feedback: 'reveal',
-  lureRate: 0.20, meta: false, gate: 0, retro: 0, varN: 0, nest: 0, nestWidth: 1, nestFrames: false, openSpace: false,
+  lureRate: 0.20, meta: false, gate: 0, retro: 0, varN: 0, nest: 0, nestWidth: 1, nestFrames: false, openSpace: false, metaPairs: false,
   /* varPriority was missing here while cfg defaulted it on, so Free Play silently
      ran without the cue that progression uses. */
   varPriority: true, fixedGlyphMap: false, glyphRel: 'map', singleAxis: false,

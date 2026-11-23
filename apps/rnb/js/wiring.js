@@ -253,6 +253,7 @@ freeIn('blockLengthF',  v => freeCfg.blockLength = Math.max(5, Math.round(v)));
 freeIn('rotationSpeed', v => freeCfg.spin = Math.max(5, v));
 
 freeIn('lureRateF',     v => freeCfg.lureRate = Math.min(LURE_MAX, Math.max(LURE_MIN, v / 100)));
+$('metaPairsF').onchange = e => { freeCfg.metaPairs = e.target.checked; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('metaOn').onchange  = e => { freeCfg.meta = e.target.checked; applyFree(); syncSettingsUI(); updateHUD(); saveProgress(); };
 $('singleAxis').onchange = e => { freeCfg.singleAxis = e.target.checked; applyFree(); saveProgress(); };
 $('progSingleAxis').onchange = e => { progCfg.singleAxis = e.target.checked; applyProgression(); saveProgress(); };

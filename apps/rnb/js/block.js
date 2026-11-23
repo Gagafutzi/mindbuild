@@ -84,6 +84,12 @@ function tick() {
   let extra = pair && cfg.meta
     ? (t.nest ? { metaPrev: pair[0].visMove, metaCur: t.visMove } : { metaPrev: pair[0].pair })
     : null;
+  /* Pairs mode: where this move sits in its four, and the positions from where
+     move 1 started (judgments.js reads the relations off them). */
+  if (pair && metaPairsOn() && !t.nest) {
+    const k = C.length, role = (k - 1) % 4;
+    extra = { role, cycle: C.slice(k - 1 - role, k).concat([t]) };
+  }
   /* The view's second order pairs the same way, whether or not position's is on. */
   if (pair && cfg.streams.view === 'meta') {
     extra = extra || {};
@@ -125,7 +131,7 @@ function startBlock() {
   state.history = []; state.chain = []; state.judgments = []; state.presses.clear();
   state.trial = 0; state.scored = 0; state.tally = {};
   state.lureTally = null; state.currentTrial = null; state.cued = true;
-  state.metaDrawn = null; state.viewMetaDrawn = null;
+  state.metaDrawn = null; state.viewMetaDrawn = null; state.sumDrawn = null; state.pairQueue = null;
   /* The stack of suspended levels and the returns-against-stays tally are the
      block's, like the chain. */
   state.nest = null; state.nestTally = null; state.frameTally = null;
@@ -265,6 +271,7 @@ function blockRecord(completed, scored) {
       nestWidth: nestWidth(cfg),
       nestFrames: nestFrames(cfg),
       nestFrameKind: nestFrameKind(cfg),
+      metaPairs: metaPairsOn(),
       /* One-axis moves only: no oblique relation can come up, so it is a
          different quaternary block from one with diagonals. */
       singleAxis: !!cfg.singleAxis,
@@ -520,6 +527,8 @@ function computeLoad() {
   /* One more layer on every side: 125 places around a 3-cube, judged against
      lines rather than a drawn lattice. */
   if (openSpaceOn()) load += 12;
+  /* Pairs: a sum formed from two moves and held through two more. */
+  if (metaPairsOn()) load += 18;
   /*
    * A finer tone pool, on the stream that has to place it. Every note added
    * narrows the step, so both questions the stream can ask get harder: "the same
@@ -705,6 +714,7 @@ function applyProgression() {
     nest: nestedTier() ? Math.min(NEST_MAX, prog.n) : 0,
     nestWidth: nestedTier() && progCfg.nestWidth >= 2 ? 2 : 1,
     openSpace: false,              // a Free Play setting; the ladder's places are the lattice's
+    metaPairs: false,
     nestFrames: nestedTier() && progCfg.nestFrames ? (progCfg.nestFrames === 'turn' ? 'turn' : true) : false,
     interval: prog.interval,
     lureRate: prog.lureRate,
@@ -776,18 +786,22 @@ function applyFree() {
   const retro = (meta || nest) ? 0 : freeCfg.retro;
   /* A retro trial is told which pair to report, so it has already replaced the
      n-back rule — there is no lag left for a variable one to vary. */
-  const varN = (retro > 0 || nest) ? 0 : freeCfg.varN;
+  /* Pairs mode counts moves in fours from the block's first, so the lag is one and
+     nothing may bend it (see pairPlan). */
+  const pairs = meta && !nest && !!freeCfg.metaPairs;
+  const varN = (retro > 0 || nest || pairs) ? 0 : freeCfg.varN;
 
   Object.assign(cfg, {
     streams: { ...freeCfg.streams },
-    n: nest ? 1 : freeCfg.n,
+    n: (nest || pairs) ? 1 : freeCfg.n,
     nest,
+    metaPairs: pairs,
     nestWidth: nest && freeCfg.nestWidth >= 2 ? 2 : 1,
     nestFrames: !!nest && freeCfg.nestFrames ? (freeCfg.nestFrames === 'turn' ? 'turn' : true) : false,
     interval: freeCfg.interval,
     lureRate: freeCfg.lureRate,
     feedback: freeCfg.feedback,
-    meta, gate: nest ? 0 : freeCfg.gate, retro, varN,
+    meta, gate: (nest || pairs) ? 0 : freeCfg.gate, retro, varN,
     fixedGlyphMap: !!freeCfg.fixedGlyphMap,
     glyphRel: freeCfg.glyphRel === 'rank' ? 'rank' : 'map',
     varPriority: !!freeCfg.varPriority,

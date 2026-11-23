@@ -119,9 +119,29 @@ function buildJudgments(a, b, extra) {
     /* Second order: how does this move relate to the previous one? Only defined
        once there IS a previous move, so the first comparison of a block is skipped. */
     const prev = extra && extra.metaPrev;
+    /* Pairs mode: after move 2, 1 against 2; after move 4, 3 against 4 and the sum
+       1 + 2 against the sum 3 + 4. `cycle` is the four moves' positions so far, from
+       where move 1 started (block.js). Moves 1 and 3 ask nothing of position. */
+    const cycle = extra && extra.cycle;
+    if (cycle) {
+      const v = (i, j) => moveVectorOf(cycle[i], cycle[j]);
+      const ids = ['meta-same', 'meta-opp', 'meta-diff'];
+      const relJ = (bucket, ids, A, B) => {
+        const r = metaRelationOf(A, B);
+        const id = r && { same: ids[0], opp: ids[1], diff: ids[2] }[r];
+        push(bucket, ids, id ? [id] : []);
+      };
+      if (extra.role === 1) relJ('position', ids, v(0, 1), v(1, 2));
+      if (extra.role === 3) {
+        relJ('position', ids, v(2, 3), v(3, 4));
+        /* A sum can be nothing at all (a move and its reverse): then there is no
+           relation, and the answer is to press nothing. */
+        relJ('position3', ['sum-same', 'sum-opp', 'sum-orth'], v(0, 2), v(2, 4));
+      }
+    }
     /* The move being related: this pair's, or under nesting the jump just seen. */
     const [ma, mb] = (extra && extra.metaCur) || [a, b];
-    if (prev) {
+    if (prev && !cycle) {
       /*
        * Oblique is asked, and answered by pressing nothing. The options list is
        * three buttons per frame, as it has always been — so the fourth relation
@@ -445,7 +465,8 @@ function chanceKey(stream) {
     (nestDepth(c) ? '/nest' + nestDepth(c) + (nestWidth(c) > 1 ? 'w' + nestWidth(c) : '') +
       (nestFrames(c) ? (nestFrameKind(c) === 'turn' ? 'ft' : 'f') : '') : '') +
     /* More places, so other base rates for an identity position. */
-    (c.openSpace ? '/open' : '');
+    (c.openSpace ? '/open' : '') +
+    (metaPairsOn(c) ? '/pairs' : '');
 }
 
 function chanceOf(t) {

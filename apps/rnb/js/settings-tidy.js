@@ -85,7 +85,7 @@ function initShortHints() {
    whatever was left on before. */
 const PRESET_BASE = {
   meta: false, gate: 0, retro: 0, varN: 0, nest: 0, nestWidth: 1, nestFrames: false,
-  openSpace: false, coordAxes: [], singleAxis: false,
+  openSpace: false, metaPairs: false, coordAxes: [], singleAxis: false,
 };
 const FREE_PRESETS = [
   { id: 'classic',  label: 'Classic dual n-back — position and letter, N 2',
@@ -102,6 +102,8 @@ const FREE_PRESETS = [
     set: { nest: 2, nestFrames: 'turn', streams: { position: 'relational' } } },
   { id: 'open',     label: 'Open space — relational, N 2, the cube can leave the lattice',
     set: { n: 2, openSpace: true, streams: { position: 'relational' } } },
+  { id: 'pairs',    label: 'Pairs and their sums — 1 with 2, 3 with 4, then the sums',
+    set: { meta: true, metaPairs: true, streams: { position: 'relational' } } },
   { id: 'openView', label: 'Open space with a changing view — position and view relational, N 2',
     set: { n: 2, openSpace: true, streams: { position: 'relational', view: 'relational' } } },
 ];
