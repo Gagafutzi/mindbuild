@@ -16,6 +16,13 @@ strings. **Memory** holds a growing sequence. **Logic** continues a coloured
 sequence, **Confusions** drills only the pairs you actually mix up, and
 **Automaticity** and **Pop-out** measure whether any of it has stuck.
 
+Decode can be narrowed to a practice set: the groups A–F, G–L, M–R, S–X, Y Z
+(with Ä Ö Ü in German) and 0–9, or single symbols, in either case or both. The
+wrong answers on offer come from the set too, so its members are told apart
+from each other. It can also be answered by typing the character instead of
+picking one of four, case and all; recalling a character is not recognising it
+among four, so typed answers keep their own calibrated window and records.
+
 ## German
 
 Tools → Preferences → Language. German adds **Ä Ö Ü**: each takes its base

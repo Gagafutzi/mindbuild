@@ -251,6 +251,22 @@ button, input, select, textarea{font-family:inherit}
 }
 #word-guess:focus,#memory-input:focus{border-color:var(--accent); outline:none}
 #memory-input{letter-spacing:5px; text-transform:uppercase}
+#word-guess.one-char{width:110px; font-size:1.7rem; padding:8px 10px}
+
+/* Decode's practice set (renderDecodeSetup). */
+.decode-setup{max-width:640px; margin:0 auto 22px; text-align:left;
+  background:var(--surface); border:1px solid var(--line); padding:14px 16px}
+.ds-head{font-size:.75rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); margin-bottom:10px}
+.ds-groups, .ds-keys{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px}
+.ds-groups .btn[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-soft); color:var(--text)}
+.ds-groups .btn.some{border-color:var(--accent); border-style:dashed}
+.ds-key{min-width:34px; justify-content:center; padding:4px 6px}
+.ds-key[aria-pressed="false"]{opacity:.3; border-style:dashed}
+.ds-line{display:flex; align-items:center; gap:10px; margin-top:8px; flex-wrap:wrap}
+.ds-k{font-size:.8rem; color:var(--muted); min-width:58px}
+.seg{display:inline-flex; flex-wrap:wrap}
+.seg .btn{margin-right:-1px}
+.seg .btn[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-soft); color:var(--text); position:relative; z-index:1}
 #feedback{margin:0 0 14px; font-size:1.3rem; min-height:34px; font-weight:600}
 .correct{color:var(--ok)}
 .wrong{color:var(--bad)}
@@ -552,8 +568,17 @@ body.no-motion *{animation:none !important; transition:none !important}
 
     <div id="drill-start" class="center" style="padding:30px 0">
       <p class="muted" id="drill-desc"></p>
+      <!-- Decode only: which symbols to ask, and how to answer them. -->
+      <div id="decode-setup" class="decode-setup hidden">
+        <div class="ds-head">Practice set</div>
+        <div class="ds-groups" id="ds-groups"></div>
+        <div class="ds-keys" id="ds-keys"></div>
+        <div class="ds-line"><span class="ds-k">Case</span><div class="seg" id="ds-case"></div></div>
+        <div class="ds-line"><span class="ds-k">Answer</span><div class="seg" id="ds-answer"></div></div>
+        <div class="tiny muted" id="ds-summary" style="margin-top:10px"></div>
+      </div>
       <button class="btn btn-primary btn-lg" id="start-btn">▶ Start</button>
-      <div class="tiny muted" style="margin-top:14px">Press <b>Space</b> to start · <b>1–4</b> to answer · <b>Esc</b> to leave</div>
+      <div class="tiny muted" id="start-hint" style="margin-top:14px">Press <b>Space</b> to start · <b>1–4</b> to answer · <b>Esc</b> to leave</div>
     </div>
 
     <div id="drill-play" class="hidden center">
@@ -1834,7 +1859,10 @@ const DEFAULT_DATA = () => ({
   timing:{},                                   // calibrated window per mode, persisted
   toneTier:1, toneMiss:0,                      // how many timbre families Tone ID uses
   prefs:{ sound:true, volume:50, timer:true, motion:true, teach:true, sessionLen:20,
-          accTarget:0.85, outlineDark:true, lang:'en' },
+          accTarget:0.85, outlineDark:true, lang:'en',
+          /* Decode: which letters and digits it asks (null: all of them), which
+             cases of the letters, and whether the answer is typed. */
+          decodeKeys:null, decodeCase:'both', decodeTyped:false },
   version:VERSION
 });
 
@@ -2336,6 +2364,7 @@ function openMode(id, opts){
     note.classList.remove('hidden');
     note.innerHTML = 'Focused drill on: <b>' + focusPool.join(' ') + '</b>';
   } else note.classList.add('hidden');
+  renderDecodeSetup();
   updateModeStats();
 }
 
@@ -2374,8 +2403,9 @@ function markTrack(ok){
   if(d) d.className = 'sdot ' + (ok ? 'ok' : 'bad');
 }
 function updateModeStats(){
-  if(!data.records[mode]) data.records[mode] = { streak:0, time:null };
-  const r = data.records[mode];
+  const rk = statKey(mode);
+  if(!data.records[rk]) data.records[rk] = { streak:0, time:null };
+  const r = data.records[rk];
   $('cur-streak').textContent = streak;
   $('best-streak').textContent = r.streak || 0;
   $('score').textContent = score;
@@ -2405,7 +2435,7 @@ function accTarget(){
   return (p > 0.5 && p < 0.99) ? p : 0.85;
 }
 function calibratedUnit(m){
-  const cfg = MODES[m], saved = data.timing[m];
+  const cfg = MODES[m], saved = data.timing[statKey(m)];
   if(!saved) return cfg.unit;
   return Math.max(cfg.unitMin, Math.min(cfg.unitMax, saved));
 }
@@ -2414,7 +2444,7 @@ function applyStaircase(ok){
   const down = up * (1 - accTarget()) / accTarget();
   maxTime = ok ? maxTime * Math.exp(-down) : maxTime * Math.exp(up);
   maxTime = Math.max(modeCfg.unitMin, Math.min(modeCfg.unitMax, maxTime));
-  data.timing[mode] = Math.round(maxTime);
+  data.timing[statKey(mode)] = Math.round(maxTime);
   updateModeStats();
 }
 /* Every symbol in the current question, repeats included, case folded: a and
@@ -2483,9 +2513,12 @@ function clearQuestionUI(){
   $('options-container').innerHTML = '';
   $('feedback').textContent = '';
   $('teach-slot').innerHTML = '';
-  $('word-input-container').classList.add('hidden');
+  /* Typed Decode keeps its answer box between questions: hiding it drops the
+     focus, and a phone then closes its keyboard after every answer. */
+  if(!(mode === DECODE && decodeTyped() && drillLive)) $('word-input-container').classList.add('hidden');
   $('next-btn').classList.add('hidden');
   const wi = $('word-guess'); wi.value = ''; wi.disabled = false;
+  wi.placeholder = 'Type what you read…'; wi.classList.remove('one-char');
 }
 
 function nextQ(){
@@ -2504,14 +2537,137 @@ function nextQ(){
   else if(mode === 'game-search')         qSearch();
 }
 
+/* ---------- Decode: the practice set, and typed answers ----------------
+   The set is kept as base keys (letters, umlauts, digits) and the cases of the
+   letters to ask. null keys means all of them, so switching German on brings
+   the umlauts in unless a set was chosen by hand. Typing the character is
+   recall rather than picking one of four, so it keeps its own calibrated
+   window and records (statKey). A focused drill (Confusions, Progress) brings
+   its own symbols and leaves the set alone. ---------------------------- */
+const DECODE = 'game-symbol-to-char';
+function decodeGroups(){
+  return [
+    { label:'A–F', keys:'ABCDEF' }, { label:'G–L', keys:'GHIJKL' }, { label:'M–R', keys:'MNOPQR' },
+    { label:'S–X', keys:'STUVWX' },
+    german() ? { label:'Y Z Ä Ö Ü', keys:'YZÄÖÜ' } : { label:'Y Z', keys:'YZ' },
+    { label:'0–9', keys:DIGITS }
+  ];
+}
+function decodeTyped(){ return !!data.prefs.decodeTyped; }
+function decodeKeys(){
+  const k = data.prefs.decodeKeys;
+  return Array.isArray(k) ? keys().filter(x => k.includes(x)) : keys();
+}
+function setDecodeKeys(list){
+  const avail = keys();
+  data.prefs.decodeKeys = avail.every(k => list.includes(k)) ? null : avail.filter(k => list.includes(k));
+  save(); renderDecodeSetup();
+}
+/* Every symbol the set asks: digits as they are, letters in the chosen cases. */
+function decodePool(){
+  const c = data.prefs.decodeCase, up = c !== 'lower', low = c !== 'upper';
+  const out = [];
+  decodeKeys().forEach(k => {
+    if(DIGITS.includes(k)) out.push(k);
+    else { if(up) out.push(k); if(low) out.push(k.toLowerCase()); }
+  });
+  return out;
+}
+/* Typed Decode keeps its own window and records; everything else is the mode. */
+function statKey(m){ return m === DECODE && decodeTyped() ? m + ':typed' : m; }
+function setButton(label, pressed, onclick, cls){
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = cls || 'btn btn-sm';
+  b.textContent = label;
+  b.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  b.onclick = onclick;
+  return b;
+}
+function renderDecodeSetup(){
+  const show = mode === DECODE && !focusPool;
+  $('decode-setup').classList.toggle('hidden', !show);
+  const typed = mode === DECODE && decodeTyped();
+  $('start-hint').innerHTML = 'Press <b>Space</b> to start · ' +
+    (typed ? '<b>type</b> the character, Shift for a square' : '<b>1–4</b> to answer') + ' · <b>Esc</b> to leave';
+  $('start-btn').disabled = false;
+  if(!show) return;
+
+  const avail = keys(), sel = new Set(decodeKeys());
+  const groups = $('ds-groups'); groups.innerHTML = '';
+  const allOn = sel.size === avail.length;
+  groups.appendChild(setButton('All', allOn, () => setDecodeKeys(allOn ? [] : avail)));
+  decodeGroups().forEach(g => {
+    const members = g.keys.split(''), n = members.filter(k => sel.has(k)).length;
+    const b = setButton(g.label, n === members.length, () => {
+      const s = new Set(decodeKeys());
+      members.forEach(k => n === members.length ? s.delete(k) : s.add(k));
+      setDecodeKeys([...s]);
+    });
+    if(n && n < members.length) b.classList.add('some');
+    groups.appendChild(b);
+  });
+
+  const box = $('ds-keys'); box.innerHTML = '';
+  avail.forEach(k => {
+    const b = setButton(k, sel.has(k), () => {
+      const s = new Set(decodeKeys());
+      if(s.has(k)) s.delete(k); else s.add(k);
+      setDecodeKeys([...s]);
+    }, 'chip ds-key');
+    b.style.color = 'rgb(' + colors[k] + ')';
+    if(needsHalo(colors[k])) b.style.textShadow = '0 0 2px rgba(255,255,255,.8)';
+    b.title = (sel.has(k) ? 'Leave out ' : 'Add ') + k;
+    box.appendChild(b);
+  });
+
+  const cs = $('ds-case'); cs.innerHTML = '';
+  [['both', 'Both'], ['upper', 'Uppercase ■'], ['lower', 'Lowercase ●']].forEach(([v, label]) => {
+    cs.appendChild(setButton(label, (data.prefs.decodeCase || 'both') === v, () => {
+      data.prefs.decodeCase = v; save(); renderDecodeSetup();
+    }));
+  });
+  const an = $('ds-answer'); an.innerHTML = '';
+  [[false, 'Pick of four'], [true, 'Type it']].forEach(([v, label]) => {
+    an.appendChild(setButton(label, decodeTyped() === v, () => {
+      data.prefs.decodeTyped = v; save();
+      maxTime = calibratedUnit(mode);
+      updateModeStats(); renderDecodeSetup();
+    }));
+  });
+
+  const n = decodePool().length;
+  $('ds-summary').textContent = n < 2 ? 'Pick at least two symbols.'
+    : n + ' symbols' + (decodeKeys().some(k => !DIGITS.includes(k)) && data.prefs.decodeCase !== 'upper' && data.prefs.decodeCase !== 'lower'
+        ? ', each letter in both cases' : '') + '.' +
+      (decodeTyped() ? ' Type each one: Shift for a square, plain for a circle.' : '');
+  $('start-btn').disabled = n < 2;
+}
+
 /* ---------- Question builders ---------- */
 function qDecode(){
-  const c = pickSymbol(focusPool);
+  const pool = focusPool || decodePool();
+  const c = pickSymbol(pool);
   cur = { answer:c, meta:null };
   audio.tone(c);
   const q = $('question-container');
   q.appendChild(makeShape(c, 96));
-  buildOptions(c, symbols(), 'text');
+  if(decodeTyped()){
+    const wi = $('word-guess');
+    wi.placeholder = '?';
+    wi.classList.add('one-char');
+    $('word-input-container').classList.remove('hidden');
+    wi.focus();
+  } else {
+    /* The wrong answers come from the set, so a set is practised against its
+       own members; one too small for four is topped up from the rest. */
+    let opts = focusPool ? symbols() : pool;
+    if(opts.length < 4){
+      const rest = symbols().filter(s => !opts.includes(s)).sort(() => Math.random() - 0.5);
+      opts = opts.concat(rest.slice(0, 4 - opts.length));
+    }
+    buildOptions(c, opts, 'text');
+  }
   startTimer();
 }
 function qFindColor(){
@@ -2901,7 +3057,7 @@ function onCorrect(){
 
   if(streak > data.dailyMaxStreak) data.dailyMaxStreak = streak;
   if(streak > data.bestStreak) data.bestStreak = streak;
-  const rec = data.records[mode];
+  const rec = data.records[statKey(mode)];
   if(streak > (rec.streak || 0)){ rec.streak = streak; toast('streak', '🔥 Streak record — ' + streak); }
   if(!isTyping && (rec.time == null || rt < rec.time)){
     rec.time = rt;
@@ -2929,7 +3085,11 @@ function onWrong(chosen, timedOut){
 
   if(!isStroop && !isTyping && !isMatch){
     recordAnswer(cur.answer, false, null);
-    if(chosen) recordConfusion(cur.answer, chosen);
+    /* Only two different symbols make a confusion: the same letter in the other
+       case is a slip of shape, and a key that is no symbol says nothing. */
+    const other = chosen && String(chosen).toUpperCase();
+    if(other && other !== String(cur.answer).toUpperCase() && STAT_KEYS.includes(other))
+      recordConfusion(cur.answer, chosen);
   }
   data.wrong++;
   streak = 0;
@@ -2969,6 +3129,9 @@ function onWrong(chosen, timedOut){
     const col = colors[ans.toUpperCase()] || '255,255,255';
     $('feedback').innerHTML = '<span class="wrong">' + (timedOut ? '⏱ ' : '') + 'It was </span>' +
       '<span style="color:rgb(' + col + ');font-weight:750' + halo(col) + '">' + ans + '</span>';
+    if(mode === DECODE && chosen && chosen !== ans && String(chosen).toUpperCase() === ans.toUpperCase())
+      $('feedback').innerHTML += '<div class="small muted" style="font-weight:500">Right letter, other case: ' +
+        'a square is uppercase, a circle lowercase.</div>';
     if(data.prefs.teach) $('teach-slot').appendChild(teachCard(ans));
     /* In Tone ID the useful feedback is the difference, not the answer. */
     if(mode === 'game-tone' && chosen) audio.compare(ans, chosen);
@@ -3027,8 +3190,14 @@ function advance(){
   nextQ();
 }
 function checkTyped(){
-  if(!qActive || modeCfg.kind !== 'typing') return;
+  if(!qActive) return;
   const v = $('word-guess').value.trim();
+  /* Typed Decode: the first character typed is the answer, case and all. */
+  if(mode === DECODE){
+    if(decodeTyped() && v) v[0] === cur.answer ? onCorrect() : onWrong(v[0], false);
+    return;
+  }
+  if(modeCfg.kind !== 'typing') return;
   if(v === cur.answer) onCorrect();
   else if(v.length >= cur.answer.length) onWrong(null, false);
 }
@@ -3044,7 +3213,7 @@ function logSession(){
   const secs = Math.round((Date.now() - s.started) / 1000);
   data.dailySessions = (data.dailySessions || 0) + 1;
   data.sessions.unshift({
-    d:today(), m:mode, n:s.n, c:s.correct, rt:rt ? Math.round(rt) : null, xp:s.xp,
+    d:today(), m:mode, typed:statKey(mode) !== mode || undefined, n:s.n, c:s.correct, rt:rt ? Math.round(rt) : null, xp:s.xp,
     t:s.started,                       // ms epoch — a day string cannot be merged across trainers
     secs:Math.min(secs, s.n * 120),    // cap: a tab left open is not time spent training
     /* The controller holds accuracy at the target and moves SPEED to get there,
@@ -3603,7 +3772,7 @@ function renderSessionLog(){
     const acc = s.n ? Math.round(s.c/s.n*100) : 0;
     const d = document.createElement('div');
     d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:.87rem';
-    d.innerHTML = '<span>' + (m ? m.i + ' ' + m.t : s.m) + ' <span class="muted tiny">' + s.d + '</span></span>' +
+    d.innerHTML = '<span>' + (m ? m.i + ' ' + m.t : s.m) + (s.typed ? ' · typed' : '') + ' <span class="muted tiny">' + s.d + '</span></span>' +
       '<span><b style="color:' + (acc >= 85 ? 'var(--ok)' : acc >= 60 ? 'var(--warn)' : 'var(--bad)') + '">' + acc + '%</b>' +
       '<span class="muted tiny"> · ' + fmtMs(s.rt) + ' · +' + s.xp + 'xp</span></span>';
     box.appendChild(d);
@@ -3752,6 +3921,7 @@ document.addEventListener('keydown', e => {
   if(drillLive && e.key === 'Enter' && nb && !nb.classList.contains('hidden')){
     e.preventDefault(); nb.click(); return;
   }
+  if(e.key === 'Escape' && t && t.id === 'word-guess' && mode === DECODE && drillLive){ exitToModes(); return; }
   if(typing) return;
 
   if(e.key === 'm' || e.key === 'M'){ toggleSound(); return; }
