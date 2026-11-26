@@ -468,8 +468,9 @@ function chanceKey(stream) {
        are returns, and the lures a return can carry are not the ones a stay can. */
     (nestDepth(c) ? '/nest' + nestDepth(c) + (nestWidth(c) > 1 ? 'w' + nestWidth(c) : '') +
       (nestFrames(c) ? (nestFrameKind(c) === 'turn' ? 'ft' : 'f') : '') : '') +
-    /* More places, so other base rates for an identity position. */
-    (c.openSpace ? '/open' : '') +
+    /* More places, so other base rates for an identity position; and moves on
+       every axis there leave no axis unmoved. */
+    (c.openSpace ? '/open' + (everyAxisOn(c) ? '/every' : '') : '') +
     (metaPairsOn(c) ? '/pairs' : '');
 }
 

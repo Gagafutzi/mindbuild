@@ -85,7 +85,7 @@ function initShortHints() {
    whatever was left on before. */
 const PRESET_BASE = {
   meta: false, gate: 0, retro: 0, varN: 0, nest: 0, nestWidth: 1, nestFrames: false,
-  openSpace: false, metaPairs: false, coordAxes: [], singleAxis: false,
+  openSpace: false, everyAxis: true, metaPairs: false, coordAxes: [], singleAxis: false,
 };
 const FREE_PRESETS = [
   { id: 'classic',  label: 'Classic dual n-back — position and letter, N 2',

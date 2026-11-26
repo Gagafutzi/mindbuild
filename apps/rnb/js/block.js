@@ -261,7 +261,7 @@ function blockRecord(completed, scored) {
     /* Full config snapshot: a score is meaningless without knowing what produced it,
        and settings drift between blocks. */
     cfg: {
-      streams: { ...cfg.streams }, dim: cfg.dim, openSpace: openSpaceOn(), frame: cfg.frame,
+      streams: { ...cfg.streams }, dim: cfg.dim, openSpace: openSpaceOn(), everyAxis: everyAxisOn(), frame: cfg.frame,
       interval: cfg.interval, blockLength: cfg.blockLength, rotation: cfg.rotation,
       spin: cfg.spin, feedback: cfg.feedback, lureRate: cfg.lureRate,
       meta: cfg.meta, gate: cfg.gate, retro: cfg.retro, varN: cfg.varN,
@@ -714,6 +714,7 @@ function applyProgression() {
     nest: nestedTier() ? Math.min(NEST_MAX, prog.n) : 0,
     nestWidth: nestedTier() && progCfg.nestWidth >= 2 ? 2 : 1,
     openSpace: false,              // a Free Play setting; the ladder's places are the lattice's
+    everyAxis: true,
     metaPairs: false,
     nestFrames: nestedTier() && progCfg.nestFrames ? (progCfg.nestFrames === 'turn' ? 'turn' : true) : false,
     interval: prog.interval,
@@ -809,6 +810,7 @@ function applyFree() {
     /* A bigger lattice around the old one, drawn as axes only, whatever the
        cube layout says (see buildCube). */
     openSpace: !!freeCfg.openSpace,
+    everyAxis: freeCfg.everyAxis !== false,
     coordAxes: (freeCfg.coordAxes || []).slice(),
     magnitudeCap: freeCfg.magnitudeCap === 3 ? 3 : 2,
     singleAxis: !!freeCfg.singleAxis,

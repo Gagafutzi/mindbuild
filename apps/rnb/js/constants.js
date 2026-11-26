@@ -822,6 +822,19 @@ const openSpaceOn = c => {
   c = c || cfg;
   return !!c.openSpace;
 };
+/* Open space moves on every axis unless turned off (model.js, everyAxis). */
+const everyAxisOn = c => {
+  c = c || cfg;
+  return openSpaceOn(c) && c.everyAxis !== false;
+};
+/* Two one-place diagonal steps are never at right angles (their dot product is
+   three ±1s, which is odd), so second order on the cube asks only same, opposite
+   or neither there — unless one axis per move is asked for, or a coordinate axis
+   brings a component that can be zero, or pairs take longer vectors. */
+const metaOrthOff = c => {
+  c = c || cfg;
+  return everyAxisOn(c) && !!c.meta && !c.singleAxis && !(c.coordAxes || []).length && !metaPairsOn(c);
+};
 /* The lattice actually built, and the distance between neighbouring places. */
 const latticeDim = () => state.latticeDim || cfg.dim;
 const latticePitch = () => state.latticePitch || ((gridCube.clientWidth || 240) / cfg.dim);

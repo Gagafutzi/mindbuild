@@ -40,9 +40,9 @@ function lattice(grid, open) {
 }
 const CELLS = lattice(3, false);
 
-function run({ pairs = true, length = 60000, cells = CELLS, coordAxes = [] } = {}) {
+function run({ pairs = true, length = 60000, cells = CELLS, coordAxes = [], openSpace = false, everyAxis = true } = {}) {
   const cfg = { n: 1, nest: 0, meta: true, metaPairs: pairs, frame: 'cube', lureRate: 0.2, varN: 0, retro: 0,
-                gate: 0, magnitudeCap: 2, coordAxes, streams: { position: 'relational' } };
+                gate: 0, magnitudeCap: 2, coordAxes, streams: { position: 'relational' }, openSpace, everyAxis };
   const state = { cells, chain: [], metaDrawn: null, nest: null };
   const POOL = [0, 0, 0];
   const M = createSampler({
@@ -163,8 +163,9 @@ console.log('\nthe relations\n');
 }
 
 {
-  /* Open space: 125 places, the same rules. */
-  const open = run({ cells: lattice(5, true), length: 12000 });
+  /* Open space: 125 places, the same rules, and every vector on every axis
+     (model.js, everyAxis). */
+  const open = run({ cells: lattice(5, true), length: 12000, openSpace: true });
   let broken = 0, n = 0;
   const c = { same: 0, opp: 0, diff: 0, obl: 0 };
   open.blocks.forEach(b => {
@@ -181,6 +182,18 @@ console.log('\nthe relations\n');
   });
   ok('open space: every move fits, and the sums\' relations come up about evenly',
      broken === 0 && KINDS.every(k => c[k] / n > 0.15), `${broken} broken; ` + KINDS.map(k => `${k} ${pct(c[k] / n)}`).join(', '));
+  const zeros = os => os.blocks.flat().filter(t => vecOf(os.cells, t).some(x => x === 0)).length;
+  const pc = { same: 0, opp: 0, diff: 0, obl: 0 };
+  let pn = 0;
+  open.blocks.forEach(b => { for (let k = 0; k + 3 < b.length; k += 4) {
+    const v = b.slice(k, k + 4).map(t => vecOf(open.cells, t));
+    [relation(v[0], v[1]), relation(v[2], v[3])].forEach(r => { pc[r]++; pn++; });
+  } });
+  ok('open space: no move has a zero on any axis, and inside the pairs all four relations still come up',
+     zeros(open) === 0 && KINDS.every(k => pc[k] / pn > 0.15),
+     `${zeros(open)} with a zero; ` + KINDS.map(k => `${k} ${pct(pc[k] / pn)}`).join(', '));
+  const offRun = run({ cells: lattice(5, true), length: 4000, openSpace: true, everyAxis: false });
+  ok('open space with every axis off: moves with a zero come back', zeros(offRun) > 400, String(zeros(offRun)));
 }
 
 console.log('\nthe judgments the app scores\n');

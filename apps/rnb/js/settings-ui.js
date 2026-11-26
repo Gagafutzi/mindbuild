@@ -357,6 +357,8 @@ function syncSettingsUI() {
   $('blockLengthF').value = freeCfg.blockLength;
   $('cubeDimension').value = freeCfg.dim;
   $('openSpaceF').checked = !!freeCfg.openSpace;
+  $('everyAxisF').checked = freeCfg.everyAxis !== false;
+  $('everyAxisF').disabled = !freeCfg.openSpace;
   /* Open space draws its own way; the layout only matters with it off. */
   $('cubeLayout').disabled = openSpaceOn();
   $('letterVoice').value = cfg.letterVoice;

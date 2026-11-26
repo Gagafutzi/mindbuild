@@ -69,8 +69,33 @@ function createSampler(env) {
    * OPEN_OUTSIDE of the time, and the old cube's places the rest.
    */
   const OPEN_OUTSIDE = env.OPEN_OUTSIDE ?? 0.35;
+
+  /*
+   * Open space moves on every axis (`everyAxis`, on unless turned off): out there
+   * the cube is small and far, too small to tell a step on an axis from none, so
+   * an answer that hangs on "it stayed level" is a guess. Every place the cube is
+   * read against — the item it is judged with, and the one it just left — differs
+   * from the new place in x, in y and in z, and every axis has a direction to
+   * report. Second order steps diagonally, one place on each axis; pairs take
+   * vectors with no zero in them. A match is the one exception, being the same
+   * place by definition.
+   */
+  const everyAxis = () => !!cfg.openSpace && cfg.everyAxis !== false;
+  /* Apart on every axis from each of `refs` (cell indices; nulls ignored). */
+  function apartFrom(i, refs) {
+    const c = state.cells[i];
+    return refs.every(r => {
+      if (r == null) return true;
+      const q = state.cells[r];
+      return c.x !== q.x && c.y !== q.y && c.z !== q.z;
+    });
+  }
+
   let placeCache = null;
-  function randCell(forbid, avoid) {
+  /* `apart`, when given, is the places the new one must differ from on every
+     axis. The side is drawn first, as without it; if nothing on that side is
+     apart, the other side is tried, and only then is `apart` given up. */
+  function randCell(forbid, avoid, apart) {
     const cells = state.cells;
     if (!placeCache || placeCache.cells !== cells)
       placeCache = { cells, out: cells.map((c, i) => c.outside ? i : -1).filter(i => i >= 0),
@@ -81,16 +106,25 @@ function createSampler(env) {
       while ((i === forbid || i === avoid) && guard < 40 && cells.length > 1);
       return i;
     }
-    const side = Math.random() < OPEN_OUTSIDE ? placeCache.out : placeCache.inn;
-    const cand = side.filter(i => i !== forbid && i !== avoid);
+    const outFirst = Math.random() < OPEN_OUTSIDE;
+    const side = outFirst ? placeCache.out : placeCache.inn;
+    const free = i => i !== forbid && i !== avoid;
+    let cand = side.filter(i => free(i) && (!apart || apartFrom(i, apart)));
+    if (!cand.length && apart) {
+      cand = (outFirst ? placeCache.inn : placeCache.out).filter(i => free(i) && apartFrom(i, apart));
+      if (!cand.length) cand = side.filter(free);
+    }
     return cand.length ? pick(cand) : randExcept(cells.length, forbid);
   }
 
-  function sampleIndex(streamKey, len, nbackIdx, lureIdxs, forbid) {
+  function sampleIndex(streamKey, len, nbackIdx, lureIdxs, forbid, apart) {
     /* Lure is checked BEFORE the target-match roll. A lure is by definition not an
        n-back match, so rolling for a match first would silently eat the lure on 28% of
        the trials that were chosen to carry one. */
-    const lures = (lureIdxs || []).filter(i => i != null && i !== nbackIdx && i !== forbid);
+    /* Open space, every axis: a lure is an earlier place, and only one apart on
+       every axis from the item judged against and the one just left is used. */
+    const lures = (lureIdxs || []).filter(i => i != null && i !== nbackIdx && i !== forbid &&
+      (!apart || apartFrom(i, apart)));
     if (lures.length && lureTarget === streamKey) {
       lureTarget = null; usedLure = true;
       return pick(lures);
@@ -101,7 +135,7 @@ function createSampler(env) {
     if (nbackIdx != null && nbackIdx !== forbid && Math.random() < TARGET_RATE) {
       return nbackIdx;
     }
-    if (streamKey === 'position') return randCell(forbid, nbackIdx);
+    if (streamKey === 'position') return randCell(forbid, nbackIdx, apart);
     let i, guard = 0;
     do { i = randInt(len); guard++; }
     while ((i === nbackIdx || i === forbid) && guard < 40 && len > 1);
@@ -177,7 +211,7 @@ function createSampler(env) {
    */
   /* `choose`, when given, picks among the reachable moves instead of the relation
      to A — the pairs mode plants two relations on one move (pairPlan). */
-  function pickMetaMove(fromIdx, from, A, forbid, choose) {
+  function pickMetaMove(fromIdx, from, A, forbid, choose, apart) {
     const dims = dimCount();
     const f = state.cells[fromIdx];
 
@@ -201,7 +235,9 @@ function createSampler(env) {
      * spread as far as the property allows.
      */
     const cap = magnitudeCap();
-    const spatial = [-1, 0, 1];
+    /* Open space, every axis: a step on each one. One axis per move, asked for
+       by name, still wins. */
+    const spatial = everyAxis() && !cfg.singleAxis ? [-1, 1] : [-1, 0, 1];
     const along = [];
     for (let m = -cap; m <= cap; m++) along.push(m);
 
@@ -234,7 +270,7 @@ function createSampler(env) {
     state.cells.forEach((c, i) => { cellAt[c.x + ',' + c.y + ',' + c.z] = i; });
 
     const axes = coordAxes();
-    const moves = [];
+    let moves = [];
     offsets.forEach(o => {
       const key = (f.x + o[0]) + ',' + (f.y + o[1]) + ',' + (f.z + o[2]);
       const idx = cellAt[key];
@@ -256,12 +292,23 @@ function createSampler(env) {
       if (still) return;
       moves.push({ cellIdx: idx, levels: levels, vec: o });
     });
+    /* Above lag one the place just left is not `from`. It is kept apart too, on
+       as many axes as the lattice allows: by a wall the one diagonal that would
+       clear it on every axis can be off the grid. The move judged, from `from`,
+       is diagonal whatever happens here. */
+    if (apart && moves.length) {
+      const C = state.cells;
+      const score = m => apart.reduce((s, r) => r == null ? s
+        : s + ['x', 'y', 'z'].filter(k => C[m.cellIdx][k] !== C[r][k]).length, 0);
+      const best = Math.max(...moves.map(score));
+      moves = moves.filter(m => score(m) === best);
+    }
 
     if (choose && moves.length) return choose(moves);
     if (!A || !moves.length) {
       return moves.length
         ? pick(moves)
-        : { cellIdx: randCell(forbid), levels: {} };
+        : { cellIdx: randCell(forbid, null, everyAxis() ? [fromIdx].concat(apart || []) : null), levels: {} };
     }
 
     /*
@@ -316,10 +363,16 @@ function createSampler(env) {
     const seen = state[slot] ||
       (state[slot] = { same: 0, opp: 0, diff: 0, obl: 0 });
     const drawn = seen.same + seen.opp + seen.diff + seen.obl;
+    /* Diagonal steps on every axis are never square to each other, so the shares
+       are of the three that can come up; aimed at a quarter each, every type was
+       soon past its share and the draw went flat, leaving `same` (the one walls
+       block most) behind. */
+    const orthGone = slot === 'metaDrawn' && everyAxis() && !cfg.singleAxis && !coordAxes().length;
+    const live = orthGone ? META_SHARE.same + META_SHARE.opp + META_SHARE.obl : 1;
     /* `drawn + 1` counts the trial being drawn now, so the first of a block has a
        deficit to work with rather than four zeroes and a coin toss. */
     const w = avail.map(k =>
-      Math.max(META_FLOOR, META_SHARE[k] * (drawn + 1) - seen[k]));
+      Math.max(META_FLOOR, META_SHARE[k] / live * (drawn + 1) - seen[k]));
     let r = Math.random() * w.reduce((s, v) => s + v, 0);
     const type = avail[w.findIndex(v => (r -= v) < 0)] ?? avail[avail.length - 1];
     seen[type]++;
@@ -651,8 +704,8 @@ function createSampler(env) {
      planFour never takes it. */
   let pairBook = null;
   function vectorBook() {
-    const cells = state.cells;
-    if (pairBook && pairBook.cells === cells) return pairBook;
+    const cells = state.cells, every = everyAxis();
+    if (pairBook && pairBook.cells === cells && pairBook.every === every) return pairBook;
     const key = (x, y, z) => x + ',' + y + ',' + z;
     const at = new Map(cells.map((c, i) => [key(c.x, c.y, c.z), i]));
     const vecs = [];
@@ -660,6 +713,7 @@ function createSampler(env) {
       for (let y = -PAIR_REACH; y <= PAIR_REACH; y++)
         for (let z = -PAIR_REACH; z <= PAIR_REACH; z++) {
           if (!x && !y && !z) continue;
+          if (every && !(x && y && z)) continue;
           const fits = [];
           cells.forEach((c, i) => {
             const j = at.get(key(c.x + x, c.y + y, c.z + z));
@@ -672,7 +726,7 @@ function createSampler(env) {
       byRel[metaRelationOf(A.v, B.v)].push({ A, B, S: add3(A.v, B.v) });
     }));
     byRel.any = [].concat(byRel.same, byRel.opp, byRel.diff, byRel.obl);
-    return (pairBook = { cells, byRel });
+    return (pairBook = { cells, every, byRel });
   }
   const sample = (list, n) => {
     const out = [];
@@ -754,6 +808,9 @@ function createSampler(env) {
       ? (prev && (nest.tag === 'in' || ((nest.tag === 'out' || nest.tag === 'switch') && rel('position'))
           || (nest.tag === 'switch' && !nest.partner)) ? prev.cellIdx : null)
       : (prev && n > 1 ? prev.cellIdx : null);
+    /* Open space, every axis: the new place differs on every axis from the item
+       it is judged against and from the one it just left (see everyAxis). */
+    const apart = everyAxis() ? [nb && nb.cellIdx, prev && prev.cellIdx] : null;
     /* Set by the meta branch when it picks the axis as well as the cell. */
     let metaMove = null;
 
@@ -776,16 +833,23 @@ function createSampler(env) {
       metaMove = pickMetaMove(from.cellIdx, from,
                               (nest ? nb.visMove : nb.pair)
                                 ? moveVectorOf(...(nest ? nb.visMove : nb.pair)) : null,
-                              noRepeat);
+                              noRepeat, undefined, apart && [prev && prev.cellIdx]);
       t.cellIdx = metaMove.cellIdx;
     } else if (rel('position') && nb && lureTarget === 'position') {
       /* Relational lure: make the move from the (n−1)-back item clean and cardinal,
          so mis-counting your lag yields a confident WRONG answer rather than noise.
          Without this the lure axis would do nothing until identity streams appear. */
-      const cand = lureA ? cardinalNeighbours(lureA.cellIdx)
-                            .filter(i => i !== nb.cellIdx && i !== noRepeat) : [];
+      /* Every axis has no cardinal step to offer. There the lure is a place apart
+         on every axis from both items, whose directions from the one a lag short
+         differ on some axis from the true ones, so the miscount still answers
+         wrong, and confidently. */
+      const C = state.cells, sgn = (i, r) => ['x', 'y', 'z'].map(k => Math.sign(C[i][k] - C[r][k])).join();
+      const cand = !lureA ? []
+        : apart ? C.map((c, i) => i).filter(i => i !== noRepeat &&
+            apartFrom(i, apart.concat(lureA.cellIdx)) && sgn(i, lureA.cellIdx) !== sgn(i, nb.cellIdx))
+        : cardinalNeighbours(lureA.cellIdx).filter(i => i !== nb.cellIdx && i !== noRepeat);
       if (cand.length) { t.cellIdx = pick(cand); usedLure = true; lureTarget = null; }
-      else t.cellIdx = randCell(noRepeat);
+      else t.cellIdx = randCell(noRepeat, null, apart);
     } else if (nest && nb && nestFrameKind() === 'mirror' && plannedFlip(nest).some(x => x) &&
                Math.random() < NEST_FRAME_BIAS) {
       /* A frame only matters on the axes it flips. Drawn freely, a move touches a
@@ -794,18 +858,18 @@ function createSampler(env) {
          mirrored frame are made to cross a flipped axis. */
       const f = plannedFlip(nest), from = state.cells[nb.cellIdx];
       const cand = state.cells.map((c, i) => i).filter(i => {
-        if (i === noRepeat) return false;
+        if (i === noRepeat || (apart && !apartFrom(i, apart))) return false;
         const c = state.cells[i];
         const d = [c.x - from.x, c.y - from.y, c.z - from.z];
         return d.some((v, k) => v && f[k]);
       });
-      t.cellIdx = cand.length ? pick(cand) : randCell(noRepeat);
+      t.cellIdx = cand.length ? pick(cand) : randCell(noRepeat, null, apart);
     } else if (rel('position') || !on('position')) {
-      t.cellIdx = randCell(noRepeat);
+      t.cellIdx = randCell(noRepeat, null, apart);
     } else {
       t.cellIdx = sampleIndex('position', state.cells.length, nb ? nb.cellIdx : null,
                               [lureA && lureA.cellIdx, lureB && lureB.cellIdx],
-                              noRepeat);
+                              noRepeat, apart);
     }
 
     state.__lag = n; state.__cell = t.cellIdx; state.__nb = nb;

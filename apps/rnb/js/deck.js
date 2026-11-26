@@ -25,9 +25,12 @@ function deckGroups() {
          judgement splits — at quinary both are live on the same trial and two
          answers have to be statable at once. */
       const both = cfg.frame === 'both';
+      /* Diagonal steps on every axis are never square to each other: no key
+         for what cannot come up (metaOrthOff). */
       if (cfg.frame === 'cube' || both)
         groups.push({ key:'position', label:'Move vs. previous move ↺' + (both ? ' · cube' : ''),
-                      color: spec.color, channels: spec.meta });
+                      color: spec.color,
+                      channels: metaOrthOff() ? spec.meta.filter(c => c.id !== 'meta-diff') : spec.meta });
       if (cfg.frame === 'screen' || both)
         groups.push({ key:'position2', label:'Move vs. previous move ↺ · screen',
                       color:'#9ccc65', channels: spec.metaScreen });
